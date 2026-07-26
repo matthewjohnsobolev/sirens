@@ -1,0 +1,17 @@
+html, body {
+  height: 100%; 
+  margin: 0;
+  overflow: hidden;
+}
+
+#map {
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  left: 0;
+  transition: all 0.3s ease;
+}
+
+.leaflet-popup-content {
+  margin: 15px;
+}

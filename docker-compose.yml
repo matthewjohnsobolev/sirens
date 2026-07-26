@@ -1,0 +1,77 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: sirens-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-sirens}
+      TZ: Europe/Kyiv
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-sirens}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: sirens-redis
+    environment:
+      TZ: Europe/Kyiv
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    container_name: sirens-web
+    restart: always
+    ports:
+      - "127.0.0.1:8000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sirens}
+      - TZ=Europe/Kyiv
+    command: gunicorn --workers 3 --bind 0.0.0.0:5000 web.server:app
+
+  alerts:
+    build: .
+    container_name: sirens-alerts
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sirens}
+      - TZ=Europe/Kyiv
+    env_file:
+      - .env
+    stdin_open: true
+    tty: true
+    command: python run_alerts.py -m ${APP_MODE:-dev}
+
+volumes:
+  pgdata:
+  redisdata:

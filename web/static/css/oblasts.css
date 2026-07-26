@@ -1,0 +1,210 @@
+.oblast-caption-container {
+    display: flex; /* Flexbox контейнер */
+    align-items: center; /* Центрирование элементов по вертикали */
+}
+
+.oblast-icon-container {
+    margin-right: 8px; /* Отступ между иконкой и текстом */
+}
+
+.oblast-icon {
+    width: 18px; /* Размер иконки, можно изменить по необходимости */
+    height: auto;
+    margin-bottom: 7px; /* Убираем все отступы */
+}
+
+.oblast-name {
+    font-family: 'Inter', sans-serif, bold;
+    font-size: 14px;
+    font-weight: 700;
+    color: #000;
+    margin-bottom: 10px;
+}
+
+
+
+.green-oblast-button {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    border: none; 
+    width: 310px;
+    height: 40px;
+    display: flex;
+    padding: 0;
+    border-radius: 10px;
+    align-items: center; 
+    color: #000;
+    background-color: #B9FFA8;
+}
+  
+.orange-oblast-button {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    border: none; 
+    width: 310px;
+    height: 40px;
+    display: flex;
+    padding: 0;
+    border-radius: 10px;
+    align-items: center; 
+    color: #000;
+    background-color: #FFCA9A;
+}
+  
+.red-oblast-button {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    width: 310px;
+    height: 40px;
+    display: flex;
+    padding: 0;
+    border-radius: 10px;
+    align-items: center; 
+    color: #000;
+    background-color: #FFB7B7;
+}
+  
+.gray-oblast-button {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    border: none; 
+    width: 310px;
+    height: 40px;
+    display: flex;
+    padding: 0;
+    border-radius: 10px;
+    align-items: center; 
+    color: #000;
+    background-color: #BFF0FF;
+    text-align: left;
+    line-height: 14px;
+    background-color: #E8E8E8;
+}
+
+#indent {
+    margin-top: 10px;
+}
+  
+.yellow-oblast-button {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    width: 310px;
+    height: 40px;
+    display: flex;
+    padding: 0;
+    border-radius: 10px;
+    align-items: center; 
+    color: #000;
+    background-color: #FFF496;
+}
+  
+.icon-container {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    margin: 0; 
+    justify-content: center;
+}
+
+.icon {
+    height: 20px;
+    width: 20px;
+}
+
+.oblast-description-text {
+    width: 190px;
+    text-align: left; 
+}
+
+.oblast-description-time {
+    font-weight: 500;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end; 
+    margin-left: 35px;
+}
+
+.npp-radiation-level {
+    font-weight: 600;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+}
+  
+.oblast-button-link {
+    text-decoration: none; 
+    color: initial; 
+}
+  
+.green-oblast-button:hover {
+    background-color: #C8FFBB; 
+}
+  
+.orange-oblast-button:hover {
+    background-color: #FFD5AE; 
+}
+  
+.red-oblast-button:hover {
+    background-color: #FFC3C3; 
+}
+
+.yellow-oblast-button:hover {
+    background-color: #FFF6AB; 
+}
+
+.gray-oblast-button:hover {
+    background-color: #EEEEEE; 
+}
+
+/* Контейнер для всего содержимого popup */
+.container {
+    max-height: 400px;
+    overflow: visible;
+    position: relative;
+}
+
+/* Контейнер с прокруткой */
+.scrollable-content {
+    max-height: 90px; /* Увеличиваем высоту для отображения большего количества контента */
+    overflow-y: auto;
+    padding-right: 8px;
+    margin-right: -8px; /* Компенсируем padding для выравнивания */
+}
+
+/* Стили для информационных блоков */
+.info-block {
+    margin-bottom: 8px;
+}
+
+.info-block:last-child {
+    margin-bottom: 0;
+}
+
+/* Стилизация скроллбара */
+.scrollable-content::-webkit-scrollbar {
+    width: 4px;
+    height: 100%;
+}
+
+.scrollable-content::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 2px;
+}
+
+.scrollable-content::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 2px;
+}
+
+.scrollable-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25);
+}

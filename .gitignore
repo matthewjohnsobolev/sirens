@@ -1,0 +1,15 @@
+.env
+*.env
+venv/
+env/
+logs/
+data/sessions/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.db
+*.csv
+*.session
+*.session-journal
+*.log

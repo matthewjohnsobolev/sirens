@@ -1,0 +1,83 @@
+.channel-popup-name {
+    font-family: 'Inter', sans-serif, bold;
+    font-size: 14px;
+    font-weight: 700;
+    color: #000;
+    margin-bottom: 10px;
+}
+  
+.channel-popup-button {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    width: 310px;
+    height: 40px;
+    display: flex;
+    padding: 0;
+    border-radius: 10px;
+    align-items: center;
+    color: #000;
+    background-color: #BFF0FF;
+    text-align: left;
+    line-height: 14px;
+    margin-bottom: 8px; /* Добавлен нижний отступ */
+}
+  
+.channel-popup-button-special {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    margin-top: 10px;
+    border: none; 
+    width: 310px;
+    height: 40px;
+    display: flex;
+    padding: 0;
+    border-radius: 10px;
+    align-items: center; 
+    color: #000;
+    background-color: #FFF09D;
+    text-align: left;
+    line-height: 14px;
+}
+  
+.icon-container-marker-special {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+  
+.channel-popup-button a {
+    color: #000;
+    text-decoration: none;
+}
+  
+.channel-popup-button-special a {
+    color: #000;
+    text-decoration: none;
+}
+  
+.channel-popup-button:hover {
+    background-color: #D2F4FF;
+}
+  
+.icon-container-marker {
+    width: 40px; /* Изменено с 54.52px на 40px для соответствия */
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0; /* Запрещаем сжиматься */
+}
+  
+.icon-marker {
+    height: 20px;
+    width: 20px;
+}
+
+.error-report {
+    font-size: 10px;
+}

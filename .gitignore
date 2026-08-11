@@ -13,3 +13,10 @@ __pycache__/
 *.session
 *.session-journal
 *.log
+
+# testing
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

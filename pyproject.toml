@@ -16,3 +16,9 @@ packages = ["alerts", "data", "web"]
 
 [tool.setuptools.package-data]
 alerts = ["img/*.png"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]

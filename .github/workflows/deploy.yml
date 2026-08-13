@@ -33,7 +33,7 @@ jobs:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSHPASS: ${{ secrets.DEPLOY_PASSWORD }}
           PORT: ${{ vars.DEPLOY_PORT || '22' }}
-          APP_PATH: ${{ vars.DEPLOY_PATH || '/sirens' }}
+          APP_PATH: ${{ vars.DEPLOY_PATH || '/home/ubuntu/sirens' }}
         run: |
           set -euo pipefail
           test -n "$HOST" || { echo "DEPLOY_HOST secret is not set"; exit 1; }

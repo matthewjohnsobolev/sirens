@@ -19,7 +19,6 @@ function getOblastPopupContent(oblastData) {
       <div class="container">
           <div class="scrollable-content">`;
   
-  // Блок воздушной тревоги
   if (oblastData.alert.status === 1) {
       popupContent += `
           <div class="info-block">
@@ -48,7 +47,6 @@ function getOblastPopupContent(oblastData) {
           </div>`;
   }
 
-  // Блок взрывов
   if (oblastData.explosion.status === 1) {
       popupContent += `
           <div class="info-block">
@@ -64,7 +62,6 @@ function getOblastPopupContent(oblastData) {
           </div>`;
   }
 
-  // Блок артобстрелов
   if (oblastData.shelling && oblastData.shelling.status === 1) {
       popupContent += `
           <div class="info-block">
@@ -88,14 +85,11 @@ function getOblastPopupContent(oblastData) {
   return popupContent;
 }
 
-// В файле oblasts.js полностью замените функцию getCityPopupContent на эту:
-
 function getCityPopupContent(cityData) {
     let popupContent = `
         <div class="container">
             <div class="scrollable-content">`;
   
-    // Добавляем блок с телеграм-каналом прямо внутрь скроллбар-контейнера
     popupContent += `
             <div class="info-block">
                 <a href="https://www.t.me/kyiv_alert" class="oblast-button-link">
@@ -108,9 +102,6 @@ function getCityPopupContent(cityData) {
                 </a>
             </div>`;
   
-    // Теперь напрямую добавляем все необходимые блоки, а не вызываем getOblastPopupContent
-    
-    // Блок воздушной тревоги
     if (cityData.alert.status === 1) {
         popupContent += `
             <div class="info-block">
@@ -189,7 +180,7 @@ fetch('/api')
       fetch('/static/js/ukraine.geojson')
         .then(res => res.json())
         .then(geoData => {
-            L.geoJSON(geoData, {
+            const geoLayer = L.geoJSON(geoData, {
                 onEachFeature: function(feature, layer) {
                     const regionId = feature.properties.id;
                     const data = apiData[regionId];
@@ -223,9 +214,19 @@ fetch('/api')
                     }
                     
                     layer.bindPopup(popupHtml, customOptions);
-                    setOblastStyle(layer, data.alert.status, data.explosion.status);
                 }
             }).addTo(map);
+
+            geoLayer.eachLayer(function(layer) {
+                const data = apiData[layer.feature.properties.id];
+                if (!data) return;
+                setOblastStyle(
+                    layer,
+                    data.alert.status,
+                    data.explosion.status,
+                    data.shelling ? data.shelling.status : 0
+                );
+            });
         });
   })
   .catch(error => { console.error('Error fetching data:', error); });

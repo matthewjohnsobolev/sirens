@@ -55,7 +55,6 @@ pg_pool = None
 client: TelegramClient = None
 
 
-
 CHANNEL_PHOTO_PATHS = {
     "air_raid_alert": f"{IMAGES_PATH}/air-raid-alert.png",
     "air_raid_alert_cancelled": f"{IMAGES_PATH}/air-raid-alert-cancelled.png",
@@ -210,7 +209,6 @@ def build_message_handler(region_channels: dict):
             if not channel_id:
                 continue
 
-            # 1. Проверяем, упоминается ли этот регион в сообщении
             if not any(trigger in message_text for trigger in region_config['triggers']):
                 continue
 

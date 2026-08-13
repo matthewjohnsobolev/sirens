@@ -29,6 +29,7 @@ from alerts.main import (
     update_channel_photo,
 )
 from config import DATABASE_URL, MESSAGES, REDIS_URL, REGION_CONFIG
+from tests.samples.source_messages import ALL_SAMPLES, REGION_SAMPLES
 
 TIME_RE = re.compile(r"\d{2}:\d{2}")
 
@@ -335,33 +336,12 @@ async def test_send_alert_skips_photo_update_without_mapping(
 # build_message_handler
 # --------------------------------------------------------------------------
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("message_text, expected_call", [
-    pytest.param(
-        "м. Київ Повітряна тривога",
-        (1111, "kyiv", "air_raid_alert"),
-        id="kyiv-fallback-alert",
-    ),
-    pytest.param(
-        "м. Київ Відбій тривоги",
-        (1111, "kyiv", "air_raid_alert_cancelled"),
-        id="kyiv-fallback-cancellation",
-    ),
-    pytest.param(
-        "м. Нікополь артилерійський обстріл",
-        (2222, "nikopol", "threat_of_shelling"),
-        id="nikopol-alert-triggers",
-    ),
-    pytest.param(
-        "м. Нікополь Відбій загрози артобстрілу",
-        (2222, "nikopol", "threat_of_shelling_cancelled"),
-        id="nikopol-shelling-cancellation",
-    ),
-    pytest.param("Some random text", None, id="no-region-match"),
-    pytest.param("м. Київ погода сьогодні гарна", None, id="region-without-alert-keyword"),
-])
-async def test_build_message_handler_dispatches_correct_alert(message_text, expected_call):
-    handler = build_message_handler({"kyiv": 1111, "nikopol": 2222})
+ALL_REGION_CHANNELS = {region: 9000 + i for i, region in enumerate(REGION_CONFIG)}
+
+
+async def _dispatch(message_text, region_channels=ALL_REGION_CHANNELS):
+    """Feed one message to the handler and return the send_alert calls it made."""
+    handler = build_message_handler(region_channels)
     event = MagicMock()
     event.message.message = message_text
 
@@ -369,25 +349,75 @@ async def test_build_message_handler_dispatches_correct_alert(message_text, expe
         await handler(event)
         await _drain_background_tasks()
 
-    if expected_call is None:
-        mock_send_alert.assert_not_awaited()
-    else:
-        mock_send_alert.assert_awaited_once_with(*expected_call)
-
     assert alerts_main.running_tasks == set()
+    return [call.args for call in mock_send_alert.await_args_list]
+
+
+def _expected_calls(regions, alert_type):
+    """The calls a message about `regions` must produce, in handler order."""
+    return [
+        (ALL_REGION_CHANNELS[region], region, alert_type)
+        for region in REGION_CONFIG
+        if region in regions
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message_text, expected_calls", [
+    pytest.param(
+        "м. Київ Повітряна тривога",
+        [(1111, "kyiv", "air_raid_alert")],
+        id="kyiv-fallback-alert",
+    ),
+    pytest.param(
+        "м. Київ Відбій тривоги",
+        [(1111, "kyiv", "air_raid_alert_cancelled")],
+        id="kyiv-fallback-cancellation",
+    ),
+    pytest.param(
+        "м. Нікополь артилерійський обстріл",
+        [(2222, "nikopol", "threat_of_shelling")],
+        id="nikopol-alert-triggers",
+    ),
+    pytest.param(
+        "м. Нікополь Відбій загрози артобстрілу",
+        [(2222, "nikopol", "threat_of_shelling_cancelled")],
+        id="nikopol-shelling-cancellation",
+    ),
+    pytest.param("Some random text", [], id="no-region-match"),
+    pytest.param("м. Київ погода сьогодні гарна", [], id="region-without-alert-keyword"),
+])
+async def test_build_message_handler_dispatches_correct_alert(message_text, expected_calls):
+    assert await _dispatch(message_text, {"kyiv": 1111, "nikopol": 2222}) == expected_calls
 
 
 @pytest.mark.asyncio
 async def test_build_message_handler_ignores_regions_without_channel():
-    handler = build_message_handler({"nikopol": 2222})
-    event = MagicMock()
-    event.message.message = "м. Київ Повітряна тривога"
+    assert await _dispatch("м. Київ Повітряна тривога", {"nikopol": 2222}) == []
 
-    with patch('alerts.main.send_alert', new_callable=AsyncMock) as mock_send_alert:
-        await handler(event)
-        await _drain_background_tasks()
 
-    mock_send_alert.assert_not_awaited()
+# --- real messages from the source channel -------------------------------
+# The samples live in tests/samples/source_messages.py; add one there and it is
+# picked up by the tests below. ALL_SAMPLES covers both the one-district posts
+# and the combined ones that list several districts as bullets.
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sample", ALL_SAMPLES, ids=lambda sample: sample.id)
+async def test_build_message_handler_on_real_channel_messages(sample):
+    """A real post reaches every channel it names, and no other."""
+    assert await _dispatch(sample.alert_message) == _expected_calls(
+        sample.regions, "air_raid_alert"
+    )
+    assert await _dispatch(sample.cancellation_message) == _expected_calls(
+        sample.regions, "air_raid_alert_cancelled"
+    )
+
+
+def test_every_configured_region_has_a_message_sample():
+    """A new region in REGION_CONFIG needs a sample in tests/samples/source_messages.py."""
+    sampled = {region for sample in REGION_SAMPLES for region in sample.regions}
+
+    assert sampled == set(REGION_CONFIG)
 
 
 # --------------------------------------------------------------------------

@@ -1,22 +1,42 @@
+# Secrets and runtime data
 .env
 *.env
-venv/
-env/
-logs/
 data/sessions/
+*.session
+*.session-journal
+
+# Runtime output
+logs/
+*.log
+backups/
+*.sql.gz
+*.db
+*.csv
+
+# Python
+venv/
+.venv/
+env/
 __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
-*.db
-*.csv
-*.session
-*.session-journal
-*.log
+build/
+dist/
 
-# testing
+# Testing
 .pytest_cache/
 .coverage
 .coverage.*
 coverage.xml
 htmlcov/
+
+# Editors and tooling
+.idea/
+.vscode/
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

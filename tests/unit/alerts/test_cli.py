@@ -29,22 +29,15 @@ def test_get_args_rejects_unknown_mode(capsys):
             get_args()
 
 
-def test_get_args_version_exits_but_prints_help_instead_of_version(capsys):
-    """Pins a known defect.
-
-    CustomHelpFormatter.format_help() returns FULL_HELP unconditionally, and
-    argparse routes --version through the same formatter. So `--version`
-    exits 0 but prints the help text; the configured VERSION never appears.
-    See review notes - change this test together with the fix.
-    """
+def test_get_args_version_prints_version_and_exits(capsys):
     with patch('sys.argv', ['sirens.py', '--version']):
         with pytest.raises(SystemExit) as exc_info:
             get_args()
 
     out = capsys.readouterr().out
     assert exc_info.value.code == 0
-    assert FULL_HELP in out
-    assert VERSION not in out
+    assert VERSION in out
+    assert FULL_HELP not in out
 
 
 def test_get_args_help_prints_full_help(capsys):
@@ -68,10 +61,7 @@ def test_get_mode_config_dev_uses_test_channels():
     channels, source = get_mode_config(argparse.Namespace(mode='dev'))
 
     assert channels is test_channels
-    # NOTE: this deliberately does NOT equal test_channels['source']
-    # (-1001234567890). cli.py hard-codes a different dev source channel, so
-    # the 'source' entry in test_channels is dead config - see review notes.
-    assert source == -1001843473515
+    assert source == test_channels['source'] == -1001843473515
 
 
 def test_get_mode_config_prod_uses_real_channels():

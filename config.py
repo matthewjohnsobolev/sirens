@@ -17,7 +17,7 @@ LOGS_PATH = os.path.join(PROJECT_ROOT, "logs")
 VERSION = 'v1.0.0'
 
 test_channels = {
-    'source': -1001234567890,
+    'source': -1001843473515,
     'kremenchuk': -1001754447620,
     'cherkasy': -1001754447620,
     'kropyvnytskyi': -1001754447620,
@@ -142,7 +142,7 @@ REGION_CONFIG = {
     'zaporizhzhia':  {'triggers': ["Запорізька область", "м. Запоріжжя", "Запорізький район"], 'oblast': 'zaporizhzhia_oblast', 'display_name': 'Zaporizhzhia'},
     'dnipro':        {'triggers': ["Дніпропетровська область", "Дніпровський район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Dnipro'},
     'kryvyirih':     {'triggers': ["Дніпропетровська область", "Криворізький район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kryvyi Rih'},
-    'kamianske':     {'triggers': ["Дніпропетровська область", "Кам’янський район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kamianske'},
+    'kamianske':     {'triggers': ["Дніпропетровська область", "Кам’янський район", "Кам'янський район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kamianske'},
 
     # --- South ---
     'kherson':       {'triggers': ["Херсонська область", "Херсонський район"], 'oblast': 'kherson_oblast', 'display_name': 'Kherson'},

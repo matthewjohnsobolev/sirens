@@ -31,6 +31,7 @@ Mode details:
 For support and more information:
   GitHub: https://github.com/matthewjohnsobolev/sirens'''
 
+
 class CustomHelpFormatter(argparse.HelpFormatter):
     def __init__(self, prog):
         super().__init__(prog, max_help_position=50, width=100)
@@ -38,12 +39,13 @@ class CustomHelpFormatter(argparse.HelpFormatter):
     def format_help(self):
         return FULL_HELP
 
+
 def get_args():
     parser = argparse.ArgumentParser(
         formatter_class=CustomHelpFormatter,
-        add_help=False  
+        add_help=False
     )
-    
+
     parser.add_argument(
         '-m', '--mode',
         choices=['prod', 'dev'],
@@ -51,11 +53,9 @@ def get_args():
         help='Run mode: dev (test channels) or prod (real channels, use with caution)'
     )
 
-
     parser.add_argument(
         '--version',
-        action='version',
-        version=f'Sirens Ukraine v{VERSION}',
+        action='store_true',
         help='Show program version and exit'
     )
 
@@ -64,11 +64,16 @@ def get_args():
         action='help',
         help='Show this help message'
     )
-    
-    return parser.parse_args()
+
+    args = parser.parse_args()
+
+    if args.version:
+        print(f'Sirens Ukraine {VERSION}')
+        raise SystemExit(0)
+
+    return args
+
 
 def get_mode_config(args):
-    if args.mode == 'prod':
-        return real_channels, -1001766138888
-    else:
-        return test_channels, -1001843473515
+    channels = real_channels if args.mode == 'prod' else test_channels
+    return channels, channels['source']

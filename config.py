@@ -135,11 +135,11 @@ REGION_CONFIG = {
     'fastiv':        {'triggers': ["Київська область", "Фастівський район"], 'oblast': 'kyiv_oblast', 'display_name': 'Fastiv'},
 
     # --- Northeast ---
-    'kharkiv':       {'triggers': ["Харківська область", "м. Харків"], 'oblast': 'kharkiv_oblast', 'display_name': 'Kharkiv'},
+    'kharkiv':       {'triggers': ["Харківська область", "м. Харків", "Харківський район"], 'oblast': 'kharkiv_oblast', 'display_name': 'Kharkiv'},
     'sumy':          {'triggers': ["Сумська область", "Сумський район"], 'oblast': 'sumy_oblast', 'display_name': 'Sumy'},
 
     # --- East ---
-    'zaporizhzhia':  {'triggers': ["Запорізька область", "м. Запоріжжя"], 'oblast': 'zaporizhzhia_oblast', 'display_name': 'Zaporizhzhia'},
+    'zaporizhzhia':  {'triggers': ["Запорізька область", "м. Запоріжжя", "Запорізький район"], 'oblast': 'zaporizhzhia_oblast', 'display_name': 'Zaporizhzhia'},
     'dnipro':        {'triggers': ["Дніпропетровська область", "Дніпровський район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Dnipro'},
     'kryvyirih':     {'triggers': ["Дніпропетровська область", "Криворізький район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kryvyi Rih'},
     'kamianske':     {'triggers': ["Дніпропетровська область", "Кам’янський район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kamianske'},

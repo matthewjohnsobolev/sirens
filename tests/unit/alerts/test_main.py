@@ -6,7 +6,7 @@ import re
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from telethon.errors import FloodWaitError
+from telethon.errors import AuthKeyDuplicatedError, FloodWaitError
 from telethon.tl.functions.channels import EditPhotoRequest
 from telethon.tl.types import (
     InputChatUploadedPhoto,
@@ -29,7 +29,7 @@ from alerts.main import (
     update_channel_photo,
 )
 from config import DATABASE_URL, MESSAGES, REDIS_URL, REGION_CONFIG
-from tests.samples.source_messages import ALL_SAMPLES, REGION_SAMPLES
+from tests.samples.source_messages import ALL_SAMPLES, MESSAGES_SAMPLES
 
 TIME_RE = re.compile(r"\d{2}:\d{2}")
 
@@ -415,7 +415,7 @@ async def test_build_message_handler_on_real_channel_messages(sample):
 
 def test_every_configured_region_has_a_message_sample():
     """A new region in REGION_CONFIG needs a sample in tests/samples/source_messages.py."""
-    sampled = {region for sample in REGION_SAMPLES for region in sample.regions}
+    sampled = {region for sample in MESSAGES_SAMPLES for region in sample.regions}
 
     assert sampled == set(REGION_CONFIG)
 
@@ -453,6 +453,32 @@ async def test_main_wires_up_clients_and_handler():
 
     mock_client_instance.run_until_disconnected.assert_awaited_once()
     assert alerts_main.client is mock_client_instance
+
+
+@pytest.mark.asyncio
+async def test_main_initializes_sentry_with_mode_as_environment(monkeypatch):
+    monkeypatch.setattr(alerts_main, 'SENTRY_DSN', 'https://examplePublicKey@o0.ingest.sentry.io/0')
+
+    with patch('alerts.main.redis.from_url'), \
+         patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
+         patch('alerts.main.TelegramClient') as MockClient, \
+         patch('alerts.main.cli.get_args') as mock_get_args, \
+         patch('alerts.main.sentry_sdk.init') as mock_sentry_init:
+
+        mock_get_args.return_value = argparse.Namespace(mode='prod')
+
+        mock_client_instance = AsyncMock()
+        MockClient.return_value.__aenter__.return_value = mock_client_instance
+        mock_client_instance.is_user_authorized.return_value = True
+        mock_client_instance.add_event_handler = MagicMock()
+
+        await main()
+
+    mock_sentry_init.assert_called_once()
+    _, kwargs = mock_sentry_init.call_args
+    assert kwargs['dsn'] == 'https://examplePublicKey@o0.ingest.sentry.io/0'
+    assert kwargs['environment'] == 'prod'
+    assert kwargs['send_default_pii'] is False
 
 
 @pytest.mark.asyncio
@@ -496,3 +522,130 @@ async def test_main_survives_backend_connection_failures(caplog):
     assert "Failed to connect to Redis: redis down" in caplog.text
     assert "Failed to connect to PostgreSQL: pg down" in caplog.text
     mock_client_instance.run_until_disconnected.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_main_logs_critical_on_fatal_session_error(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    with patch('alerts.main.redis.from_url'), \
+         patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
+         patch('alerts.main.TelegramClient') as MockClient, \
+         patch('alerts.main.cli.get_args') as mock_get_args:
+
+        mock_get_args.return_value = argparse.Namespace(mode='dev')
+
+        mock_client_instance = AsyncMock()
+        MockClient.return_value.__aenter__.return_value = mock_client_instance
+        mock_client_instance.is_user_authorized.return_value = True
+        mock_client_instance.add_event_handler = MagicMock()
+        mock_client_instance.run_until_disconnected.side_effect = AuthKeyDuplicatedError(request=MagicMock())
+
+        with patch('alerts.main._ping_healthcheck') as mock_ping:
+            with pytest.raises(AuthKeyDuplicatedError):
+                await main()
+
+    assert "Telegram session is invalid" in caplog.text
+    assert "./deploy/setup.sh" in caplog.text
+    mock_ping.assert_called_once_with("/fail")
+
+
+@pytest.mark.asyncio
+async def test_main_logs_error_on_transient_connection_error(caplog):
+    caplog.set_level(logging.ERROR)
+
+    with patch('alerts.main.redis.from_url'), \
+         patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
+         patch('alerts.main.TelegramClient') as MockClient, \
+         patch('alerts.main.cli.get_args') as mock_get_args:
+
+        mock_get_args.return_value = argparse.Namespace(mode='dev')
+
+        mock_client_instance = AsyncMock()
+        MockClient.return_value.__aenter__.return_value = mock_client_instance
+        mock_client_instance.is_user_authorized.return_value = True
+        mock_client_instance.add_event_handler = MagicMock()
+        mock_client_instance.run_until_disconnected.side_effect = ConnectionRefusedError("connection refused")
+
+        with pytest.raises(ConnectionRefusedError):
+            await main()
+
+    assert "Telegram connection lost and could not be recovered" in caplog.text
+
+
+# --------------------------------------------------------------------------
+# healthchecks.io pings
+# --------------------------------------------------------------------------
+
+def test_ping_healthcheck_noop_when_unconfigured(monkeypatch):
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', '')
+
+    with patch('alerts.main.requests.get') as mock_get:
+        alerts_main._ping_healthcheck()
+
+    mock_get.assert_not_called()
+
+
+def test_ping_healthcheck_sends_get_with_suffix(monkeypatch):
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', 'https://hc-ping.com/test-uuid')
+
+    with patch('alerts.main.requests.get') as mock_get:
+        alerts_main._ping_healthcheck('/fail')
+
+    mock_get.assert_called_once_with(
+        'https://hc-ping.com/test-uuid/fail', timeout=alerts_main.HEALTHCHECK_PING_TIMEOUT
+    )
+
+
+def test_ping_healthcheck_logs_but_survives_request_failure(monkeypatch, caplog):
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', 'https://hc-ping.com/test-uuid')
+
+    with patch('alerts.main.requests.get', side_effect=Exception('network down')):
+        alerts_main._ping_healthcheck()
+
+    assert "Failed to ping healthchecks.io" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_loop_skips_when_unconfigured(monkeypatch, caplog):
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', '')
+    mock_client = MagicMock()
+
+    await alerts_main._healthcheck_loop(mock_client)
+
+    assert "HEALTHCHECKS_PING_URL not set" in caplog.text
+    mock_client.is_connected.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_loop_pings_while_connected(monkeypatch):
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', 'https://hc-ping.com/test-uuid')
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECK_PING_INTERVAL', 0.01)
+    mock_client = MagicMock()
+    mock_client.is_connected.return_value = True
+
+    with patch('alerts.main._ping_healthcheck') as mock_ping:
+        task = asyncio.create_task(alerts_main._healthcheck_loop(mock_client))
+        await asyncio.sleep(0.03)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    mock_ping.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_loop_skips_ping_when_disconnected(monkeypatch):
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', 'https://hc-ping.com/test-uuid')
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECK_PING_INTERVAL', 0.01)
+    mock_client = MagicMock()
+    mock_client.is_connected.return_value = False
+
+    with patch('alerts.main._ping_healthcheck') as mock_ping:
+        task = asyncio.create_task(alerts_main._healthcheck_loop(mock_client))
+        await asyncio.sleep(0.03)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    mock_ping.assert_not_called()

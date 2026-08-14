@@ -9,6 +9,8 @@ REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/sirens')
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '')
+HEALTHCHECKS_PING_URL = os.getenv('HEALTHCHECKS_PING_URL', '')
+SENTRY_DSN = os.getenv('SENTRY_DSN', '')
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 IMAGES_PATH = os.path.join(PROJECT_ROOT, "assets", "img")

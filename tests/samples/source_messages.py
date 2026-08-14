@@ -2,13 +2,13 @@ import re
 from dataclasses import dataclass
 
 ALERT_TEMPLATE = (
-    "🔴 {time} Повітряна тривога в {places}\n"
+    "🔴 {time} Повітряна тривога в {districts}\n"
     "Слідкуйте за подальшими повідомленнями.\n"
     "{hashtags}"
 )
 
 ALERT_CANCELLATION_TEMPLATE = (
-    "🟢 {time} Відбій тривоги в {places}\n"
+    "🟢 {time} Відбій тривоги в {districts}\n"
     "Слідкуйте за подальшими повідомленнями.\n"
     "{hashtags}"
 )
@@ -27,14 +27,14 @@ class AlertSample:
 
     regions: tuple[str, ...]
 
-    places: tuple[str, ...]
+    districts: tuple[str, ...]
 
     alert_time: str = "12:00"
     cancellation_time: str = "13:00"
 
     @property
     def id(self) -> str:
-        suffix = "-combined" if len(self.places) > 1 else ""
+        suffix = "-combined" if len(self.districts) > 1 else ""
         return "-".join(self.regions) + suffix
 
     @property
@@ -46,24 +46,24 @@ class AlertSample:
         return self._render(ALERT_CANCELLATION_TEMPLATE, self.cancellation_time, end=".")
 
     def _render(self, template: str, time: str, end: str = "") -> str:
-        places = (
-            self.places[0] + end
-            if len(self.places) == 1
-            else "\n" + "\n".join(f"• {place}" for place in self.places)
+        districts = (
+            self.districts[0] + end
+            if len(self.districts) == 1
+            else "\n" + "\n".join(f"• {place}" for place in self.districts)
         )
         return template.format(
             time=time,
-            places=places,
-            hashtags=" ".join(_hashtag(place) for place in self.places),
+            districts=districts,
+            hashtags=" ".join(_hashtag(place) for place in self.districts),
         )
 
 
-def region_sample(region, place, alert_time="12:00", cancellation_time="13:00"):
+def region_sample(region, district, alert_time="12:00", cancellation_time="13:00"):
     """A post about a single district — the common case."""
-    return AlertSample((region,), (place,), alert_time, cancellation_time)
+    return AlertSample((region,), (district,), alert_time, cancellation_time)
 
 
-REGION_SAMPLES = (
+MESSAGES_SAMPLES = (
     # --- Kyiv ---
     region_sample("kyiv", "м. Київ", "04:31", "05:24"),
 
@@ -117,7 +117,7 @@ REGION_SAMPLES = (
 COMBINED_SAMPLES = (
     AlertSample(
         regions=("zaporizhzhia",),
-        places=(
+        districts=(
             "Мелітопольський район",
             "Василівський район",
             "Пологівський район",
@@ -130,7 +130,7 @@ COMBINED_SAMPLES = (
 
     AlertSample(
         regions=("dnipro", "kryvyirih", "kamianske", "nikopol"),
-        places=(
+        districts=(
             "Дніпровський район",
             "Криворізький район",
             "Кам'янський район",
@@ -142,7 +142,7 @@ COMBINED_SAMPLES = (
     ),
     AlertSample(
         regions=("kyiv", "bilatserkva", "bucha", "fastiv"),
-        places=(
+        districts=(
             "м. Київ",
             "Білоцерківський район",
             "Бучанський район",
@@ -153,4 +153,4 @@ COMBINED_SAMPLES = (
     ),
 )
 
-ALL_SAMPLES = REGION_SAMPLES + COMBINED_SAMPLES
+ALL_SAMPLES = MESSAGES_SAMPLES + COMBINED_SAMPLES

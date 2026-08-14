@@ -14,9 +14,17 @@ from logging.handlers import RotatingFileHandler
 
 import redis.asyncio as redis
 import asyncpg
+import requests
+import sentry_sdk
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError
+from telethon.errors import (
+    FloodWaitError,
+    AuthKeyDuplicatedError,
+    AuthKeyNotFound,
+    UnauthorizedError,
+)
 from telethon.tl.functions.channels import EditPhotoRequest
 from telethon.tl.types import (
     InputChatUploadedPhoto, 
@@ -28,9 +36,9 @@ from telethon.tl.types import (
 from alerts import cli
 
 from config import (
-    api_id, api_hash, REGION_CONFIG, MESSAGES, IMAGES_PATH, 
+    api_id, api_hash, REGION_CONFIG, MESSAGES, IMAGES_PATH,
     LOGS_PATH, SESSION_PATH,
-    REDIS_URL, DATABASE_URL
+    REDIS_URL, DATABASE_URL, HEALTHCHECKS_PING_URL, SENTRY_DSN
 )
 
 os.makedirs(LOGS_PATH, exist_ok=True)
@@ -235,8 +243,44 @@ def build_message_handler(region_channels: dict):
     return handle_incoming_message
 
 
+FATAL_SESSION_ERRORS = (AuthKeyDuplicatedError, AuthKeyNotFound, UnauthorizedError)
+TRANSIENT_CONNECTION_ERRORS = (OSError,)
+
+HEALTHCHECK_PING_INTERVAL = 60  # seconds; pair with a ~3min period on the healthchecks.io check
+HEALTHCHECK_PING_TIMEOUT = 10  # seconds
+
+
+def _ping_healthcheck(suffix: str = "") -> None:
+    if not HEALTHCHECKS_PING_URL:
+        return
+    try:
+        requests.get(f"{HEALTHCHECKS_PING_URL}{suffix}", timeout=HEALTHCHECK_PING_TIMEOUT)
+    except Exception:
+        log.warning("Failed to ping healthchecks.io", exc_info=True)
+
+
+async def _healthcheck_loop(client: TelegramClient) -> None:
+    if not HEALTHCHECKS_PING_URL:
+        log.warning("HEALTHCHECKS_PING_URL not set; skipping healthcheck pings")
+        return
+    while True:
+        await asyncio.sleep(HEALTHCHECK_PING_INTERVAL)
+        if client.is_connected():
+            await asyncio.to_thread(_ping_healthcheck)
+
+
 async def main():
     global client, redis_client, pg_pool
+
+    args = cli.get_args()
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)],
+        environment=args.mode,
+        traces_sample_rate=0.0,
+        send_default_pii=False,
+    )
 
     try:
         redis_client = redis.from_url(REDIS_URL, decode_responses=True)
@@ -248,25 +292,43 @@ async def main():
     except Exception as e:
         log.error("Failed to connect to PostgreSQL: %s", e)
 
-    args = cli.get_args()
     region_channels, source_channel = cli.get_mode_config(args)
     os.makedirs(SESSION_PATH, exist_ok=True)
     session_file = os.path.join(SESSION_PATH, "sirens")
 
-    async with TelegramClient(session_file, api_id, api_hash) as tg_client:
-        client = tg_client
-        if not await client.is_user_authorized():
-            await client.start(
-                phone=lambda: input('Please enter phone number: '),
-                code_callback=lambda: input('Please enter a login code: ')
-            )
-        log.info("Sirens started in %s mode", args.mode)
+    try:
+        async with TelegramClient(session_file, api_id, api_hash) as tg_client:
+            client = tg_client
+            if not await client.is_user_authorized():
+                await client.start(
+                    phone=lambda: input('Please enter phone number: '),
+                    code_callback=lambda: input('Please enter a login code: ')
+                )
+            log.info("Sirens started in %s mode", args.mode)
 
-        client.add_event_handler(
-            build_message_handler(region_channels),
-            events.NewMessage(chats=[source_channel])
+            client.add_event_handler(
+                build_message_handler(region_channels),
+                events.NewMessage(chats=[source_channel])
+            )
+
+            healthcheck_task = asyncio.create_task(_healthcheck_loop(client))
+            try:
+                await client.run_until_disconnected()
+            finally:
+                healthcheck_task.cancel()
+                await asyncio.gather(healthcheck_task, return_exceptions=True)
+
+    except FATAL_SESSION_ERRORS:
+        log.critical(
+            "Telegram session is invalid; manual re-auth required via ./deploy/setup.sh",
+            exc_info=True
         )
-        await client.run_until_disconnected()
+        await asyncio.to_thread(_ping_healthcheck, "/fail")
+        raise
+
+    except TRANSIENT_CONNECTION_ERRORS:
+        log.error("Telegram connection lost and could not be recovered", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":

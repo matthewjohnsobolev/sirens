@@ -1,5 +1,15 @@
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+import os
+
+for _external in (
+    "SENTRY_DSN_ALERTS",
+    "SENTRY_DSN_WEB",
+    "HEALTHCHECKS_PING_URL_ALERTS",
+    "HEALTHCHECKS_PING_URL_WEB",
+):
+    os.environ[_external] = ""
+
+import pytest  # noqa: E402
+from unittest.mock import AsyncMock, patch, MagicMock  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -7,12 +17,8 @@ def _neutralize_external_secrets(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
     monkeypatch.setenv("TELEGRAM_ADMIN_ID", "0")
 
-    # config.py reads SENTRY_DSN/HEALTHCHECKS_PING_URL* from os.getenv at import
-    # time, and alerts.main/web.server copy those values in via `from config
-    # import ...` — setting the env var here would be too late to affect the
-    # already-imported modules, so patch the attributes directly. Without
-    # this, a real .env on the dev machine would make the test suite send
-    # real events/pings to production Sentry/healthchecks.io.
+    # Belt and braces on top of the env blanking above: a test that re-imports or
+    # reassigns one of these still cannot reach the real Sentry/healthchecks.io.
     from alerts import main as alerts_main
     from web import server as web_server
 

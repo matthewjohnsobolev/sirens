@@ -13,7 +13,7 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, jsonify, g
 
-from config import DATABASE_URL, LOGS_PATH, SENTRY_DSN_WEB, HEALTHCHECKS_PING_URL_WEB
+from config import DATABASE_URL, LOGS_PATH, SENTRY_DSN, HEALTHCHECKS_PING_URL_WEB, VERSION
 from web.db import get_all_threats_data, ensure_pg_tables, redis_client
 
 os.makedirs(LOGS_PATH, exist_ok=True)
@@ -105,15 +105,17 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
     app.secret_key = os.environ.get('FLASK_SECRET_KEY')
 
     sentry_sdk.init(
-        dsn=SENTRY_DSN_WEB,
+        dsn=SENTRY_DSN,
         integrations=[
             FlaskIntegration(),
             LoggingIntegration(level=logging.INFO, event_level=logging.WARNING),
         ],
         environment=os.environ.get('APP_MODE', 'dev'),
+        release=VERSION,
         traces_sample_rate=0.0,
         send_default_pii=False,
     )
+    sentry_sdk.set_tag("service", "web")
 
     app.teardown_appcontext(close_db)
 

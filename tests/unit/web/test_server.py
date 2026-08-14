@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from psycopg2.extras import RealDictCursor
 from sentry_sdk.integrations.flask import FlaskIntegration
 
-from config import DATABASE_URL
+from config import DATABASE_URL, VERSION
 from web import server as web_server
 from web.server import create_app, get_db
 
@@ -84,7 +84,7 @@ def test_app_can_be_built_without_schema_bootstrap():
 # --------------------------------------------------------------------------
 
 def test_create_app_initializes_sentry_with_flask_integration(monkeypatch):
-    monkeypatch.setattr(web_server, 'SENTRY_DSN_WEB', 'https://examplePublicKey@o0.ingest.sentry.io/0')
+    monkeypatch.setattr(web_server, 'SENTRY_DSN', 'https://examplePublicKey@o0.ingest.sentry.io/0')
 
     with patch('web.server.sentry_sdk.init') as mock_sentry_init:
         create_app(init_db=False, start_healthcheck=False)
@@ -93,7 +93,20 @@ def test_create_app_initializes_sentry_with_flask_integration(monkeypatch):
     _, kwargs = mock_sentry_init.call_args
     assert kwargs['dsn'] == 'https://examplePublicKey@o0.ingest.sentry.io/0'
     assert kwargs['send_default_pii'] is False
+    assert kwargs['release'] == VERSION
     assert any(isinstance(i, FlaskIntegration) for i in kwargs['integrations'])
+
+
+def test_create_app_tags_events_with_its_service_name(monkeypatch):
+    """Both services share one Sentry project, so the tag is the only thing
+    separating web errors from alerts errors in the issue stream."""
+    monkeypatch.setattr(web_server, 'SENTRY_DSN', 'https://examplePublicKey@o0.ingest.sentry.io/0')
+
+    with patch('web.server.sentry_sdk.init'), \
+         patch('web.server.sentry_sdk.set_tag') as mock_set_tag:
+        create_app(init_db=False, start_healthcheck=False)
+
+    mock_set_tag.assert_called_once_with("service", "web")
 
 
 # --------------------------------------------------------------------------

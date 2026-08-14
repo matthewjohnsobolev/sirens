@@ -38,7 +38,7 @@ from alerts import cli
 from config import (
     api_id, api_hash, REGION_CONFIG, MESSAGES, IMAGES_PATH,
     LOGS_PATH, SESSION_PATH,
-    REDIS_URL, DATABASE_URL, HEALTHCHECKS_PING_URL_ALERTS, SENTRY_DSN_ALERTS
+    REDIS_URL, DATABASE_URL, HEALTHCHECKS_PING_URL_ALERTS, SENTRY_DSN, VERSION
 )
 
 os.makedirs(LOGS_PATH, exist_ok=True)
@@ -311,12 +311,14 @@ async def main():
     args = cli.get_args()
 
     sentry_sdk.init(
-        dsn=SENTRY_DSN_ALERTS,
+        dsn=SENTRY_DSN,
         integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.WARNING)],
         environment=args.mode,
+        release=VERSION,
         traces_sample_rate=0.0,
         send_default_pii=False,
     )
+    sentry_sdk.set_tag("service", "alerts")
 
     try:
         redis_client = redis.from_url(REDIS_URL, decode_responses=True)

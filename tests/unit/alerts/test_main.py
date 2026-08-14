@@ -28,7 +28,7 @@ from alerts.main import (
     send_alert,
     update_channel_photo,
 )
-from config import DATABASE_URL, MESSAGES, REDIS_URL, REGION_CONFIG
+from config import DATABASE_URL, MESSAGES, REDIS_URL, REGION_CONFIG, VERSION
 from tests.samples.source_messages import ALL_SAMPLES, MESSAGES_SAMPLES
 
 TIME_RE = re.compile(r"\d{2}:\d{2}")
@@ -535,7 +535,7 @@ async def test_main_wires_up_clients_and_handler():
 
 @pytest.mark.asyncio
 async def test_main_initializes_sentry_with_mode_as_environment(monkeypatch):
-    monkeypatch.setattr(alerts_main, 'SENTRY_DSN_ALERTS', 'https://examplePublicKey@o0.ingest.sentry.io/0')
+    monkeypatch.setattr(alerts_main, 'SENTRY_DSN', 'https://examplePublicKey@o0.ingest.sentry.io/0')
 
     with patch('alerts.main.redis.from_url'), \
          patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
@@ -556,7 +556,33 @@ async def test_main_initializes_sentry_with_mode_as_environment(monkeypatch):
     _, kwargs = mock_sentry_init.call_args
     assert kwargs['dsn'] == 'https://examplePublicKey@o0.ingest.sentry.io/0'
     assert kwargs['environment'] == 'prod'
+    assert kwargs['release'] == VERSION
     assert kwargs['send_default_pii'] is False
+
+
+@pytest.mark.asyncio
+async def test_main_tags_events_with_its_service_name(monkeypatch):
+    """Both services share one Sentry project, so the tag is the only thing
+    separating alerts errors from web errors in the issue stream."""
+    monkeypatch.setattr(alerts_main, 'SENTRY_DSN', 'https://examplePublicKey@o0.ingest.sentry.io/0')
+
+    with patch('alerts.main.redis.from_url'), \
+         patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
+         patch('alerts.main.TelegramClient') as MockClient, \
+         patch('alerts.main.cli.get_args') as mock_get_args, \
+         patch('alerts.main.sentry_sdk.init'), \
+         patch('alerts.main.sentry_sdk.set_tag') as mock_set_tag:
+
+        mock_get_args.return_value = argparse.Namespace(mode='prod')
+
+        mock_client_instance = AsyncMock()
+        MockClient.return_value.__aenter__.return_value = mock_client_instance
+        mock_client_instance.is_user_authorized.return_value = True
+        mock_client_instance.add_event_handler = MagicMock()
+
+        await main()
+
+    mock_set_tag.assert_called_once_with("service", "alerts")
 
 
 @pytest.mark.asyncio

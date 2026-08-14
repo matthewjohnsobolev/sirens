@@ -11,8 +11,10 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '')
 HEALTHCHECKS_PING_URL_ALERTS = os.getenv('HEALTHCHECKS_PING_URL_ALERTS', '')
 HEALTHCHECKS_PING_URL_WEB = os.getenv('HEALTHCHECKS_PING_URL_WEB', '')
-SENTRY_DSN_ALERTS = os.getenv('SENTRY_DSN_ALERTS', '')
-SENTRY_DSN_WEB = os.getenv('SENTRY_DSN_WEB', '')
+# One Sentry project for both services: they share config.py and fail together
+# (a Redis outage hits both), so a single issue stream keeps an incident whole.
+# Events are told apart by the "service" tag each service sets after init.
+SENTRY_DSN = os.getenv('SENTRY_DSN', '')
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 IMAGES_PATH = os.path.join(PROJECT_ROOT, "assets", "img")

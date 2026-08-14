@@ -50,6 +50,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sirens}
       - TZ=Europe/Kyiv
+    env_file:
+      - .env
     command: gunicorn --workers 3 --bind 0.0.0.0:5000 web.server:app
 
   alerts:

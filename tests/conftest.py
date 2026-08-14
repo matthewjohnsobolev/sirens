@@ -17,7 +17,7 @@ def _neutralize_external_secrets(monkeypatch):
     from web import server as web_server
 
     monkeypatch.setattr(alerts_main, "SENTRY_DSN_ALERTS", "", raising=False)
-    monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL", "", raising=False)
+    monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL_ALERTS", "", raising=False)
     monkeypatch.setattr(web_server, "SENTRY_DSN_WEB", "", raising=False)
     monkeypatch.setattr(web_server, "HEALTHCHECKS_PING_URL_WEB", "", raising=False)
 

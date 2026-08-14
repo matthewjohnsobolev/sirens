@@ -177,7 +177,7 @@ var customOptions = {'maxWidth': '310', 'width': '310'};
 fetch('/api')
   .then(response => response.json())
   .then(apiData => {
-      fetch('/static/js/ukraine.geojson')
+      fetch('https://geo.sirens.live/ukraine.geojson')
         .then(res => res.json())
         .then(geoData => {
             const geoLayer = L.geoJSON(geoData, {

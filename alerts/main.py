@@ -284,7 +284,7 @@ async def main():
 
     sentry_sdk.init(
         dsn=SENTRY_DSN_ALERTS,
-        integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)],
+        integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.WARNING)],
         environment=args.mode,
         traces_sample_rate=0.0,
         send_default_pii=False,

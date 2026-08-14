@@ -98,7 +98,7 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
         dsn=SENTRY_DSN_WEB,
         integrations=[
             FlaskIntegration(),
-            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
+            LoggingIntegration(level=logging.INFO, event_level=logging.WARNING),
         ],
         environment=os.environ.get('APP_MODE', 'dev'),
         traces_sample_rate=0.0,

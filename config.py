@@ -47,7 +47,7 @@ test_channels = {
     'ternopil': -1001754447620,
     'chernihiv': -1001754447620,
     'sumy': -1001754447620,
-    'khelnytskyi': -1001754447620,
+    'khmelnytskyi': -1001754447620,
     'poltava': -1002491507567,
     'lutsk': -1001754447620,
     'kovel': -1001754447620,
@@ -86,7 +86,7 @@ real_channels = {
     'ternopil': -1001691074647,
     'chernihiv': -1001772058915,
     'sumy': -1001700121128,
-    'khelnytskyi': -1001522478361,
+    'khmelnytskyi': -1001522478361,
     'lutsk': -1001568217990,
     'kovel': -1001689520278,
     'uzhhorod': -1001665201280,
@@ -141,7 +141,7 @@ REGION_CONFIG = {
     'fastiv':        {'triggers': ["Київська область", "Фастівський район"], 'oblast': 'kyiv_oblast', 'display_name': 'Fastiv'},
 
     # --- Northeast ---
-    'kharkiv':       {'triggers': ["Харківська область", "м. Харків", "Харківський район"], 'oblast': 'kharkiv_oblast', 'display_name': 'Kharkiv'},
+    'kharkiv':       {'triggers': ["Харківська область", "м. Харків"], 'oblast': 'kharkiv_oblast', 'display_name': 'Kharkiv'},
     'sumy':          {'triggers': ["Сумська область", "Сумський район"], 'oblast': 'sumy_oblast', 'display_name': 'Sumy'},
 
     # --- East ---
@@ -163,7 +163,7 @@ REGION_CONFIG = {
     'kovel':         {'triggers': ["Волинська область", "Ковельський район"], 'oblast': 'volyn_oblast', 'display_name': 'Kovel'},
     'rivne':         {'triggers': ["Рівненська область", "Рівненський район"], 'oblast': 'rivne_oblast', 'display_name': 'Rivne'},
     'ternopil':      {'triggers': ["Тернопільська область", "Тернопільський район"], 'oblast': 'ternopil_oblast', 'display_name': 'Ternopil'},
-    'khelnytskyi':   {'triggers': ["Хмельницька область", "Хмельницький район"], 'oblast': 'khmelnytskyi_oblast', 'display_name': 'Khmelnytskyi'},
+    'khmelnytskyi':  {'triggers': ["Хмельницька область", "Хмельницький район"], 'oblast': 'khmelnytskyi_oblast', 'display_name': 'Khmelnytskyi'},
     'ivanofrankivsk': {'triggers': ["Івано-Франківська область", "Івано-Франківський район"], 'oblast': 'ivanofrankivsk_oblast', 'display_name': 'Ivano-Frankivsk'},
     'uzhhorod':      {'triggers': ["Закарпатська область", "Ужгородський район"], 'oblast': 'zakarpattia_oblast', 'display_name': 'Uzhhorod'},
     'chernivtsi':    {'triggers': ["Чернівецька область", "Чернівецький район"], 'oblast': 'chernivtsi_oblast', 'display_name': 'Chernivtsi'},

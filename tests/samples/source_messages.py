@@ -85,7 +85,7 @@ MESSAGES_SAMPLES = (
     region_sample("fastiv", "Фастівський район", "19:27", "21:02"),
 
     # --- Northeast ---
-    region_sample("kharkiv", "Харківський район", "22:42", "23:18"),
+    region_sample("kharkiv", "м. Харків", "22:42", "23:18"),
     region_sample("sumy", "Сумський район", "06:12", "06:55"),
 
     # --- East ---
@@ -108,7 +108,7 @@ MESSAGES_SAMPLES = (
     region_sample("kovel", "Ковельський район", "20:11", "22:10"),
     region_sample("rivne", "Рівненський район", "16:12", "17:44"),
     region_sample("ternopil", "Тернопільський район", "02:19", "03:52"),
-    region_sample("khelnytskyi", "Хмельницький район", "15:59", "16:56"),
+    region_sample("khmelnytskyi", "Хмельницький район", "15:59", "16:56"),
     region_sample("ivanofrankivsk", "Івано-Франківський район", "11:29", "12:08"),
     region_sample("uzhhorod", "Ужгородський район", "15:36", "17:26"),
     region_sample("chernivtsi", "Чернівецький район", "11:32", "12:50"),

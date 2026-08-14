@@ -16,7 +16,7 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 IMAGES_PATH = os.path.join(PROJECT_ROOT, "assets", "img")
 SESSION_PATH =  os.path.join(PROJECT_ROOT, "data", "sessions")
 LOGS_PATH = os.path.join(PROJECT_ROOT, "logs")
-VERSION = 'v1.0.0'
+VERSION = '1.1.0'
 
 test_channels = {
     'source': -1001843473515,

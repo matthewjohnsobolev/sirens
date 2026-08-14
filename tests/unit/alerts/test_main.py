@@ -47,6 +47,27 @@ async def _drain_background_tasks():
 
 
 # --------------------------------------------------------------------------
+# spawn_tracked_task
+# --------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_spawn_tracked_task_logs_failure(caplog):
+    """A fire-and-forget task that raises must surface in the log (and so in
+    Sentry) rather than vanishing into a task result nobody ever retrieves."""
+    caplog.set_level(logging.ERROR)
+
+    async def boom():
+        raise RuntimeError("task blew up")
+
+    alerts_main.spawn_tracked_task(boom(), "Test task")
+    await _drain_background_tasks()
+
+    assert "Test task failed" in caplog.text
+    assert "task blew up" in caplog.text
+    assert alerts_main.running_tasks == set()
+
+
+# --------------------------------------------------------------------------
 # log_alert_received
 # --------------------------------------------------------------------------
 
@@ -294,6 +315,26 @@ async def test_send_alert_processes_state_change_after_duplicate_suppression(
     mock_telegram_client.send_message.assert_awaited_once_with(
         CHANNEL_ID, MESSAGES["air_raid_alert_cancelled"]
     )
+
+
+@pytest.mark.asyncio
+async def test_send_alert_broadcasts_when_redis_is_down(
+    mock_redis, mock_pg_pool, mock_telegram_client, caplog
+):
+    """Redis only backs dedup and the map. If it is unreachable the alert must
+    still reach the channel — a duplicate message is far cheaper than a missed
+    air raid alert."""
+    caplog.set_level(logging.ERROR)
+    mock_redis.get.side_effect = ConnectionError("Redis is down")
+
+    with patch('alerts.main.process_channel_photo_update', new_callable=AsyncMock):
+        await send_alert(CHANNEL_ID, "nikopol", "air_raid_alert")
+        await _drain_background_tasks()
+
+    mock_telegram_client.send_message.assert_awaited_once_with(
+        CHANNEL_ID, MESSAGES["air_raid_alert"]
+    )
+    assert "Redis unavailable for Nikopol" in caplog.text
 
 
 @pytest.mark.asyncio

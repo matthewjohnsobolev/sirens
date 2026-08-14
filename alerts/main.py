@@ -71,6 +71,21 @@ CHANNEL_PHOTO_PATHS = {
 }
 
 
+def spawn_tracked_task(coro, description: str):
+    """Fire-and-forget a coroutine, keeping a strong reference so it is not garbage
+    collected mid-flight, and logging failures instead of letting them disappear
+    into a task result nobody retrieves."""
+    task = asyncio.create_task(coro)
+    running_tasks.add(task)
+
+    def _on_done(finished: asyncio.Task):
+        running_tasks.discard(finished)
+        if not finished.cancelled() and finished.exception() is not None:
+            log.error("%s failed", description, exc_info=finished.exception())
+
+    task.add_done_callback(_on_done)
+
+
 def log_alert_received(region: str, alert_type: str):
     display_name = REGION_CONFIG.get(region, {}).get('display_name', region.capitalize())
     
@@ -148,6 +163,35 @@ async def process_channel_photo_update(channel_id, region, alert_type):
     )
 
 
+async def _record_alert_state(channel_id: int, region: str, alert_type: str):
+    """Persist the new state to Redis (dedup key + map status) and PG (history)."""
+    await redis_client.set(f"channel_state:{channel_id}", alert_type)
+
+    status = 1 if alert_type in ("air_raid_alert", "threat_of_shelling") else 0
+    oblast = REGION_CONFIG.get(region, {}).get('oblast', region)
+    now = datetime.datetime.now()
+    current_time = now.strftime("%H:%M")
+
+    await redis_client.hset(
+        f"threat:alerts:{oblast}",
+        mapping={
+            "status": status,
+            "time": current_time,
+            "source": "telegram"
+        }
+    )
+
+    if pg_pool:
+        try:
+            async with pg_pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO alert_history (datetime, date, time, oblast, type) VALUES ($1, $2, $3, $4, $5)",
+                    now, now.date(), current_time, oblast, alert_type
+                )
+        except Exception as e:
+            log.error("Failed to insert alert history into PG: %s", e)
+
+
 async def send_alert(channel_id: int, region: str, alert_type: str):
     message_text = MESSAGES.get(alert_type)
     if not message_text:
@@ -157,40 +201,22 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
     display_name = REGION_CONFIG.get(region, {}).get('display_name', region.capitalize())
 
     if redis_client:
-        previous_alert_type = await redis_client.get(f"channel_state:{channel_id}")
-        if previous_alert_type == alert_type:
-            log.info(
-                "Duplicate %s ignored for %s: already in this state",
-                alert_type, display_name
+        try:
+            previous_alert_type = await redis_client.get(f"channel_state:{channel_id}")
+            if previous_alert_type == alert_type:
+                log.info(
+                    "Duplicate %s ignored for %s: already in this state",
+                    alert_type, display_name
+                )
+                return
+
+            await _record_alert_state(channel_id, region, alert_type)
+        except Exception:
+            # Redis only backs dedup and the map; it must never block the broadcast.
+            log.exception(
+                "Redis unavailable for %s; broadcasting %s without dedup",
+                display_name, alert_type
             )
-            return
-
-        await redis_client.set(f"channel_state:{channel_id}", alert_type)
-
-        status = 1 if alert_type in ("air_raid_alert", "threat_of_shelling") else 0
-        event_type = "start" if status == 1 else "end"
-        oblast = REGION_CONFIG.get(region, {}).get('oblast', region)
-        now = datetime.datetime.now()
-        current_time = now.strftime("%H:%M")
-
-        await redis_client.hset(
-            f"threat:alerts:{oblast}",
-            mapping={
-                "status": status,
-                "time": current_time,
-                "source": "telegram"
-            }
-        )
-
-        if pg_pool:
-            try:
-                async with pg_pool.acquire() as conn:
-                    await conn.execute(
-                        "INSERT INTO alert_history (datetime, date, time, oblast, type) VALUES ($1, $2, $3, $4, $5)",
-                        now, now.date(), current_time, oblast, alert_type
-                    )
-            except Exception as e:
-                log.error("Failed to insert alert history into PG: %s", e)
 
     try:
         await client.send_message(channel_id, message_text)
@@ -209,9 +235,10 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
             log.exception("Failed to send %s to %s", alert_type.replace('_', ' '), display_name)
 
     if CHANNEL_PHOTO_PATHS.get(alert_type):
-        task = asyncio.create_task(process_channel_photo_update(channel_id, region, alert_type))
-        running_tasks.add(task)
-        task.add_done_callback(running_tasks.discard)
+        spawn_tracked_task(
+            process_channel_photo_update(channel_id, region, alert_type),
+            f"Photo update for {display_name}"
+        )
     else:
         log.debug("No photo mapping for '%s', skipping photo update", alert_type)
 
@@ -244,9 +271,10 @@ def build_message_handler(region_channels: dict):
 
             if alert_type:
                 log_alert_received(region_key, alert_type)
-                task = asyncio.create_task(send_alert(channel_id, region_key, alert_type))
-                running_tasks.add(task)
-                task.add_done_callback(running_tasks.discard)
+                spawn_tracked_task(
+                    send_alert(channel_id, region_key, alert_type),
+                    f"Alert broadcast of {alert_type} to {region_key}"
+                )
 
     return handle_incoming_message
 

@@ -7,6 +7,20 @@ def _neutralize_external_secrets(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
     monkeypatch.setenv("TELEGRAM_ADMIN_ID", "0")
 
+    # config.py reads SENTRY_DSN/HEALTHCHECKS_PING_URL* from os.getenv at import
+    # time, and alerts.main/web.server copy those values in via `from config
+    # import ...` — setting the env var here would be too late to affect the
+    # already-imported modules, so patch the attributes directly. Without
+    # this, a real .env on the dev machine would make the test suite send
+    # real events/pings to production Sentry/healthchecks.io.
+    from alerts import main as alerts_main
+    from web import server as web_server
+
+    monkeypatch.setattr(alerts_main, "SENTRY_DSN_ALERTS", "", raising=False)
+    monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL", "", raising=False)
+    monkeypatch.setattr(web_server, "SENTRY_DSN_WEB", "", raising=False)
+    monkeypatch.setattr(web_server, "HEALTHCHECKS_PING_URL_WEB", "", raising=False)
+
 
 @pytest.fixture(autouse=True)
 def _isolate_alerts_globals():

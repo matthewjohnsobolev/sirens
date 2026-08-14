@@ -11,12 +11,10 @@ import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from psycopg2.extras import RealDictCursor
-from flask import Flask, current_app, render_template, jsonify, g, request
+from flask import Flask, render_template, jsonify, g
 
 from config import DATABASE_URL, LOGS_PATH, SENTRY_DSN_WEB, HEALTHCHECKS_PING_URL_WEB
-from web.db import get_all_threats_data, ensure_pg_tables
-
-TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
+from web.db import get_all_threats_data, ensure_pg_tables, redis_client
 
 os.makedirs(LOGS_PATH, exist_ok=True)
 LOG_FILE = os.path.join(LOGS_PATH, "web.log")
@@ -34,6 +32,8 @@ log = logging.getLogger(__name__)
 
 HEALTHCHECK_PING_INTERVAL = 60  # seconds; pair with a ~3min period on the healthchecks.io check
 HEALTHCHECK_PING_TIMEOUT = 10  # seconds
+HEALTHCHECK_LOCK_KEY = "healthcheck:web:ping-leader"
+HEALTHCHECK_LOCK_TTL = 50  # seconds; must stay below the interval so each cycle can re-elect
 
 
 def _ping_healthcheck(suffix: str = "") -> None:
@@ -45,10 +45,20 @@ def _ping_healthcheck(suffix: str = "") -> None:
         log.warning("Failed to ping healthchecks.io", exc_info=True)
 
 
+def _claim_ping_slot() -> bool:
+    return bool(
+        redis_client.set(HEALTHCHECK_LOCK_KEY, os.getpid(), nx=True, ex=HEALTHCHECK_LOCK_TTL)
+    )
+
+
 def _healthcheck_loop() -> None:
     while True:
         time.sleep(HEALTHCHECK_PING_INTERVAL)
-        _ping_healthcheck()
+        try:
+            if _claim_ping_slot():
+                _ping_healthcheck()
+        except Exception:
+            log.warning("Redis unreachable; skipping healthcheck ping", exc_info=True)
 
 
 def _start_healthcheck_thread() -> None:

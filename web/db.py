@@ -1,4 +1,5 @@
 import datetime
+import logging
 from typing import Any, Dict, Optional, Union
 from functools import partial
 
@@ -6,6 +7,8 @@ import psycopg2
 import redis
 
 from config import REDIS_URL, DATABASE_URL, REGION_CONFIG, real_channels, test_channels
+
+log = logging.getLogger(__name__)
 
 def get_region_by_channel_id(channel_id: int) -> Optional[str]:
     for name, cid in real_channels.items():
@@ -22,19 +25,25 @@ def get_pg_conn() -> psycopg2.extensions.connection:
     return psycopg2.connect(DATABASE_URL)
 
 def ensure_pg_tables() -> None:
-    with get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS alert_history (
-                    id SERIAL PRIMARY KEY,
-                    datetime TIMESTAMP NOT NULL,
-                    date DATE NOT NULL,
-                    time TEXT NOT NULL,
-                    oblast TEXT NOT NULL,
-                    type TEXT NOT NULL
-                )
-            """)
-        conn.commit()
+    try:
+        with get_pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS alert_history (
+                        id SERIAL PRIMARY KEY,
+                        datetime TIMESTAMP NOT NULL,
+                        date DATE NOT NULL,
+                        time TEXT NOT NULL,
+                        oblast TEXT NOT NULL,
+                        type TEXT NOT NULL
+                    )
+                """)
+            conn.commit()
+    except Exception:
+        log.exception("Failed to ensure the alert_history table exists")
+        raise
+
+    log.info("PostgreSQL schema ready")
 
 THREAT_TABLES = {"alerts", "explosions", "shellings"}
 
@@ -148,13 +157,17 @@ async def update_alert_status(channel_id: int, status: str) -> None:
     
     if event_type:
         city_ua = REGION_CONFIG[region_name]['triggers'][0]
-        with get_pg_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO alert_history (datetime, date, time, oblast, type) VALUES (%s, %s, %s, %s, %s)",
-                    (now, now.date(), current_time, city_ua, event_type)
-                )
-            conn.commit()
+        try:
+            with get_pg_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO alert_history (datetime, date, time, oblast, type) VALUES (%s, %s, %s, %s, %s)",
+                        (now, now.date(), current_time, city_ua, event_type)
+                    )
+                conn.commit()
+        except Exception:
+            log.exception("Failed to record alert %s for %s in history", event_type, oblast)
+            raise
 
 
 def get_all_threats_data() -> Dict[str, Any]:
@@ -176,16 +189,24 @@ def get_all_threats_data() -> Dict[str, Any]:
     # adding specific cities for shelling
     fetch_oblasts = oblasts + ['nikopol', 'kherson']
     
-    pipeline = redis_client.pipeline()
     keys_order = []
-    
-    for table in tables:
-        for oblast in fetch_oblasts:
-            key = f"threat:{table}:{oblast}"
-            pipeline.hgetall(key)
-            keys_order.append((table, oblast))
-            
-    results = pipeline.execute()
+
+    try:
+        pipeline = redis_client.pipeline()
+
+        for table in tables:
+            for oblast in fetch_oblasts:
+                key = f"threat:{table}:{oblast}"
+                pipeline.hgetall(key)
+                keys_order.append((table, oblast))
+
+        results = pipeline.execute()
+    except Exception:
+        # Deliberately not degrading to empty data: a map rendered from zeros
+        # reads as "no alerts anywhere", which is a dangerous lie during a raid.
+        # Fail the request loudly instead and let the caller see the 500.
+        log.exception("Failed to read threat data from Redis; /api cannot be served")
+        raise
     
     raw_data: Dict[str, Dict[str, Any]] = {t: {} for t in tables}
     for (table, oblast), data in zip(keys_order, results):

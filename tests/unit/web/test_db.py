@@ -1,3 +1,4 @@
+import logging
 import re
 
 import pytest
@@ -64,6 +65,16 @@ def test_ensure_pg_tables_creates_alert_history(mock_web_pg):
     for column in ("datetime", "date", "time", "oblast", "type"):
         assert column in sql
     mock_conn.commit.assert_called_once()
+
+
+def test_ensure_pg_tables_raises_and_logs_when_pg_is_unreachable(caplog):
+    caplog.set_level(logging.ERROR)
+
+    with patch('web.db.get_pg_conn', side_effect=OSError('connection refused')):
+        with pytest.raises(OSError):
+            ensure_pg_tables()
+
+    assert "Failed to ensure the alert_history table exists" in caplog.text
 
 
 # --------------------------------------------------------------------------
@@ -228,6 +239,19 @@ async def test_update_alert_status_writes_redis_and_history(
 
 
 @pytest.mark.asyncio
+async def test_update_alert_status_raises_and_logs_when_history_write_fails(
+    mock_web_redis, mock_web_pg, caplog
+):
+    caplog.set_level(logging.ERROR)
+
+    with patch('web.db.get_pg_conn', side_effect=OSError('connection refused')):
+        with pytest.raises(OSError):
+            await update_alert_status(KYIV_CHANNEL, "Повітряна тривога")
+
+    assert "Failed to record alert start for kyiv in history" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_update_alert_status_unknown_text_updates_time_only(mock_web_redis, mock_web_pg):
     _, mock_cursor = mock_web_pg
 
@@ -287,6 +311,18 @@ def threats_store(mock_web_redis):
     pipeline = _FakePipeline(store)
     mock_web_redis.pipeline.return_value = pipeline
     return pipeline
+
+
+def test_get_all_threats_data_raises_and_logs_when_redis_is_down(threats_store, caplog):
+    """The map must never degrade to zeros: an all-clear map drawn from a dead
+    Redis reads as "no alerts anywhere", so the request has to fail instead."""
+    caplog.set_level(logging.ERROR)
+
+    with patch.object(threats_store, 'execute', side_effect=ConnectionError('redis down')):
+        with pytest.raises(ConnectionError):
+            get_all_threats_data()
+
+    assert "Failed to read threat data from Redis" in caplog.text
 
 
 def test_get_all_threats_data_queries_every_table_and_oblast(threats_store):

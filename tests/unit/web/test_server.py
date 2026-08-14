@@ -130,14 +130,61 @@ def test_ping_healthcheck_logs_but_survives_request_failure(monkeypatch, caplog)
     assert "Failed to ping healthchecks.io" in caplog.text
 
 
+def test_claim_ping_slot_uses_atomic_set():
+    """gunicorn runs several workers, each with its own ping thread, so the slot
+    is claimed with an atomic SET NX EX rather than a read-then-write."""
+    with patch('web.server.redis_client') as mock_redis:
+        mock_redis.set.return_value = True
+
+        assert web_server._claim_ping_slot() is True
+
+    _, kwargs = mock_redis.set.call_args
+    assert kwargs['nx'] is True
+    assert kwargs['ex'] == web_server.HEALTHCHECK_LOCK_TTL
+    assert web_server.HEALTHCHECK_LOCK_TTL < web_server.HEALTHCHECK_PING_INTERVAL
+
+
+def test_claim_ping_slot_false_when_another_worker_holds_it():
+    with patch('web.server.redis_client') as mock_redis:
+        mock_redis.set.return_value = None  # redis-py returns None when NX fails
+
+        assert web_server._claim_ping_slot() is False
+
+
 def test_healthcheck_loop_pings_after_each_sleep():
     with patch('web.server.time.sleep', side_effect=[None, StopIteration]) as mock_sleep, \
+         patch('web.server._claim_ping_slot', return_value=True), \
          patch('web.server._ping_healthcheck') as mock_ping:
         with pytest.raises(StopIteration):
             web_server._healthcheck_loop()
 
     assert mock_sleep.call_count == 2
     mock_ping.assert_called_once_with()
+
+
+def test_healthcheck_loop_skips_ping_when_slot_already_taken():
+    with patch('web.server.time.sleep', side_effect=[None, StopIteration]), \
+         patch('web.server._claim_ping_slot', return_value=False), \
+         patch('web.server._ping_healthcheck') as mock_ping:
+        with pytest.raises(StopIteration):
+            web_server._healthcheck_loop()
+
+    mock_ping.assert_not_called()
+
+
+def test_healthcheck_loop_withholds_ping_when_redis_is_down(caplog):
+    """Redis down means /api can serve nothing, so withholding the ping is the
+    point: healthchecks.io must go red instead of staying falsely green."""
+    caplog.set_level(logging.WARNING)
+
+    with patch('web.server.time.sleep', side_effect=[None, StopIteration]), \
+         patch('web.server._claim_ping_slot', side_effect=ConnectionError('redis down')), \
+         patch('web.server._ping_healthcheck') as mock_ping:
+        with pytest.raises(StopIteration):
+            web_server._healthcheck_loop()
+
+    mock_ping.assert_not_called()
+    assert "Redis unreachable" in caplog.text
 
 
 def test_create_app_starts_healthcheck_thread_when_configured(monkeypatch):

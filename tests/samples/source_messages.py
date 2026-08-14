@@ -89,7 +89,7 @@ MESSAGES_SAMPLES = (
     region_sample("sumy", "Сумський район", "06:12", "06:55"),
 
     # --- East ---
-    region_sample("zaporizhzhia", "Запорізький район", "18:07", "18:47"),
+    region_sample("zaporizhzhia", "м. Запоріжжя", "18:07", "18:47"),
     region_sample("dnipro", "Дніпровський район", "00:21", "01:29"),
     region_sample("kryvyirih", "Криворізький район", "05:03", "06:46"),
     region_sample("kamianske", "Кам'янський район", "03:26", "04:53"),
@@ -116,13 +116,13 @@ MESSAGES_SAMPLES = (
 
 COMBINED_SAMPLES = (
     AlertSample(
-        regions=("zaporizhzhia",),
+        regions=("ivanofrankivsk",),
         districts=(
-            "Мелітопольський район",
-            "Василівський район",
-            "Пологівський район",
-            "Бердянський район",
-            "Запорізький район",
+            "Івано-Франківський район",
+            "Коломийський район",
+            "Надвірнянський район",
+            "Калуський район",
+            "Верховинський район",
         ),
         alert_time="15:59",
         cancellation_time="16:56",

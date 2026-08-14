@@ -38,7 +38,7 @@ from alerts import cli
 from config import (
     api_id, api_hash, REGION_CONFIG, MESSAGES, IMAGES_PATH,
     LOGS_PATH, SESSION_PATH,
-    REDIS_URL, DATABASE_URL, HEALTHCHECKS_PING_URL, SENTRY_DSN
+    REDIS_URL, DATABASE_URL, HEALTHCHECKS_PING_URL_ALERTS, SENTRY_DSN_ALERTS
 )
 
 os.makedirs(LOGS_PATH, exist_ok=True)
@@ -154,9 +154,19 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
         log.error("Unknown alert type: %s", alert_type)
         return
 
+    display_name = REGION_CONFIG.get(region, {}).get('display_name', region.capitalize())
+
     if redis_client:
+        previous_alert_type = await redis_client.get(f"channel_state:{channel_id}")
+        if previous_alert_type == alert_type:
+            log.info(
+                "Duplicate %s ignored for %s: already in this state",
+                alert_type, display_name
+            )
+            return
+
         await redis_client.set(f"channel_state:{channel_id}", alert_type)
-        
+
         status = 1 if alert_type in ("air_raid_alert", "threat_of_shelling") else 0
         event_type = "start" if status == 1 else "end"
         oblast = REGION_CONFIG.get(region, {}).get('oblast', region)
@@ -181,8 +191,6 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
                     )
             except Exception as e:
                 log.error("Failed to insert alert history into PG: %s", e)
-
-    display_name = REGION_CONFIG.get(region, {}).get('display_name', region.capitalize())
 
     try:
         await client.send_message(channel_id, message_text)
@@ -251,17 +259,17 @@ HEALTHCHECK_PING_TIMEOUT = 10  # seconds
 
 
 def _ping_healthcheck(suffix: str = "") -> None:
-    if not HEALTHCHECKS_PING_URL:
+    if not HEALTHCHECKS_PING_URL_ALERTS:
         return
     try:
-        requests.get(f"{HEALTHCHECKS_PING_URL}{suffix}", timeout=HEALTHCHECK_PING_TIMEOUT)
+        requests.get(f"{HEALTHCHECKS_PING_URL_ALERTS}{suffix}", timeout=HEALTHCHECK_PING_TIMEOUT)
     except Exception:
         log.warning("Failed to ping healthchecks.io", exc_info=True)
 
 
 async def _healthcheck_loop(client: TelegramClient) -> None:
-    if not HEALTHCHECKS_PING_URL:
-        log.warning("HEALTHCHECKS_PING_URL not set; skipping healthcheck pings")
+    if not HEALTHCHECKS_PING_URL_ALERTS:
+        log.warning("HEALTHCHECKS_PING_URL_ALERTS not set; skipping healthcheck pings")
         return
     while True:
         await asyncio.sleep(HEALTHCHECK_PING_INTERVAL)
@@ -275,7 +283,7 @@ async def main():
     args = cli.get_args()
 
     sentry_sdk.init(
-        dsn=SENTRY_DSN,
+        dsn=SENTRY_DSN_ALERTS,
         integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)],
         environment=args.mode,
         traces_sample_rate=0.0,

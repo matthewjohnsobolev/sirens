@@ -9,8 +9,10 @@ REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/sirens')
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '')
-HEALTHCHECKS_PING_URL = os.getenv('HEALTHCHECKS_PING_URL', '')
-SENTRY_DSN = os.getenv('SENTRY_DSN', '')
+HEALTHCHECKS_PING_URL_ALERTS = os.getenv('HEALTHCHECKS_PING_URL', '')
+HEALTHCHECKS_PING_URL_WEB = os.getenv('HEALTHCHECKS_PING_URL_WEB', '')
+SENTRY_DSN_ALERTS = os.getenv('SENTRY_DSN_ALERTS', '')
+SENTRY_DSN_WEB = os.getenv('SENTRY_DSN_WEB', '')
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 IMAGES_PATH = os.path.join(PROJECT_ROOT, "assets", "img")
@@ -141,7 +143,7 @@ REGION_CONFIG = {
     'sumy':          {'triggers': ["Сумська область", "Сумський район"], 'oblast': 'sumy_oblast', 'display_name': 'Sumy'},
 
     # --- East ---
-    'zaporizhzhia':  {'triggers': ["Запорізька область", "м. Запоріжжя", "Запорізький район"], 'oblast': 'zaporizhzhia_oblast', 'display_name': 'Zaporizhzhia'},
+    'zaporizhzhia':  {'triggers': ["Запорізька область", "м. Запоріжжя"], 'oblast': 'zaporizhzhia_oblast', 'display_name': 'Zaporizhzhia'},
     'dnipro':        {'triggers': ["Дніпропетровська область", "Дніпровський район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Dnipro'},
     'kryvyirih':     {'triggers': ["Дніпропетровська область", "Криворізький район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kryvyi Rih'},
     'kamianske':     {'triggers': ["Дніпропетровська область", "Кам’янський район", "Кам'янський район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kamianske'},

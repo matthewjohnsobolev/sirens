@@ -260,6 +260,43 @@ async def test_send_alert_writes_state_history_and_broadcasts(
 
 
 @pytest.mark.asyncio
+async def test_send_alert_skips_duplicate_when_state_unchanged(
+    mock_redis, mock_pg_pool, mock_telegram_client, caplog
+):
+    """A region can be triggered by more than one wording (e.g. Nikopol's district
+    vs. city phrasing), so the source can post two messages for the same event.
+    The second one must not be re-broadcast."""
+    caplog.set_level(logging.INFO)
+    mock_redis.get.return_value = "air_raid_alert"
+
+    await send_alert(CHANNEL_ID, "nikopol", "air_raid_alert")
+
+    mock_redis.get.assert_awaited_once_with(f"channel_state:{CHANNEL_ID}")
+    mock_redis.set.assert_not_awaited()
+    mock_redis.hset.assert_not_awaited()
+    mock_telegram_client.send_message.assert_not_awaited()
+    assert "Duplicate air_raid_alert ignored for Nikopol" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_send_alert_processes_state_change_after_duplicate_suppression(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    """Once suppressed as a duplicate, a genuine state change (e.g. the
+    cancellation, in either wording) must still go through."""
+    mock_redis.get.return_value = "air_raid_alert"
+
+    with patch('alerts.main.process_channel_photo_update', new_callable=AsyncMock):
+        await send_alert(CHANNEL_ID, "nikopol", "air_raid_alert_cancelled")
+        await _drain_background_tasks()
+
+    mock_redis.set.assert_awaited_once_with(f"channel_state:{CHANNEL_ID}", "air_raid_alert_cancelled")
+    mock_telegram_client.send_message.assert_awaited_once_with(
+        CHANNEL_ID, MESSAGES["air_raid_alert_cancelled"]
+    )
+
+
+@pytest.mark.asyncio
 async def test_send_alert_unknown_type_does_nothing(
     mock_redis, mock_pg_pool, mock_telegram_client, caplog
 ):
@@ -457,7 +494,7 @@ async def test_main_wires_up_clients_and_handler():
 
 @pytest.mark.asyncio
 async def test_main_initializes_sentry_with_mode_as_environment(monkeypatch):
-    monkeypatch.setattr(alerts_main, 'SENTRY_DSN', 'https://examplePublicKey@o0.ingest.sentry.io/0')
+    monkeypatch.setattr(alerts_main, 'SENTRY_DSN_ALERTS', 'https://examplePublicKey@o0.ingest.sentry.io/0')
 
     with patch('alerts.main.redis.from_url'), \
          patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
@@ -578,7 +615,7 @@ async def test_main_logs_error_on_transient_connection_error(caplog):
 # --------------------------------------------------------------------------
 
 def test_ping_healthcheck_noop_when_unconfigured(monkeypatch):
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', '')
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', '')
 
     with patch('alerts.main.requests.get') as mock_get:
         alerts_main._ping_healthcheck()
@@ -587,7 +624,7 @@ def test_ping_healthcheck_noop_when_unconfigured(monkeypatch):
 
 
 def test_ping_healthcheck_sends_get_with_suffix(monkeypatch):
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', 'https://hc-ping.com/test-uuid')
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', 'https://hc-ping.com/test-uuid')
 
     with patch('alerts.main.requests.get') as mock_get:
         alerts_main._ping_healthcheck('/fail')
@@ -599,7 +636,7 @@ def test_ping_healthcheck_sends_get_with_suffix(monkeypatch):
 
 def test_ping_healthcheck_logs_but_survives_request_failure(monkeypatch, caplog):
     caplog.set_level(logging.WARNING)
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', 'https://hc-ping.com/test-uuid')
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', 'https://hc-ping.com/test-uuid')
 
     with patch('alerts.main.requests.get', side_effect=Exception('network down')):
         alerts_main._ping_healthcheck()
@@ -610,18 +647,18 @@ def test_ping_healthcheck_logs_but_survives_request_failure(monkeypatch, caplog)
 @pytest.mark.asyncio
 async def test_healthcheck_loop_skips_when_unconfigured(monkeypatch, caplog):
     caplog.set_level(logging.WARNING)
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', '')
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', '')
     mock_client = MagicMock()
 
     await alerts_main._healthcheck_loop(mock_client)
 
-    assert "HEALTHCHECKS_PING_URL not set" in caplog.text
+    assert "HEALTHCHECKS_PING_URL_ALERTS not set" in caplog.text
     mock_client.is_connected.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_healthcheck_loop_pings_while_connected(monkeypatch):
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', 'https://hc-ping.com/test-uuid')
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', 'https://hc-ping.com/test-uuid')
     monkeypatch.setattr(alerts_main, 'HEALTHCHECK_PING_INTERVAL', 0.01)
     mock_client = MagicMock()
     mock_client.is_connected.return_value = True
@@ -637,7 +674,7 @@ async def test_healthcheck_loop_pings_while_connected(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_healthcheck_loop_skips_ping_when_disconnected(monkeypatch):
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL', 'https://hc-ping.com/test-uuid')
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', 'https://hc-ping.com/test-uuid')
     monkeypatch.setattr(alerts_main, 'HEALTHCHECK_PING_INTERVAL', 0.01)
     mock_client = MagicMock()
     mock_client.is_connected.return_value = False

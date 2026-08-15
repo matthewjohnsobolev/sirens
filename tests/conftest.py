@@ -19,12 +19,18 @@ def _neutralize_external_secrets(monkeypatch):
     # Belt and braces on top of the env blanking above: a test that re-imports or
     # reassigns one of these still cannot reach the real Sentry/healthchecks.io.
     from alerts import main as alerts_main
+    from bi import main as bi_main
     from web import server as web_server
 
     monkeypatch.setattr(alerts_main, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL_ALERTS", "", raising=False)
+    monkeypatch.setattr(bi_main, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(web_server, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(web_server, "HEALTHCHECKS_PING_URL_WEB", "", raising=False)
+
+    # The export route registers itself only when a token is configured. Pinning
+    # it blank keeps route tests independent of whatever sits in the local .env.
+    monkeypatch.setattr(web_server, "STATS_EXPORT_TOKEN", "", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -54,6 +60,18 @@ def mock_pg_pool():
 
     with patch('alerts.main.pg_pool', mock_pool):
         yield mock_pool, mock_conn
+
+
+@pytest.fixture
+def bi_pool():
+    """asyncpg pool double for the snapshot: `async with pool.acquire() as conn`."""
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_acquire = AsyncMock()
+    mock_acquire.__aenter__.return_value = mock_conn
+    mock_pool.acquire.return_value = mock_acquire
+
+    return mock_pool, mock_conn
 
 
 @pytest.fixture

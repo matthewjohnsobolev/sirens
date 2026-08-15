@@ -75,12 +75,23 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
+          # AWS CLI v2.23+ sends CRC32 checksums on every upload by default;
+          # R2 rejects those. Both knobs must say "only when the API demands it".
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           BUCKET: ${{ vars.R2_BUCKET || 'sirens-bi' }}
         run: |
           set -euo pipefail
           test -n "${AWS_ACCESS_KEY_ID:-}" || { echo "R2_ACCESS_KEY_ID secret is not set"; exit 1; }
           test -n "${ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID secret is not set"; exit 1; }
+
+          # Fail with the actual reason rather than sync's "fatal error" wall of
+          # text: a bad key, a missing bucket and a wrong account id all surface
+          # here as one clear line.
+          aws s3 ls "s3://${BUCKET}" \
+            --endpoint-url "https://${ACCOUNT_ID}.r2.cloudflarestorage.com" >/dev/null \
+            || { echo "Cannot read bucket '${BUCKET}'. Check that it exists, that R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3 pair (not the R2 token value), that the token has Object Read & Write, and that CLOUDFLARE_ACCOUNT_ID matches."; exit 1; }
 
           # --delete keeps the bucket a mirror of the build: Evidence renames
           # content-hashed assets every release, so without it the bucket only

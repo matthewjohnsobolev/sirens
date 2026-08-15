@@ -1,3 +1,4 @@
+import datetime
 import logging
 import re
 
@@ -6,9 +7,11 @@ from unittest.mock import patch
 
 from config import DATABASE_URL, REGION_CONFIG, real_channels, test_channels
 from web.db import (
+    STATS_CSV_COLUMNS,
     THREAT_TABLES,
     _validate_table,
     ensure_pg_tables,
+    export_stats_csv,
     get_all_threats_data,
     get_pg_conn,
     get_region_by_channel_id,
@@ -59,12 +62,26 @@ def test_ensure_pg_tables_creates_alert_history(mock_web_pg):
 
     ensure_pg_tables()
 
-    mock_cursor.execute.assert_called_once()
-    sql = mock_cursor.execute.call_args.args[0]
+    sql = "\n".join(call.args[0] for call in mock_cursor.execute.call_args_list)
     assert "CREATE TABLE IF NOT EXISTS alert_history" in sql
     for column in ("datetime", "date", "time", "oblast", "type"):
         assert column in sql
     mock_conn.commit.assert_called_once()
+
+
+def test_ensure_pg_tables_creates_channel_stats(mock_web_pg):
+    """The UNIQUE constraint is the load-bearing part: it is what lets the
+    snapshot re-run on the same day without duplicating rows."""
+    _, mock_cursor = mock_web_pg
+
+    ensure_pg_tables()
+
+    sql = "\n".join(call.args[0] for call in mock_cursor.execute.call_args_list)
+    assert "CREATE TABLE IF NOT EXISTS channel_stats" in sql
+    for column in ("channel_key", "channel_id", "participants", "date", "collected_at"):
+        assert column in sql
+    assert "UNIQUE (channel_key, date)" in sql
+    assert "CREATE INDEX IF NOT EXISTS channel_stats_date_idx" in sql
 
 
 def test_ensure_pg_tables_raises_and_logs_when_pg_is_unreachable(caplog):
@@ -74,7 +91,7 @@ def test_ensure_pg_tables_raises_and_logs_when_pg_is_unreachable(caplog):
         with pytest.raises(OSError):
             ensure_pg_tables()
 
-    assert "Failed to ensure the alert_history table exists" in caplog.text
+    assert "Failed to ensure the database schema exists" in caplog.text
 
 
 # --------------------------------------------------------------------------
@@ -368,3 +385,51 @@ def test_get_all_threats_data_attaches_shelling_to_cities_only(threats_store):
     assert result['kherson']['shelling'] == {'status': 0, 'time': '12:15', 'source': 'sh-kherson'}
     assert 'shelling' not in result['kyiv']
     assert 'shelling' not in result['dnipropetrovsk_oblast']
+
+
+# --------------------------------------------------------------------------
+# export_stats_csv
+# --------------------------------------------------------------------------
+
+def test_export_stats_csv_writes_a_header_row(mock_web_pg):
+    _, mock_cursor = mock_web_pg
+    mock_cursor.fetchall.return_value = []
+
+    csv_text = export_stats_csv()
+
+    assert csv_text == "channel_key,display_name,date,participants\n"
+    assert tuple(csv_text.splitlines()[0].split(',')) == STATS_CSV_COLUMNS
+
+
+def test_export_stats_csv_resolves_city_display_names(mock_web_pg):
+    """The dashboard should render "Kryvyi Rih", not the internal key."""
+    _, mock_cursor = mock_web_pg
+    mock_cursor.fetchall.return_value = [
+        ('kryvyirih', datetime.date(2026, 8, 14), 4321),
+        ('kyiv', datetime.date(2026, 8, 15), 1234),
+    ]
+
+    rows = export_stats_csv().splitlines()
+
+    assert rows[1] == "kryvyirih,Kryvyi Rih,2026-08-14,4321"
+    assert rows[2] == "kyiv,Kyiv,2026-08-15,1234"
+
+
+def test_export_stats_csv_falls_back_to_the_key_for_unknown_channels(mock_web_pg):
+    """A channel dropped from REGION_CONFIG keeps its history readable rather
+    than exporting an empty name."""
+    _, mock_cursor = mock_web_pg
+    mock_cursor.fetchall.return_value = [('retired', datetime.date(2026, 8, 15), 7)]
+
+    assert export_stats_csv().splitlines()[1] == "retired,retired,2026-08-15,7"
+
+
+def test_export_stats_csv_reads_the_table_in_chronological_order(mock_web_pg):
+    _, mock_cursor = mock_web_pg
+    mock_cursor.fetchall.return_value = []
+
+    export_stats_csv()
+
+    sql = mock_cursor.execute.call_args.args[0]
+    assert "FROM channel_stats" in sql
+    assert "ORDER BY date, channel_key" in sql

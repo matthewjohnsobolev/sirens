@@ -12,7 +12,7 @@ dynamic = ["dependencies"]
 dependencies = { file = ["requirements.txt"] }
 
 [tool.setuptools]
-packages = ["alerts", "data", "web"]
+packages = ["alerts", "bi", "data", "web"]
 
 [tool.setuptools.package-data]
 alerts = ["img/*.png"]

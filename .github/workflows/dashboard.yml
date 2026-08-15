@@ -75,8 +75,10 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-          # AWS CLI v2.23+ sends CRC32 checksums on every upload by default;
-          # R2 rejects those. Both knobs must say "only when the API demands it".
+          # Insurance, not something Cloudflare's docs ask for: AWS CLI v2.23+
+          # sends CRC32 checksums on every upload by default, which several
+          # S3-compatible stores reject. Costs nothing to relax to "only when
+          # the API demands it".
           AWS_REQUEST_CHECKSUM_CALCULATION: when_required
           AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

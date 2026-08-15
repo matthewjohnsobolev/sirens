@@ -11,6 +11,9 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '')
 HEALTHCHECKS_PING_URL_ALERTS = os.getenv('HEALTHCHECKS_PING_URL_ALERTS', '')
 HEALTHCHECKS_PING_URL_WEB = os.getenv('HEALTHCHECKS_PING_URL_WEB', '')
+# Guards /bi/stats.csv, which the dashboard build downloads. Unset means
+# the route is not registered at all.
+STATS_EXPORT_TOKEN = os.getenv('STATS_EXPORT_TOKEN', '')
 # One Sentry project for both services: they share config.py and fail together
 # (a Redis outage hits both), so a single issue stream keeps an incident whole.
 # Events are told apart by the "service" tag each service sets after init.

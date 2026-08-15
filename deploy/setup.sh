@@ -7,17 +7,30 @@
 #
 # Usage:
 #
-#   ./deploy/setup.sh
+#   ./deploy/setup.sh          # sirens.session, used by the alerts worker
+#   ./deploy/setup.sh bi       # bi.session, used by the subscriber snapshot
 #
 # Logs in to Telegram via Telethon: enter phone number and login code when
 # prompted, then Ctrl+C once logs start streaming. Session is written to
-# data/sessions/sirens.session on the host, so it survives rebuilds.
+# data/sessions/<name>.session on the host, so it survives rebuilds.
+#
+# The two sessions are separate on purpose: one session file cannot be shared
+# by two running processes without risking AuthKeyDuplicatedError, and Telegram
+# is perfectly happy to hold several sessions for one account.
 #
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-SESSION_FILE="data/sessions/sirens.session"
+SESSION_NAME="${1:-sirens}"
+
+case "$SESSION_NAME" in
+    sirens) SERVICE=alerts; ENTRYPOINT=run_alerts.py ;;
+    bi)     SERVICE=bi;     ENTRYPOINT=run_bi.py ;;
+    *)      printf 'ERROR: unknown session "%s" (expected: sirens, bi)\n' "$SESSION_NAME" >&2; exit 1 ;;
+esac
+
+SESSION_FILE="data/sessions/${SESSION_NAME}.session"
 
 step() { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }
 die()  { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -37,12 +50,16 @@ fi
 
 mkdir -p data/sessions
 
-step "Logging in to Telegram"
+step "Logging in to Telegram ($SESSION_NAME)"
 echo "Enter your phone number and the login code, then press Ctrl+C once logs start."
-docker compose build alerts
-docker compose run --rm alerts python run_alerts.py -m prod || true
+docker compose build "$SERVICE"
+docker compose run --rm "$SERVICE" python "$ENTRYPOINT" -m prod || true
 
 [[ -f "$SESSION_FILE" ]] || die "login was not completed"
 chmod 600 "$SESSION_FILE"
 
-step "Session saved. Deploy with ./deploy/deploy.sh"
+if [[ "$SESSION_NAME" == "bi" ]]; then
+    step "Session saved. Schedule the snapshot with a cron entry - see deploy/bi.sh"
+else
+    step "Session saved. Deploy with ./deploy/deploy.sh"
+fi

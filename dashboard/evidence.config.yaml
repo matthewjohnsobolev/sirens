@@ -1,5 +1,5 @@
-# Only the CSV connector is installed: the dashboard is built from a file the
-# server exports, never from a live database connection. See dashboard/README.md.
+# Only the CSV connector is installed: the dashboard is built from the file the
+# server exports (GET /bi/stats.csv), never from a live database connection.
 plugins:
   components:
     "@evidence-dev/core-components": {}

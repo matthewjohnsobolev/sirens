@@ -7,29 +7,16 @@
 # network channels and writes one row per channel per day into channel_stats.
 # The container is removed afterwards, so nothing stays resident between runs.
 #
-# Requires:
-#
-#   data/sessions/bi.session           # create once with ./deploy/setup.sh bi
-#
-# Optional in .env:
-#
-#   HEALTHCHECKS_PING_URL_BI           # healthchecks.io monitor for this job
-#
-# Usage (run on the VPS from the project directory):
-#
 #   ./deploy/bi.sh                 # count and store
 #   MODE=dev ./deploy/bi.sh        # count test channels instead
-#
-# Install as a cron job. Just after midnight, not just before: the row is dated
-# from the clock inside the container, so a run at 23:50 that is held up by ten
-# minutes would file itself under the wrong day. Ten past keeps that safe, and
-# the count still describes the day that just began.
 #
 #   crontab -e
 #   10 0 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
 #
-# Re-running on the same day is safe: it overwrites the day's rows rather than
-# adding duplicates.
+# Needs data/sessions/bi.session (create once with ./deploy/setup.sh bi), and
+# optionally HEALTHCHECKS_PING_URL_BI in .env. See "Channel Statistics" in
+# README.md for why the schedule is ten past midnight and what a failed run
+# means.
 #
 set -euo pipefail
 

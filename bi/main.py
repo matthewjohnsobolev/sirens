@@ -1,15 +1,10 @@
 """
-Sirens - Subscriber Count Snapshot.
+Sirens - subscriber count snapshot.
 
-Takes a daily snapshot of the subscriber count of every channel in the Sirens
-network and stores one row per channel per day.
-
-This is a one-shot process: it counts, writes, and exits. Scheduling lives in
-cron (deploy/bi.sh), which runs it nightly at 00:10 Kyiv time - just after the
-date rolls over, so a late run still lands on the day it means. A process that
-instead slept until the next night would hold ~100 MB on a server with under
-200 MB to spare, and would tie the snapshot to a daemon that must never go down
-for reasons of its own.
+Counts every channel in the network and writes one row per channel per day.
+One-shot by design: scheduling lives in cron (deploy/bi.sh), so nothing stays
+resident on a server with under 200 MB to spare. See "Channel Statistics" in
+README.md.
 """
 
 import asyncio
@@ -34,9 +29,8 @@ from config import (
 )
 from web.db import ensure_pg_tables
 
-# Logging goes to stdout only. The container is started by deploy/bi.sh, which
-# owns logs/bi.log - a second writer with its own rotation would interleave
-# badly with the shell's own output.
+# stdout only: deploy/bi.sh owns logs/bi.log, and a second writer with its own
+# rotation would interleave badly with the shell's output.
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s %(message)s",
@@ -46,10 +40,9 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 logging.getLogger("telethon").setLevel(logging.WARNING)
 
-# The alerts worker holds data/sessions/sirens.session. Sharing one session file
-# between two processes means SQLite lock contention and a real risk of
-# AuthKeyDuplicatedError, which alerts treats as fatal - so the snapshot logs
-# in as its own session. Several sessions per account is normal for Telegram.
+# The alerts worker holds sirens.session. One session file cannot serve two
+# running processes: that means SQLite lock contention and a real risk of
+# AuthKeyDuplicatedError, which alerts treats as fatal.
 SESSION_NAME = "bi"
 
 # The source channel is somebody else's: we read alerts from it, it is not part
@@ -57,8 +50,17 @@ SESSION_NAME = "bi"
 SOURCE_KEY = "source"
 
 MAX_ATTEMPTS = 3
-CHANNEL_DELAY = 1  # seconds; 35 calls once a day is nowhere near any limit,
-                   # but pacing them costs nothing on a job with no deadline
+CHANNEL_DELAY = 1  # seconds; pacing 35 calls costs nothing on a job with no deadline
+
+# A FloodWait this long is Telegram asking for hours, not seconds. Waiting it
+# out would hold deploy/bi.sh's lock past the next night's run, so one bad
+# evening would silently swallow several days.
+MAX_FLOOD_WAIT = 300  # seconds
+
+# A day's total is only meaningful next to the days around it. Below this share
+# of the network the run is discarded rather than stored: a gap in the chart is
+# obvious, whereas a short day reads as subscribers walking away.
+MIN_COVERAGE = 0.9
 
 INSERT_SQL = """
     INSERT INTO channel_stats (channel_key, channel_id, participants, date, collected_at)
@@ -76,11 +78,30 @@ class ChannelCount(NamedTuple):
     participants: int
 
 
+def targets(channels: dict) -> list[tuple[str, int]]:
+    """The (key, id) pairs worth counting.
+
+    Drops the foreign source channel, and counts an id once however many keys
+    point at it - in dev mode nearly every city shares one test channel, which
+    would otherwise report a network thirty times its real size.
+    """
+    seen: set[int] = set()
+    picked: list[tuple[str, int]] = []
+
+    for channel_key, channel_id in channels.items():
+        if channel_key == SOURCE_KEY or channel_id in seen:
+            continue
+        seen.add(channel_id)
+        picked.append((channel_key, channel_id))
+
+    return picked
+
+
 async def fetch_participants(client: TelegramClient, channel_id: int) -> int | None:
     """Subscriber count for one channel, or None if it could not be read.
 
-    Only FloodWaitError is retried: it says exactly how long to wait and then
-    succeeds. Anything else (channel gone, lost admin rights) will not fix
+    Only a short FloodWaitError is retried: it says exactly how long to wait and
+    then succeeds. Anything else (channel gone, lost admin rights) will not fix
     itself within seconds, and the snapshot runs again tomorrow anyway.
     """
     for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -88,6 +109,12 @@ async def fetch_participants(client: TelegramClient, channel_id: int) -> int | N
             full = await client(GetFullChannelRequest(channel=channel_id))
             return full.full_chat.participants_count
         except FloodWaitError as e:
+            if e.seconds > MAX_FLOOD_WAIT:
+                log.error(
+                    "Rate-limited on channel %d for %ds, past the %ds cap; skipping it",
+                    channel_id, e.seconds, MAX_FLOOD_WAIT
+                )
+                return None
             log.warning(
                 "Rate-limited on channel %d (attempt %d/%d), waiting %ds",
                 channel_id, attempt, MAX_ATTEMPTS, e.seconds
@@ -104,20 +131,8 @@ async def fetch_participants(client: TelegramClient, channel_id: int) -> int | N
 async def collect(client: TelegramClient, channels: dict) -> list[ChannelCount]:
     """Count every network channel. One unreadable channel does not stop the run."""
     counts: list[ChannelCount] = []
-    seen: set[int] = set()
 
-    for channel_key, channel_id in channels.items():
-        if channel_key == SOURCE_KEY:
-            continue
-
-        if channel_id in seen:
-            # In dev mode most keys point at the same test channel; counting it
-            # once per key would report a network thirty times its real size.
-            log.debug("Skipping %s: channel %d already counted", channel_key, channel_id)
-            continue
-
-        seen.add(channel_id)
-
+    for channel_key, channel_id in targets(channels):
         participants = await fetch_participants(client, channel_id)
         if participants is None:
             continue
@@ -141,15 +156,24 @@ async def store(pool, counts: list[ChannelCount]) -> None:
 
 async def run_snapshot(client: TelegramClient, pool, channels: dict) -> int:
     """Collect and store, returning the process exit code."""
-    expected = len([key for key in channels if key != SOURCE_KEY])
+    expected = len(targets(channels))
 
     counts = await collect(client, channels)
 
     if not counts:
-        # Storing nothing is not a quiet no-op: it means the session died or
-        # Telegram is unreachable, and the dashboard would silently show
-        # yesterday's numbers as if they were today's.
+        # Not a quiet no-op: it means the session died or Telegram is
+        # unreachable, and the dashboard would keep showing yesterday's numbers
+        # as if they were today's.
         log.error("Snapshot collected no channels at all")
+        return 1
+
+    if len(counts) < expected * MIN_COVERAGE:
+        log.error(
+            "Snapshot reached only %d of %d channels; discarding it rather than "
+            "storing a day that reads as a subscriber collapse. Re-running fills "
+            "the day in once the cause is fixed",
+            len(counts), expected
+        )
         return 1
 
     await store(pool, counts)
@@ -180,11 +204,11 @@ async def main() -> int:
     session_file = os.path.join(SESSION_PATH, SESSION_NAME)
 
     try:
-        # Entering the client logs in, prompting for a phone number and code
-        # when the session is missing - that is how ./deploy/setup.sh bi creates
-        # it. Under cron there is no stdin, so the prompt raises instead of
-        # hanging forever. Telegram comes before the database deliberately:
-        # creating the session must not also require a healthy db container.
+        # Entering the client logs in, prompting for a phone number and code when
+        # the session is missing - that is how ./deploy/setup.sh bi creates it.
+        # Under cron there is no stdin, so the prompt raises instead of hanging.
+        # Telegram comes before the database deliberately: creating the session
+        # must not also require a healthy db container.
         async with TelegramClient(session_file, api_id, api_hash) as client:
             await asyncio.to_thread(ensure_pg_tables)
             pool = await asyncpg.create_pool(DATABASE_URL)

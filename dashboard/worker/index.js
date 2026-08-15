@@ -1,15 +1,9 @@
 /**
  * Serves the built Evidence dashboard out of an R2 bucket.
  *
- * Why this exists: Cloudflare Pages rejects any file over 25 MiB, and Evidence
- * ships a 32.7 MiB duckdb-eh.wasm, so the site cannot live there. R2 has no
- * such limit - but it also has no notion of an index document, and no way to
- * put Access in front of a raw bucket. Mapping request paths to object keys is
- * the whole job of this Worker.
- *
- * CI only syncs files into the bucket. This Worker is infrastructure: deploy it
- * by hand from dashboard/worker with `npx wrangler deploy`, which is needed
- * roughly never.
+ * R2 has no notion of an index document and serves objects by exact key, so
+ * mapping request paths to keys is the whole job of this Worker. Why R2 rather
+ * than Pages, and how it is deployed: see wrangler.toml and README.md.
  */
 
 const INDEX = 'index.html';
@@ -141,7 +135,7 @@ export default {
 
         const notFound = await env.SITE.get('404.html');
         if (notFound !== null) {
-            return new Response(notFound.body, {
+            return new Response(request.method === 'HEAD' ? null : notFound.body, {
                 status: 404,
                 headers: { 'content-type': CONTENT_TYPES.html, 'cache-control': MUTABLE_CACHE },
             });

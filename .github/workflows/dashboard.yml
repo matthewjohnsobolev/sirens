@@ -1,18 +1,14 @@
 name: dashboard
 
 # Builds the Evidence dashboard and syncs it into R2, where the sirens-bi Worker
-# serves it from. Not Cloudflare Pages: Pages rejects files over 25 MiB and
-# Evidence ships a 32.7 MiB duckdb-eh.wasm.
-#
-# The data never leaves the server over a database connection: this job simply
-# downloads the CSV the web service exports, so nothing here needs access to
-# Postgres. Runs after the nightly snapshot (00:10 Kyiv) has had time to finish.
+# serves it from. It downloads the CSV the web service exports, so nothing here
+# needs access to Postgres. See "Channel Statistics" in README.md for the setup
+# this expects and why the site is not on Cloudflare Pages.
 #
 # Required secrets: STATS_EXPORT_TOKEN (same value as in the server's .env),
 #   CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
-#   (the R2 pair comes from R2 -> API -> Manage API tokens, not the global token)
 # Optional variables: STATS_URL (default https://sirens.live/bi/stats.csv),
-#   R2_BUCKET (default sirens-bi)
+#   R2_BUCKET (default sirens-bi), R2_ENDPOINT
 
 on:
   schedule:
@@ -60,7 +56,13 @@ jobs:
             -H "X-Stats-Token: $STATS_TOKEN" \
             -o sources/sirens/channel_stats.csv \
             "$STATS_URL"
-          echo "Downloaded $(wc -l < sources/sirens/channel_stats.csv) rows"
+
+          # A 200 carrying nothing but the header row would build a blank site,
+          # and the sync below runs with --delete - so it would replace a good
+          # dashboard with an empty one. Stop here and keep yesterday's instead.
+          rows=$(( $(wc -l < sources/sirens/channel_stats.csv) - 1 ))
+          test "$rows" -gt 0 || { echo "stats export returned no data rows"; exit 1; }
+          echo "Downloaded $rows rows"
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund

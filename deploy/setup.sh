@@ -50,9 +50,23 @@ fi
 
 mkdir -p data/sessions
 
-step "Logging in to Telegram ($SESSION_NAME)"
-echo "Enter your phone number and the login code, then press Ctrl+C once logs start."
+step "Building the $SERVICE image"
 docker compose build "$SERVICE"
+
+# The instructions go here, after the build, not before it: printed earlier they
+# invite typing into a terminal that nothing is reading yet, and compose's
+# progress renderer then scrambles the echoed characters.
+step "Logging in to Telegram ($SESSION_NAME)"
+cat <<'EOF'
+
+Wait for the prompt below before typing anything:
+
+    Please enter your phone (or bot token):
+
+Enter your phone number, then the login code Telegram sends you.
+Once log lines start streaming, press Ctrl+C - the session is saved by then.
+
+EOF
 docker compose run --rm "$SERVICE" python "$ENTRYPOINT" -m prod || true
 
 [[ -f "$SESSION_FILE" ]] || die "login was not completed"

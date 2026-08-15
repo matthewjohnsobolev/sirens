@@ -2,14 +2,8 @@
 title: Sirens Network Subscribers
 ---
 
-```sql daily_total
-select
-    date::date as date,
-    sum(participants) as total
-from sirens.channel_stats
-group by 1
-order by 1
-```
+How many people the Sirens alert channels reach. Every channel is counted once
+a day, shortly after midnight Kyiv time.
 
 ```sql headline
 -- Comparisons are looked up by date rather than with lag(n): a night the
@@ -36,16 +30,25 @@ limit 1
     value=total
     title="Subscribers across the network"
     comparison=change_1d
-    comparisonTitle="past day"
+    comparisonTitle="since yesterday"
 />
 
 <BigValue
     data={headline}
     value=change_7d
-    title="Past week"
+    title="Change over the past week"
 />
 
-## Trend
+## Growth over time
+
+```sql daily_total
+select
+    date::date as date,
+    sum(participants) as total
+from sirens.channel_stats
+group by 1
+order by 1
+```
 
 <LineChart
     data={daily_total}
@@ -55,27 +58,88 @@ limit 1
     yMin=0
 />
 
-## Channels
+## Who gained and who lost
+
+```sql movement
+-- The two most recent days in the history, whether or not they are adjacent on
+-- the calendar: a night the snapshot failed is skipped rather than read as a
+-- day when nothing happened. A channel that only appears on the later day is
+-- left out - it has no previous count to be measured against.
+with counts as (
+    select display_name, date::date as date, participants
+    from sirens.channel_stats
+),
+recent as (
+    select distinct date from counts order by date desc limit 2
+)
+select
+    later.display_name,
+    later.participants - earlier.participants as change,
+    case
+        when later.participants > earlier.participants then 'Gained'
+        when later.participants < earlier.participants then 'Lost'
+        else 'Unchanged'
+    end as direction
+from counts later
+join counts earlier
+      on earlier.display_name = later.display_name
+     and earlier.date = (select min(date) from recent)
+where later.date = (select max(date) from recent)
+order by change, later.display_name
+```
+
+```sql movement_window
+with recent as (
+    select distinct date::date as date
+    from sirens.channel_stats
+    order by 1 desc
+    limit 2
+)
+select min(date) as earlier, max(date) as later from recent
+```
+
+Subscribers gained and lost between <Value data={movement_window} column=earlier/>
+and <Value data={movement_window} column=later/>.
+
+<BarChart
+    data={movement}
+    x=display_name
+    y=change
+    series=direction
+    seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
+    sort=false
+    labels=true
+    labelSize=10
+    yAxisTitle="change in subscribers"
+    chartAreaHeight=280
+/>
+
+## Subscribers by channel
 
 ```sql by_channel
 select
     display_name,
     participants
 from sirens.channel_stats
-where date = (select max(date) from sirens.channel_stats)
+where date::date = (select max(date::date) from sirens.channel_stats)
 order by participants desc
 ```
 
-<DataTable data={by_channel} rows=40 search=true>
-    <Column id=display_name title="City"/>
-    <Column id=participants title="Subscribers" fmt=num0/>
-</DataTable>
+<BarChart
+    data={by_channel}
+    x=display_name
+    y=participants
+    swapXY=true
+    labels=true
+    labelSize=10
+    chartAreaHeight=700
+/>
 
 ```sql latest_day
 select max(date::date) as day from sirens.channel_stats
 ```
 
-Data as of <Value data={latest_day} column=day/>. Channels are counted once a
-day; the history starts on the day counting was switched on. A day the snapshot
-could not reach most of the network is left out entirely rather than stored
-short, so a gap in the line means a failed run, never lost subscribers.
+Data as of <Value data={latest_day} column=day/>. The history starts on the day
+counting was switched on. A day the snapshot could not reach most of the network
+is left out entirely rather than recorded short, so a gap in the line means a
+failed run, never lost subscribers.

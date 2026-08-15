@@ -31,7 +31,17 @@
 #
 set -euo pipefail
 
+# cron hands a job a nearly empty environment - commonly just PATH=/usr/bin:/bin.
+# docker and curl usually sit in there, but "usually" is a poor thing to hang a
+# nightly job on, and a PATH miss under cron fails silently at 6am.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+command -v docker >/dev/null || {
+    printf '\n\033[1;31mERROR:\033[0m docker not found in PATH (%s)\n' "$PATH" >&2
+    exit 1
+}
 
 MODE="${MODE:-prod}"
 SESSION_FILE="data/sessions/bi.session"

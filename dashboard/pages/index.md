@@ -1,5 +1,5 @@
 ---
-title: Sirens Network Subscribers
+title: Sirens Internal Statistics
 ---
 
 How many people the Sirens alert channels reach. Every channel is counted once
@@ -107,11 +107,11 @@ and <Value data={movement_window} column=later/>.
     y=change
     series=direction
     seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
+    swapXY=true
     sort=false
     labels=true
     labelSize=10
-    yAxisTitle="change in subscribers"
-    chartAreaHeight=280
+    chartAreaHeight=700
 />
 
 ## Subscribers by channel

@@ -180,7 +180,11 @@ range requests through.
 
 One-time setup, in order:
 
-1. Create the R2 bucket `sirens-bi`.
+1. Create the R2 bucket `sirens-bi`. It currently lives in the **EU**
+   jurisdiction, which changes the S3 endpoint host (`<id>.eu.r2...`) and has to
+   be repeated in the Worker binding. Jurisdiction is fixed at creation, so
+   picking a different one means a new bucket and matching edits in
+   `dashboard/worker/wrangler.toml` and the workflow's `R2_ENDPOINT`.
 2. Create an R2 API token with **Object Read & Write** on that bucket — the sync
    runs with `--delete`, which read-only permissions refuse. Take it from
    **R2 → API → Manage API tokens**, which hands you a ready Access Key ID and

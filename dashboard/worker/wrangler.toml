@@ -12,7 +12,11 @@ name = "sirens-bi"
 main = "index.js"
 compatibility_date = "2026-08-01"
 
-# Same bucket the dashboard workflow syncs the built site into.
+# Same bucket the dashboard workflow syncs the built site into. The jurisdiction
+# is not decoration: a bucket created under one is invisible to a binding that
+# omits it, exactly as it is invisible to the plain S3 endpoint. It is also
+# fixed at creation time - changing it means making a new bucket.
 [[r2_buckets]]
 binding = "SITE"
 bucket_name = "sirens-bi"
+jurisdiction = "eu"

@@ -32,9 +32,9 @@
 set -euo pipefail
 
 # cron hands a job a nearly empty environment - commonly just PATH=/usr/bin:/bin.
-# docker and curl usually sit in there, but "usually" is a poor thing to hang a
-# nightly job on, and a PATH miss under cron fails silently at 6am.
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+# /snap/bin is not in it, and docker on this host is a snap, so a job that
+# inherits cron's PATH cannot find it at all. Silently, at 6am.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:${PATH:-}"
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

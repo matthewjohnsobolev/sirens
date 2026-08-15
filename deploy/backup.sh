@@ -35,7 +35,17 @@
 #
 set -euo pipefail
 
+# Same reason as in bi.sh: cron's PATH does not include /snap/bin, and docker on
+# this host is a snap. Without this the job dies before it dumps anything - and
+# a backup that fails quietly is worse than no backup at all.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:${PATH:-}"
+
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+command -v docker >/dev/null || {
+    printf '\n\033[1;31mERROR:\033[0m docker not found in PATH (%s)\n' "$PATH" >&2
+    exit 1
+}
 
 BACKUP_DIR="${BACKUP_DIR:-backups}"
 KEEP_LOCAL="${KEEP_LOCAL:-6}"

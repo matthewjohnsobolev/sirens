@@ -1,0 +1,11 @@
+# Only the CSV connector is installed: the dashboard is built from a file the
+# server exports, never from a live database connection. See dashboard/README.md.
+plugins:
+  components:
+    "@evidence-dev/core-components": {}
+  datasources:
+    "@evidence-dev/csv": {}
+
+appearance:
+  default: system
+  switcher: true

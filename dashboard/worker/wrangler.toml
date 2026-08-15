@@ -1,0 +1,18 @@
+# Worker that serves the dashboard out of R2. Deployed by hand, not by CI:
+#
+#   cd dashboard/worker
+#   npx wrangler deploy
+#
+# Afterwards attach the custom domain in the Cloudflare dashboard
+# (Workers & Pages -> sirens-bi -> Settings -> Domains & Routes) and put Access
+# in front of it. CI never touches the Worker - it only syncs files into the
+# bucket below.
+
+name = "sirens-bi"
+main = "index.js"
+compatibility_date = "2026-08-01"
+
+# Same bucket the dashboard workflow syncs the built site into.
+[[r2_buckets]]
+binding = "SITE"
+bucket_name = "sirens-bi"

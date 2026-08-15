@@ -1,14 +1,18 @@
 name: dashboard
 
-# Builds the Evidence dashboard and publishes it to Cloudflare Pages.
+# Builds the Evidence dashboard and syncs it into R2, where the sirens-bi Worker
+# serves it from. Not Cloudflare Pages: Pages rejects files over 25 MiB and
+# Evidence ships a 32.7 MiB duckdb-eh.wasm.
 #
 # The data never leaves the server over a database connection: this job simply
 # downloads the CSV the web service exports, so nothing here needs access to
 # Postgres. Runs after the daily snapshot (09:00 Kyiv) has had time to finish.
 #
 # Required secrets: STATS_EXPORT_TOKEN (same value as in the server's .env),
-#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
-# Optional variables: STATS_URL (default https://sirens.live/bi/stats.csv)
+#   CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+#   (the R2 pair comes from R2 -> API -> Manage API tokens, not the global token)
+# Optional variables: STATS_URL (default https://sirens.live/bi/stats.csv),
+#   R2_BUCKET (default sirens-bi)
 
 on:
   schedule:
@@ -66,13 +70,23 @@ jobs:
           npm run sources
           npm run build
 
-      - name: Publish to Cloudflare Pages
+      - name: Publish to R2
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BUCKET: ${{ vars.R2_BUCKET || 'sirens-bi' }}
         run: |
           set -euo pipefail
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN secret is not set"; exit 1; }
-          npx --yes wrangler@3 pages deploy build \
-            --project-name=sirens-bi \
-            --branch=main
+          test -n "${AWS_ACCESS_KEY_ID:-}" || { echo "R2_ACCESS_KEY_ID secret is not set"; exit 1; }
+          test -n "${ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID secret is not set"; exit 1; }
+
+          # --delete keeps the bucket a mirror of the build: Evidence renames
+          # content-hashed assets every release, so without it the bucket only
+          # ever grows. Content types are not set here on purpose - the Worker
+          # derives them from the extension, which is the one place that can get
+          # .wasm right regardless of what the uploader guessed.
+          aws s3 sync build "s3://${BUCKET}" \
+            --endpoint-url "https://${ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --delete --no-progress

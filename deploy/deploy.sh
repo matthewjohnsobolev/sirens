@@ -24,6 +24,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REF="${1:-origin/main}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/api}"
 SESSION_FILE="data/sessions/sirens.session"
+BI_SESSION_FILE="data/sessions/bi.session"
 
 step() { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }
 die()  { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -39,6 +40,11 @@ grep -Eq '^[[:space:]]*APP_MODE=prod' .env || die "APP_MODE must be 'prod' in .e
 
 [[ -f "$SESSION_FILE" ]] || die "no Telegram session - run ./deploy/setup.sh first"
 
+# The snapshot is optional infrastructure: missing stats must never hold up a
+# deploy of the alerts themselves.
+[[ -f "$BI_SESSION_FILE" ]] \
+    || printf '\033[1;33mwarning:\033[0m no snapshot session - run ./deploy/setup.sh bi to enable channel stats\n'
+
 step "Updating code to $REF"
 [[ -z "$(git status --porcelain)" ]] || die "working tree is dirty - commit or discard local changes"
 git fetch --prune --tags origin
@@ -53,7 +59,11 @@ git reset --hard "$TARGET"
 git --no-pager log -1 --format='Deploying: %h %s'
 
 step "Building images"
-docker compose build --pull
+# --profile tools so the one-shot `bi` image is rebuilt too. Without it the
+# snapshot keeps running whatever code was current when its image was first
+# built, however many deploys go by. The profile is deliberately absent from
+# `up` below: bi must still never start as a daemon.
+docker compose --profile tools build --pull
 
 step "Restarting services"
 docker compose up -d --remove-orphans

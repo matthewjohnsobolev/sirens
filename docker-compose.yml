@@ -76,6 +76,28 @@ services:
     tty: true
     command: python run_alerts.py -m ${APP_MODE:-dev}
 
+  # Subscriber snapshot. Not a daemon: started by deploy/bi.sh from cron, counts
+  # subscribers, exits. The "tools" profile keeps `docker compose up -d` and the
+  # deploy from ever starting it - `docker compose run` enables it on demand.
+  bi:
+    build: .
+    container_name: sirens-bi
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sirens}
+      - TZ=Europe/Kyiv
+    env_file:
+      - .env
+    stdin_open: true
+    tty: true
+    command: python run_bi.py -m ${APP_MODE:-dev}
+
 volumes:
   pgdata:
   redisdata:

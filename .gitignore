@@ -1,6 +1,10 @@
 # Secrets and runtime data
 .env
 *.env
+# .env.bak and friends: *.env only matches names *ending* in .env, so a backup
+# copy of the env file stayed visible to git and blocked a deploy.
+.env.*
+!.env.example
 data/sessions/
 *.session
 *.session-journal

@@ -46,7 +46,8 @@ grep -Eq '^[[:space:]]*APP_MODE=prod' .env || die "APP_MODE must be 'prod' in .e
     || printf '\033[1;33mwarning:\033[0m no snapshot session - run ./deploy/setup.sh bi to enable channel stats\n'
 
 step "Updating code to $REF"
-[[ -z "$(git status --porcelain)" ]] || die "working tree is dirty - commit or discard local changes"
+[[ -z "$(git status --porcelain --untracked-files=no)" ]] \
+    || die "working tree has local modifications - commit or discard them"
 git fetch --prune --tags origin
 TARGET="$(git rev-parse --verify "${REF}^{commit}")" || die "unknown revision: $REF"
 

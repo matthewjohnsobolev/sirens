@@ -60,9 +60,6 @@ jobs:
           echo "Downloaded $(wc -l < sources/sirens/channel_stats.csv) rows"
 
       - name: Install dependencies
-        # npm ci, never npm install: the lock file is the point. Resolving fresh
-        # is what pulled in typescript 7 and broke the build - Evidence 40 peers
-        # on svelte2tsx, which accepts ^4.9.4 || ^5.0.0 only.
         run: npm ci --no-audit --no-fund
 
       - name: Build
@@ -75,31 +72,30 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-          # Insurance, not something Cloudflare's docs ask for: AWS CLI v2.23+
-          # sends CRC32 checksums on every upload by default, which several
-          # S3-compatible stores reject. Costs nothing to relax to "only when
-          # the API demands it".
           AWS_REQUEST_CHECKSUM_CALCULATION: when_required
           AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           BUCKET: ${{ vars.R2_BUCKET || 'sirens-bi' }}
+          # sirens-bi was created in the EU jurisdiction, which is served from
+          # its own S3 host - the plain one answers NoSuchBucket. A bucket in the
+          # default jurisdiction drops the ".eu"; set the R2_ENDPOINT repository
+          # variable to override. Jurisdiction cannot be changed after creation.
+          R2_ENDPOINT: ${{ vars.R2_ENDPOINT || format('https://{0}.eu.r2.cloudflarestorage.com', secrets.CLOUDFLARE_ACCOUNT_ID) }}
         run: |
           set -euo pipefail
           test -n "${AWS_ACCESS_KEY_ID:-}" || { echo "R2_ACCESS_KEY_ID secret is not set"; exit 1; }
           test -n "${ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID secret is not set"; exit 1; }
 
           # Fail with the actual reason rather than sync's "fatal error" wall of
-          # text: a bad key, a missing bucket and a wrong account id all surface
-          # here as one clear line.
-          aws s3 ls "s3://${BUCKET}" \
-            --endpoint-url "https://${ACCOUNT_ID}.r2.cloudflarestorage.com" >/dev/null \
-            || { echo "Cannot read bucket '${BUCKET}'. Check that it exists, that R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3 pair (not the R2 token value), that the token has Object Read & Write, and that CLOUDFLARE_ACCOUNT_ID matches."; exit 1; }
+          # text: a bad key, a missing bucket and the wrong jurisdiction all
+          # surface here as one clear line.
+          aws s3 ls "s3://${BUCKET}" --endpoint-url "$R2_ENDPOINT" >/dev/null \
+            || { echo "Cannot read bucket '${BUCKET}' at ${R2_ENDPOINT}. Check that R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3 pair (not the R2 token value) with Object Read & Write, that CLOUDFLARE_ACCOUNT_ID matches, and that the endpoint jurisdiction matches the bucket's."; exit 1; }
 
           # --delete keeps the bucket a mirror of the build: Evidence renames
           # content-hashed assets every release, so without it the bucket only
           # ever grows. Content types are not set here on purpose - the Worker
           # derives them from the extension, which is the one place that can get
           # .wasm right regardless of what the uploader guessed.
-          aws s3 sync build "s3://${BUCKET}" \
-            --endpoint-url "https://${ACCOUNT_ID}.r2.cloudflarestorage.com" \
+          aws s3 sync build "s3://${BUCKET}" --endpoint-url "$R2_ENDPOINT" \
             --delete --no-progress

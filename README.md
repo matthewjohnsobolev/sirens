@@ -18,6 +18,8 @@ The system ingests real-time data from official Telegram channels, stores it in 
 The project operates as a robust multi-container application comprising the following components:
 * **Web Service (`web/`)**: A Flask web application served by Gunicorn, providing the user interface, GIS map rendering, and API endpoints.
 * **Alerts Worker (`alerts/`)**: An asynchronous Python worker utilizing `Telethon` to monitor Telegram channels and process incoming alerts.
+* **Subscriber Snapshot (`bi/`)**: A one-shot job that records how many subscribers each network channel has. Started by cron, not a long-running service.
+* **Dashboard (`dashboard/`)**: An [Evidence](https://evidence.dev) project that turns those snapshots into a published site. Built in CI, hosted on Cloudflare Pages — it never runs on the server.
 * **PostgreSQL**: The primary relational database used for reliable data storage.
 * **Redis**: An in-memory data structure store, functioning as a message broker and state cache.
 
@@ -130,6 +132,46 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 * `status`: `1` (Active) or `0` (Inactive)
 * `time`: Time of the event formatted as `HH:MM` in the **Kyiv timezone (`Europe/Kyiv`)**, or `"None"` if not applicable.
 * `source`: URL to the Telegram message source (if available) or `"None"`
+
+## Channel Statistics
+
+The project tracks how many subscribers the network has. A snapshot counts every
+channel once a day and stores one row per channel per day in `channel_stats`;
+a dashboard renders the result.
+
+### Collecting
+
+The snapshot is a one-shot process, not a service — it counts, writes, and exits,
+so it holds no memory between runs. Scheduling is cron's job.
+
+It logs in to Telegram under its own session, because the alerts worker already
+holds `sirens.session` and one session file cannot serve two running processes:
+
+```bash
+./deploy/setup.sh bi        # one-time interactive login, creates bi.session
+./deploy/bi.sh              # run it once by hand to check
+```
+
+Then schedule it:
+
+```
+0 9 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
+```
+
+Re-running on the same day is safe: it overwrites that day's rows instead of
+adding duplicates.
+
+### Publishing
+
+`GET /bi/stats.csv` exports the table as CSV. **This endpoint is not public**:
+it is guarded by the `X-Stats-Token` header, whose value comes from
+`STATS_EXPORT_TOKEN` in `.env`. Leaving that variable unset removes the route
+entirely.
+
+The [dashboard](dashboard/) is built from that CSV by
+`.github/workflows/dashboard.yml` and published to Cloudflare Pages once a day.
+Nothing in this path touches the server beyond a single HTTP request, and the
+published site is kept behind Cloudflare Access.
 
 ## License
 

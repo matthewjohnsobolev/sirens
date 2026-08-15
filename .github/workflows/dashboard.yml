@@ -1,0 +1,81 @@
+name: dashboard
+
+# Builds the Evidence dashboard and publishes it to Cloudflare Pages.
+#
+# The data never leaves the server over a database connection: this job simply
+# downloads the CSV the web service exports, so nothing here needs access to
+# Postgres. Runs after the daily snapshot (09:00 Kyiv) has had time to finish.
+#
+# Required secrets: STATS_EXPORT_TOKEN (same value as in the server's .env),
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+# Optional variables: STATS_URL (default https://sirens.live/bi/stats.csv)
+
+on:
+  schedule:
+    - cron: "30 7 * * *"   # UTC
+  push:
+    branches: [main]
+    paths:
+      - 'dashboard/**'
+      - '.github/workflows/dashboard.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: dashboard-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          # Switch this to package-lock.json once the lock file is committed.
+          cache-dependency-path: dashboard/package.json
+
+      - name: Download subscriber history
+        env:
+          STATS_TOKEN: ${{ secrets.STATS_EXPORT_TOKEN }}
+          STATS_URL: ${{ vars.STATS_URL || 'https://sirens.live/bi/stats.csv' }}
+        run: |
+          set -euo pipefail
+          test -n "$STATS_TOKEN" || { echo "STATS_EXPORT_TOKEN secret is not set"; exit 1; }
+          # -f so an error page never gets published as if it were data.
+          curl -fsS --retry 3 --retry-delay 5 --max-time 60 \
+            -H "X-Stats-Token: $STATS_TOKEN" \
+            -o sources/sirens/channel_stats.csv \
+            "$STATS_URL"
+          echo "Downloaded $(wc -l < sources/sirens/channel_stats.csv) rows"
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Build
+        run: |
+          npm run sources
+          npm run build
+
+      - name: Publish to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN secret is not set"; exit 1; }
+          npx --yes wrangler@3 pages deploy build \
+            --project-name=sirens-bi \
+            --branch=main

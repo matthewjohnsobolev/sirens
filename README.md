@@ -19,7 +19,7 @@ The project operates as a robust multi-container application comprising the foll
 * **Web Service (`web/`)**: A Flask web application served by Gunicorn, providing the user interface, GIS map rendering, and API endpoints.
 * **Alerts Worker (`alerts/`)**: An asynchronous Python worker utilizing `Telethon` to monitor Telegram channels and process incoming alerts.
 * **Subscriber Snapshot (`bi/`)**: A one-shot job that records how many subscribers each network channel has. Started by cron, not a long-running service.
-* **Dashboard (`dashboard/`)**: An [Evidence](https://evidence.dev) project that turns those snapshots into a published site. Built in CI, hosted on Cloudflare Pages — it never runs on the server.
+* **Dashboard (`dashboard/`)**: An [Evidence](https://evidence.dev) project that turns those snapshots into a published site. Built in CI, served from Cloudflare R2 by a small Worker — it never runs on the server.
 * **PostgreSQL**: The primary relational database used for reliable data storage.
 * **Redis**: An in-memory data structure store, functioning as a message broker and state cache.
 
@@ -169,9 +169,29 @@ it is guarded by the `X-Stats-Token` header, whose value comes from
 entirely.
 
 The [dashboard](dashboard/) is built from that CSV by
-`.github/workflows/dashboard.yml` and published to Cloudflare Pages once a day.
-Nothing in this path touches the server beyond a single HTTP request, and the
-published site is kept behind Cloudflare Access.
+`.github/workflows/dashboard.yml` once a day and synced into a Cloudflare R2
+bucket. Nothing in this path touches the server beyond a single HTTP request.
+
+It is **not** on Cloudflare Pages: Pages rejects any file over 25 MiB and
+Evidence bundles a 32.7 MiB `duckdb-eh.wasm`. R2 has no such limit, but it also
+serves objects by exact key — so [`dashboard/worker`](dashboard/worker) maps
+request paths to keys, resolves `index.html`, sets content types and passes
+range requests through.
+
+One-time setup, in order:
+
+1. Create the R2 bucket `sirens-bi`.
+2. Create an R2 API token (R2 → API → Manage API tokens) and store the pair as
+   the `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` GitHub secrets, alongside
+   `CLOUDFLARE_ACCOUNT_ID` and `STATS_EXPORT_TOKEN`.
+3. Deploy the Worker: `cd dashboard/worker && npx wrangler deploy`.
+4. Attach the custom domain to the **Worker** (Workers & Pages → `sirens-bi` →
+   Settings → Domains & Routes).
+5. Put Cloudflare Access in front of that hostname. A built Evidence site ships
+   the whole dataset to the browser and has no login of its own.
+
+CI only syncs files into the bucket; the Worker is deployed by hand and changes
+roughly never.
 
 ## License
 

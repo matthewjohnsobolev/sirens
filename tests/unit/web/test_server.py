@@ -27,6 +27,78 @@ def test_api_route(client):
     mock_data.assert_called_once_with()
 
 # --------------------------------------------------------------------------
+# /bi/stats.csv - feeds the dashboard build, not the public site
+# --------------------------------------------------------------------------
+
+STATS_TOKEN = 'test-export-token'
+STATS_CSV = "channel_key,display_name,date,participants\nkyiv,Kyiv,2026-08-15,1234\n"
+
+
+@pytest.fixture
+def stats_client(monkeypatch):
+    monkeypatch.setattr(web_server, 'STATS_EXPORT_TOKEN', STATS_TOKEN)
+    flask_app = create_app(init_db=False, start_healthcheck=False)
+    flask_app.config.update({'TESTING': True})
+    return flask_app.test_client()
+
+
+def test_stats_csv_served_with_a_valid_token(stats_client):
+    with patch('web.server.export_stats_csv', return_value=STATS_CSV) as mock_export:
+        response = stats_client.get(
+            '/bi/stats.csv', headers={'X-Stats-Token': STATS_TOKEN}
+        )
+
+    assert response.status_code == 200
+    assert response.mimetype == 'text/csv'
+    assert response.get_data(as_text=True) == STATS_CSV
+    mock_export.assert_called_once_with()
+
+
+@pytest.mark.parametrize("headers", [
+    {},
+    {'X-Stats-Token': ''},
+    {'X-Stats-Token': 'wrong-token'},
+    {'X-Stats-Token': STATS_TOKEN + 'x'},
+])
+def test_stats_csv_rejects_a_bad_token(stats_client, headers):
+    with patch('web.server.export_stats_csv') as mock_export:
+        response = stats_client.get('/bi/stats.csv', headers=headers)
+
+    assert response.status_code == 401
+    mock_export.assert_not_called()
+
+
+def test_stats_csv_degrades_to_503_when_the_database_is_down(stats_client, caplog):
+    """Unlike /api, this one may degrade: a failed export just means the
+    dashboard build fails and yesterday's page stays published."""
+    caplog.set_level(logging.ERROR)
+
+    with patch('web.server.export_stats_csv', side_effect=OSError('connection refused')):
+        response = stats_client.get(
+            '/bi/stats.csv', headers={'X-Stats-Token': STATS_TOKEN}
+        )
+
+    assert response.status_code == 503
+    assert "Failed to export channel stats" in caplog.text
+
+
+def test_stats_csv_route_absent_without_a_token(client, caplog):
+    """An endpoint that exists but always refuses invites probing; one that was
+    never registered does not."""
+    caplog.set_level(logging.WARNING)
+
+    assert client.get('/bi/stats.csv').status_code == 404
+
+
+def test_create_app_warns_when_the_export_token_is_unset(caplog):
+    caplog.set_level(logging.WARNING)
+
+    create_app(init_db=False, start_healthcheck=False)
+
+    assert "STATS_EXPORT_TOKEN not set" in caplog.text
+
+
+# --------------------------------------------------------------------------
 # request-scoped database connection
 # --------------------------------------------------------------------------
 

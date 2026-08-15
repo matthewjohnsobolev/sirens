@@ -20,11 +20,13 @@
 #   ./deploy/bi.sh                 # count and store
 #   MODE=dev ./deploy/bi.sh        # count test channels instead
 #
-# Install as a cron job (daily; the exact hour only matters in that the count
-# should be taken at the same time every day):
+# Install as a cron job. Just after midnight, not just before: the row is dated
+# from the clock inside the container, so a run at 23:50 that is held up by ten
+# minutes would file itself under the wrong day. Ten past keeps that safe, and
+# the count still describes the day that just began.
 #
 #   crontab -e
-#   0 9 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
+#   10 0 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
 #
 # Re-running on the same day is safe: it overwrites the day's rows rather than
 # adding duplicates.

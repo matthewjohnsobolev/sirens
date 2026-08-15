@@ -152,11 +152,17 @@ holds `sirens.session` and one session file cannot serve two running processes:
 ./deploy/bi.sh              # run it once by hand to check
 ```
 
-Then schedule it:
+Then schedule it, ten past midnight:
 
 ```
-0 9 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
+10 0 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
 ```
+
+Just after midnight rather than just before: rows are dated from the clock
+inside the container, so a run at 23:50 held up by ten minutes would file itself
+under the following day. The dashboard build then runs at 23:00 UTC, which is
+one to two hours later depending on the season — GitHub schedules cannot be
+given a timezone, and 00:10 Kyiv is 21:10 UTC in summer but 22:10 UTC in winter.
 
 Re-running on the same day is safe: it overwrites that day's rows instead of
 adding duplicates.

@@ -1,0 +1,24 @@
+{
+  "name": "sirens-bi",
+  "version": "0.0.1",
+  "scripts": {
+    "build": "evidence build",
+    "build:strict": "evidence build:strict",
+    "dev": "evidence dev --open /",
+    "sources": "evidence sources",
+    "preview": "evidence preview"
+  },
+  "engines": {
+    "npm": ">=7.0.0",
+    "node": ">=18.0.0"
+  },
+  "type": "module",
+  "dependencies": {
+    "@evidence-dev/core-components": "^5.4.2",
+    "@evidence-dev/csv": "^1.0.16",
+    "@evidence-dev/evidence": "^40.1.8"
+  },
+  "overrides": {
+    "axios": "^1.7.4"
+  }
+}

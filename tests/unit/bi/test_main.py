@@ -10,12 +10,14 @@ from telethon.tl.functions.channels import GetFullChannelRequest
 from bi import main as bi_main
 from bi.main import (
     MAX_ATTEMPTS,
+    MAX_FLOOD_WAIT,
     ChannelCount,
     collect,
     fetch_participants,
     main,
     run_snapshot,
     store,
+    targets,
 )
 from tests.samples.telethon_stats import NETWORK_CHANNELS, SHARED_CHANNELS, full_channel
 
@@ -68,6 +70,21 @@ async def test_fetch_participants_gives_up_after_max_attempts(caplog):
 
 
 @pytest.mark.asyncio
+async def test_fetch_participants_gives_up_on_a_flood_wait_longer_than_the_cap(caplog):
+    """Sleeping out an hours-long wait would hold the run's lock past the next
+    night's cron entry, turning one bad evening into several missing days."""
+    caplog.set_level(logging.ERROR)
+    client = _client(FloodWaitError(request=None, capture=MAX_FLOOD_WAIT + 1))
+
+    with patch('bi.main.asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
+        assert await fetch_participants(client, CHANNEL_ID) is None
+
+    mock_sleep.assert_not_awaited()
+    assert client.await_count == 1
+    assert "past the" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_fetch_participants_does_not_retry_other_errors(caplog):
     """A channel we lost access to will not come back within seconds, and the
     snapshot runs again tomorrow - retrying it only slows the run down."""
@@ -78,6 +95,26 @@ async def test_fetch_participants_does_not_retry_other_errors(caplog):
 
     assert client.await_count == 1
     assert "Failed to read subscriber count" in caplog.text
+
+
+# --------------------------------------------------------------------------
+# targets
+# --------------------------------------------------------------------------
+
+def test_targets_lists_every_network_channel():
+    assert targets(NETWORK_CHANNELS) == [
+        ('kyiv', NETWORK_CHANNELS['kyiv']),
+        ('lviv', NETWORK_CHANNELS['lviv']),
+        ('odesa', NETWORK_CHANNELS['odesa']),
+    ]
+
+
+def test_targets_drops_the_foreign_source_channel():
+    assert 'source' not in [key for key, _ in targets(NETWORK_CHANNELS)]
+
+
+def test_targets_counts_a_shared_channel_once():
+    assert targets(SHARED_CHANNELS) == [('kyiv', SHARED_CHANNELS['kyiv'])]
 
 
 # --------------------------------------------------------------------------
@@ -95,29 +132,6 @@ async def test_collect_counts_every_network_channel():
         ChannelCount('lviv', NETWORK_CHANNELS['lviv'], 20),
         ChannelCount('odesa', NETWORK_CHANNELS['odesa'], 30),
     ]
-
-
-@pytest.mark.asyncio
-async def test_collect_skips_the_foreign_source_channel():
-    with patch('bi.main.fetch_participants', AsyncMock(return_value=1)) as mock_fetch, \
-         patch('bi.main.asyncio.sleep', new_callable=AsyncMock):
-        counts = await collect(AsyncMock(), NETWORK_CHANNELS)
-
-    counted_ids = [call.args[1] for call in mock_fetch.await_args_list]
-    assert NETWORK_CHANNELS['source'] not in counted_ids
-    assert 'source' not in [c.channel_key for c in counts]
-
-
-@pytest.mark.asyncio
-async def test_collect_counts_a_shared_channel_only_once():
-    """In dev mode every city points at one test channel; counting it per key
-    would report a network many times its real size."""
-    with patch('bi.main.fetch_participants', AsyncMock(return_value=5)) as mock_fetch, \
-         patch('bi.main.asyncio.sleep', new_callable=AsyncMock):
-        counts = await collect(AsyncMock(), SHARED_CHANNELS)
-
-    assert mock_fetch.await_count == 1
-    assert counts == [ChannelCount('kyiv', SHARED_CHANNELS['kyiv'], 5)]
 
 
 @pytest.mark.asyncio
@@ -177,15 +191,35 @@ async def test_store_overwrites_the_same_day_instead_of_duplicating(bi_pool):
 async def test_run_snapshot_stores_and_reports(bi_pool, caplog):
     caplog.set_level(logging.INFO)
     pool, _ = bi_pool
-    counts = [ChannelCount('kyiv', 111, 10), ChannelCount('lviv', 222, 20)]
+    counts = [
+        ChannelCount('kyiv', 111, 10),
+        ChannelCount('lviv', 222, 20),
+        ChannelCount('odesa', 333, 30),
+    ]
 
     with patch('bi.main.collect', AsyncMock(return_value=counts)), \
          patch('bi.main.store', new_callable=AsyncMock) as mock_store:
         assert await run_snapshot(AsyncMock(), pool, NETWORK_CHANNELS) == 0
 
     mock_store.assert_awaited_once_with(pool, counts)
-    assert "2/3 channels" in caplog.text
-    assert "30 subscribers" in caplog.text
+    assert "3/3 channels" in caplog.text
+    assert "60 subscribers" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_run_snapshot_discards_a_run_that_missed_too_much_of_the_network(bi_pool, caplog):
+    """A short day is worse than a missing one: summed across the network it
+    reads as subscribers walking away, while a gap is visibly a gap."""
+    caplog.set_level(logging.ERROR)
+    pool, _ = bi_pool
+    counts = [ChannelCount('kyiv', 111, 10), ChannelCount('lviv', 222, 20)]
+
+    with patch('bi.main.collect', AsyncMock(return_value=counts)), \
+         patch('bi.main.store', new_callable=AsyncMock) as mock_store:
+        assert await run_snapshot(AsyncMock(), pool, NETWORK_CHANNELS) == 1
+
+    mock_store.assert_not_awaited()
+    assert "reached only 2 of 3 channels" in caplog.text
 
 
 @pytest.mark.asyncio

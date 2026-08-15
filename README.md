@@ -167,6 +167,12 @@ given a timezone, and 00:10 Kyiv is 21:10 UTC in summer but 22:10 UTC in winter.
 Re-running on the same day is safe: it overwrites that day's rows instead of
 adding duplicates.
 
+A run that reaches fewer than 90% of the channels is **discarded rather than
+stored**, and exits non-zero so the healthcheck fires. Summed across the
+network, a short day looks exactly like subscribers walking away, while a gap
+in the chart is visibly a gap — and re-running fills the day in once the cause
+is fixed.
+
 ### Publishing
 
 `GET /bi/stats.csv` exports the table as CSV. **This endpoint is not public**:

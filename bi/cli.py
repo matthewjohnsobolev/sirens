@@ -20,8 +20,8 @@ Options:
   -h, --help          Show this help message and exit
   --version           Show program version and exit
 
-Re-running on the same day is safe: each day holds one row per channel, and a
-second run updates it instead of adding a duplicate.
+Re-running on the same day is safe: a second run updates the day's rows instead
+of adding duplicates.
 
 Requires its own Telegram session (data/sessions/bi.session), created with
 ./deploy/setup.sh bi - the alerts worker holds the sirens.session file.

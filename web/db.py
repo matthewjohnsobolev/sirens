@@ -26,10 +26,20 @@ redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 def get_pg_conn() -> psycopg2.extensions.connection:
     return psycopg2.connect(DATABASE_URL)
 
+SCHEMA_LOCK_KEY = 8110921  # arbitrary, shared by every process that runs this DDL
+
+
 def ensure_pg_tables() -> None:
     try:
         with get_pg_conn() as conn:
             with conn.cursor() as cur:
+                # CREATE TABLE IF NOT EXISTS is not atomic against a concurrent
+                # creator: both sessions pass the existence check, then one fails
+                # creating the sequence ("duplicate key ... pg_class_relname_nsp_index").
+                # Several gunicorn workers plus the bi job all call this, so take
+                # an advisory lock first and make check-and-create one serialized
+                # step. The lock is released when the transaction ends.
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (SCHEMA_LOCK_KEY,))
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS alert_history (
                         id SERIAL PRIMARY KEY,

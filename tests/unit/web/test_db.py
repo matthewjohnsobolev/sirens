@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from config import DATABASE_URL, REGION_CONFIG, real_channels, test_channels
 from web.db import (
+    SCHEMA_LOCK_KEY,
     STATS_CSV_COLUMNS,
     THREAT_TABLES,
     _validate_table,
@@ -56,6 +57,19 @@ def test_get_pg_conn_uses_configured_database_url():
 # --------------------------------------------------------------------------
 # ensure_pg_tables
 # --------------------------------------------------------------------------
+
+def test_ensure_pg_tables_serializes_concurrent_creators(mock_web_pg):
+    """Three gunicorn workers and the bi job all call this. CREATE TABLE IF NOT
+    EXISTS is not atomic against a concurrent creator - without the lock one of
+    them dies on "duplicate key ... pg_class_relname_nsp_index"."""
+    _, mock_cursor = mock_web_pg
+
+    ensure_pg_tables()
+
+    first_sql, first_params = mock_cursor.execute.call_args_list[0].args
+    assert "pg_advisory_xact_lock" in first_sql
+    assert first_params == (SCHEMA_LOCK_KEY,)
+
 
 def test_ensure_pg_tables_creates_alert_history(mock_web_pg):
     mock_conn, mock_cursor = mock_web_pg

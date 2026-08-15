@@ -6,7 +6,7 @@ name: dashboard
 #
 # The data never leaves the server over a database connection: this job simply
 # downloads the CSV the web service exports, so nothing here needs access to
-# Postgres. Runs after the daily snapshot (09:00 Kyiv) has had time to finish.
+# Postgres. Runs after the nightly snapshot (00:10 Kyiv) has had time to finish.
 #
 # Required secrets: STATS_EXPORT_TOKEN (same value as in the server's .env),
 #   CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
@@ -16,7 +16,10 @@ name: dashboard
 
 on:
   schedule:
-    - cron: "30 7 * * *"   # UTC
+    # GitHub schedules are UTC only, and 00:10 Kyiv falls on 21:10 UTC in summer
+    # but 22:10 UTC in winter. 23:00 UTC is the first hour that lands after the
+    # snapshot in both, and it reads as 02:00 / 01:00 Kyiv.
+    - cron: "0 23 * * *"   # UTC
   push:
     branches: [main]
     paths:
@@ -76,10 +79,6 @@ jobs:
           AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           BUCKET: ${{ vars.R2_BUCKET || 'sirens-bi' }}
-          # sirens-bi was created in the EU jurisdiction, which is served from
-          # its own S3 host - the plain one answers NoSuchBucket. A bucket in the
-          # default jurisdiction drops the ".eu"; set the R2_ENDPOINT repository
-          # variable to override. Jurisdiction cannot be changed after creation.
           R2_ENDPOINT: ${{ vars.R2_ENDPOINT || format('https://{0}.eu.r2.cloudflarestorage.com', secrets.CLOUDFLARE_ACCOUNT_ID) }}
         run: |
           set -euo pipefail

@@ -5,10 +5,11 @@ Takes a daily snapshot of the subscriber count of every channel in the Sirens
 network and stores one row per channel per day.
 
 This is a one-shot process: it counts, writes, and exits. Scheduling lives in
-cron (deploy/bi.sh), which runs it every morning at 09:00 Kyiv time. A process
-that instead slept until the next morning would hold ~100 MB on a server with
-under 200 MB to spare, and would tie the snapshot to a daemon that must never
-go down for reasons of its own.
+cron (deploy/bi.sh), which runs it nightly at 00:10 Kyiv time - just after the
+date rolls over, so a late run still lands on the day it means. A process that
+instead slept until the next night would hold ~100 MB on a server with under
+200 MB to spare, and would tie the snapshot to a daemon that must never go down
+for reasons of its own.
 """
 
 import asyncio

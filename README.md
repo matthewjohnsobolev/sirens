@@ -181,9 +181,14 @@ range requests through.
 One-time setup, in order:
 
 1. Create the R2 bucket `sirens-bi`.
-2. Create an R2 API token (R2 → API → Manage API tokens) and store the pair as
-   the `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` GitHub secrets, alongside
-   `CLOUDFLARE_ACCOUNT_ID` and `STATS_EXPORT_TOKEN`.
+2. Create an R2 API token with **Object Read & Write** on that bucket — the sync
+   runs with `--delete`, which read-only permissions refuse. Take it from
+   **R2 → API → Manage API tokens**, which hands you a ready Access Key ID and
+   Secret Access Key (shown once). A general account API token is not
+   interchangeable: there the key id is the token's `id` and the secret is the
+   SHA-256 of its value, so pasting the token string itself just fails to sign.
+   Store the pair as the `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` GitHub
+   secrets, alongside `CLOUDFLARE_ACCOUNT_ID` and `STATS_EXPORT_TOKEN`.
 3. Deploy the Worker: `cd dashboard/worker && npx wrangler deploy`.
 4. Attach the custom domain to the **Worker** (Workers & Pages → `sirens-bi` →
    Settings → Domains & Routes).

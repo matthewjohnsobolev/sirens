@@ -39,8 +39,7 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          # Switch this to package-lock.json once the lock file is committed.
-          cache-dependency-path: dashboard/package.json
+          cache-dependency-path: dashboard/package-lock.json
 
       - name: Download subscriber history
         env:
@@ -57,12 +56,10 @@ jobs:
           echo "Downloaded $(wc -l < sources/sirens/channel_stats.csv) rows"
 
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install --no-audit --no-fund
-          fi
+        # npm ci, never npm install: the lock file is the point. Resolving fresh
+        # is what pulled in typescript 7 and broke the build - Evidence 40 peers
+        # on svelte2tsx, which accepts ^4.9.4 || ^5.0.0 only.
+        run: npm ci --no-audit --no-fund
 
       - name: Build
         run: |

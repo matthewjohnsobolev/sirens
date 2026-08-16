@@ -8,6 +8,7 @@ and broadcasts them to Sirens network channels.
 import asyncio
 import logging
 import os
+import re
 import sys
 import datetime
 from logging.handlers import RotatingFileHandler
@@ -243,9 +244,31 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
         log.debug("No photo mapping for '%s', skipping photo update", alert_type)
 
 
+# A post that clears one place while the alert runs on elsewhere lists those
+# other places at the end:
+#
+#   🟡 08:01 Відбій тривоги в м. Нікополь та Нікопольська територіальна громада.
+#   Зверніть увагу, тривога ще триває у:
+#   - Дніпропетровська область
+#   - Нікопольський район
+#
+# That trailing list is the opposite of the announcement: the alert is still on
+# there. Matched as if it were part of the announcement, one city's all-clear
+# reaches every channel the list names — above, the whole of Dnipropetrovsk
+# oblast is told the alert is over while it is still running.
+ONGOING_NOTICE_RE = re.compile(r"^[^\n]*ще трива[^\n]*$", re.MULTILINE)
+
+
+def strip_ongoing_notice(message_text: str) -> str:
+    """Return the part of the post that announces the event, dropping any
+    trailing "тривога ще триває у: ..." note about where it is still running."""
+    notice = ONGOING_NOTICE_RE.search(message_text)
+    return message_text[:notice.start()] if notice else message_text
+
+
 def build_message_handler(region_channels: dict):
     async def handle_incoming_message(event):
-        message_text = event.message.message
+        message_text = strip_ongoing_notice(event.message.message)
 
         for region_key, region_config in REGION_CONFIG.items():
             channel_id = region_channels.get(region_key)

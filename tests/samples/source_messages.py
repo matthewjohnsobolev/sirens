@@ -13,6 +13,15 @@ ALERT_CANCELLATION_TEMPLATE = (
     "{hashtags}"
 )
 
+PARTIAL_CANCELLATION_TEMPLATE = (
+    "🟡 {time} Відбій тривоги в {districts}\n"
+    "{notice}\n"
+    "{ongoing}\n"
+    "{hashtags}"
+)
+
+ONGOING_NOTICE = "Зверніть увагу, тривога ще триває у:"
+
 
 _HASHTAG_DROPPED = re.compile(r"[.'’]")
 _HASHTAG_UNDERSCORED = re.compile(r"[\s-]+")
@@ -20,6 +29,12 @@ _HASHTAG_UNDERSCORED = re.compile(r"[\s-]+")
 
 def _hashtag(place: str) -> str:
     return "#" + _HASHTAG_UNDERSCORED.sub("_", _HASHTAG_DROPPED.sub("", place))
+
+
+def _districts_block(districts: tuple[str, ...], end: str = "") -> str:
+    if len(districts) == 1:
+        return districts[0] + end
+    return "\n" + "\n".join(f"• {place}" for place in districts)
 
 
 @dataclass(frozen=True)
@@ -46,14 +61,42 @@ class AlertSample:
         return self._render(ALERT_CANCELLATION_TEMPLATE, self.cancellation_time, end=".")
 
     def _render(self, template: str, time: str, end: str = "") -> str:
-        districts = (
-            self.districts[0] + end
-            if len(self.districts) == 1
-            else "\n" + "\n".join(f"• {place}" for place in self.districts)
-        )
         return template.format(
             time=time,
-            districts=districts,
+            districts=_districts_block(self.districts, end),
+            hashtags=" ".join(_hashtag(place) for place in self.districts),
+        )
+
+
+@dataclass(frozen=True)
+class PartialCancellationSample:
+    """A post clearing one place while the alert runs on elsewhere.
+
+    `districts` are the places cleared, and their channels — `regions` — must
+    hear the cancellation. `ongoing` is the trailing note listing where the
+    alert is still running; it announces nothing, so the channels whose
+    triggers it happens to contain — `silenced` — must hear nothing at all.
+    """
+
+    id: str
+
+    districts: tuple[str, ...]
+
+    ongoing: tuple[str, ...]
+
+    regions: tuple[str, ...] = ()
+
+    silenced: tuple[str, ...] = ()
+
+    time: str = "08:01"
+
+    @property
+    def message(self) -> str:
+        return PARTIAL_CANCELLATION_TEMPLATE.format(
+            time=self.time,
+            districts=_districts_block(self.districts, "."),
+            notice=ONGOING_NOTICE,
+            ongoing="\n".join(f"- {place}" for place in self.ongoing),
             hashtags=" ".join(_hashtag(place) for place in self.districts),
         )
 
@@ -154,3 +197,34 @@ COMBINED_SAMPLES = (
 )
 
 ALL_SAMPLES = MESSAGES_SAMPLES + COMBINED_SAMPLES
+
+# Alerts are cleared per hromada, so a district's channels can hear an all-clear
+# for one town while the district around it is still under alert. The source
+# says so in a trailing note, which names places the post is *not* clearing.
+PARTIAL_CANCELLATION_SAMPLES = (
+    PartialCancellationSample(
+        id="nikopol-city-cleared-while-oblast-runs-on",
+        districts=("м. Нікополь та Нікопольська територіальна громада",),
+        ongoing=("Дніпропетровська область", "Нікопольський район"),
+        regions=("nikopol",),
+        silenced=("dnipro", "kryvyirih", "kamianske"),
+        time="08:01",
+    ),
+
+    PartialCancellationSample(
+        id="hromada-without-a-channel-clears-nobody",
+        districts=("м. Марганець та Марганецька міська територіальна громада",),
+        ongoing=("Дніпропетровська область", "Нікопольський район"),
+        silenced=("dnipro", "kryvyirih", "kamianske", "nikopol"),
+        time="09:14",
+    ),
+
+    PartialCancellationSample(
+        id="two-districts-cleared-third-runs-on",
+        districts=("Бучанський район", "Фастівський район"),
+        ongoing=("Київська область", "Білоцерківський район"),
+        regions=("bucha", "fastiv"),
+        silenced=("bilatserkva",),
+        time="21:37",
+    ),
+)

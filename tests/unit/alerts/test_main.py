@@ -26,10 +26,15 @@ from alerts.main import (
     main,
     process_channel_photo_update,
     send_alert,
+    strip_ongoing_notice,
     update_channel_photo,
 )
 from config import DATABASE_URL, MESSAGES, REDIS_URL, REGION_CONFIG, VERSION
-from tests.samples.source_messages import ALL_SAMPLES, MESSAGES_SAMPLES
+from tests.samples.source_messages import (
+    ALL_SAMPLES,
+    MESSAGES_SAMPLES,
+    PARTIAL_CANCELLATION_SAMPLES,
+)
 
 TIME_RE = re.compile(r"\d{2}:\d{2}")
 
@@ -496,6 +501,78 @@ def test_every_configured_region_has_a_message_sample():
     sampled = {region for sample in MESSAGES_SAMPLES for region in sample.regions}
 
     assert sampled == set(REGION_CONFIG)
+
+
+# --- partial all-clears ---------------------------------------------------
+# A post can clear one hromada and then list, under "тривога ще триває у:",
+# the places where the alert is still running. Those trailing places must not
+# be read as places being cleared: doing so broadcast an all-clear to a whole
+# oblast while the alert was still on.
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sample", PARTIAL_CANCELLATION_SAMPLES, ids=lambda sample: sample.id
+)
+async def test_build_message_handler_ignores_still_ongoing_places(sample):
+    assert await _dispatch(sample.message) == _expected_calls(
+        sample.regions, "air_raid_alert_cancelled"
+    )
+
+
+@pytest.mark.parametrize(
+    "sample", PARTIAL_CANCELLATION_SAMPLES, ids=lambda sample: sample.id
+)
+def test_partial_cancellation_samples_name_the_silenced_channels(sample):
+    """Guards the samples themselves: a note that named nothing a channel
+    listens for would let the handler pass without ever exercising the bug."""
+    assert sample.silenced
+
+    note = sample.message.split("ще триває", 1)[1]
+    for region in sample.silenced:
+        assert any(
+            trigger in note for trigger in REGION_CONFIG[region]['triggers']
+        ), f"note does not name anything {region} listens for"
+
+
+@pytest.mark.asyncio
+async def test_build_message_handler_reads_alert_type_from_the_announcement():
+    """The note carries its own wording. Read together with the announcement,
+    "тривога ще триває" outranks "Відбій тривоги" in the keyword order and
+    turns an all-clear into an alert."""
+    message = (
+        "🟡 08:01 Відбій тривоги в м. Нікополь та Нікопольська територіальна громада.\n"
+        "Зверніть увагу, Повітряна тривога ще триває у:\n"
+        "- Нікопольський район"
+    )
+
+    assert await _dispatch(message, {"nikopol": 2222}) == [
+        (2222, "nikopol", "air_raid_alert_cancelled")
+    ]
+
+
+# --------------------------------------------------------------------------
+# strip_ongoing_notice
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("message_text, expected", [
+    pytest.param(
+        "Відбій тривоги в м. Нікополь.\nЗверніть увагу, тривога ще триває у:\n- Нікопольський район\n#м_Нікополь",
+        "Відбій тривоги в м. Нікополь.\n",
+        id="drops-the-note-and-everything-after-it",
+    ),
+    pytest.param(
+        "Відбій тривоги в м. Нікополь.\nЗверніть увагу, тривоги ще тривають в:\n- Нікопольський район",
+        "Відбій тривоги в м. Нікополь.\n",
+        id="tolerates-plural-and-в-wording",
+    ),
+    pytest.param(
+        "🔴 12:00 Повітряна тривога в Нікопольський район\nСлідкуйте за подальшими повідомленнями.\n#Нікопольський_район",
+        "🔴 12:00 Повітряна тривога в Нікопольський район\nСлідкуйте за подальшими повідомленнями.\n#Нікопольський_район",
+        id="leaves-a-post-without-a-note-untouched",
+    ),
+])
+def test_strip_ongoing_notice(message_text, expected):
+    assert strip_ongoing_notice(message_text) == expected
 
 
 # --------------------------------------------------------------------------

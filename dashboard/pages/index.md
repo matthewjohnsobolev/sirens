@@ -85,8 +85,8 @@ join counts earlier
       on earlier.display_name = later.display_name
      and earlier.date = (select min(date) from recent)
 where later.date = (select max(date) from recent)
--- Descending because a horizontal chart draws its first row at the top: this
--- puts the biggest gain there and the biggest loss at the bottom.
+-- Descending because the chart draws its first row leftmost: this puts the
+-- biggest gain at the left and the biggest loss at the right.
 order by change desc, later.display_name
 ```
 
@@ -109,10 +109,7 @@ and <Value data={movement_window} column=later/>.
     y=change
     series=direction
     seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
-    swapXY=true
     sort=false
-    labels=true
-    labelSize=10
     yAxisTitle="change in subscribers"
 />
 
@@ -131,9 +128,6 @@ order by participants desc
     data={by_channel}
     x=display_name
     y=participants
-    swapXY=true
-    labels=true
-    labelSize=10
     yAxisTitle="subscribers"
 />
 

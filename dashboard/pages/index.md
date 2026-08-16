@@ -111,7 +111,14 @@ and <Value data={movement_window} column=later/>.
     seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
     sort=false
     yAxisTitle="change in subscribers"
+    echartsOptions={{yAxis: {minInterval: 1}}}
 />
+
+<!-- minInterval keeps the axis on whole numbers. A day's movement spans only a
+few subscribers, so the axis would otherwise be divided into half steps, and
+those get rounded back to whole numbers by the label format - printing 1, 1, 0,
+-1, -1 down the side. Half a subscriber is not a thing anyway. -->
+
 
 ## Subscribers by channel
 

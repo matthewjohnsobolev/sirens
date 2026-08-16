@@ -3,7 +3,7 @@ title: Sirens Internal Statistics
 ---
 
 How many people the Sirens alert channels reach. Every channel is counted once
-a day, shortly after midnight Kyiv time.
+a day, shortly after midnight EEST time.
 
 ```sql headline
 -- Comparisons are looked up by date rather than with lag(n): a night the
@@ -85,8 +85,8 @@ join counts earlier
       on earlier.display_name = later.display_name
      and earlier.date = (select min(date) from recent)
 where later.date = (select max(date) from recent)
--- Descending because the chart draws its first row leftmost: this puts the
--- biggest gain at the left and the biggest loss at the right.
+-- Descending because a horizontal chart draws its first row at the top: this
+-- puts the biggest gain there and the biggest loss at the bottom.
 order by change desc, later.display_name
 ```
 
@@ -109,15 +109,21 @@ and <Value data={movement_window} column=later/>.
     y=change
     series=direction
     seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
+    swapXY=true
     sort=false
     yAxisTitle="change in subscribers"
-    echartsOptions={{yAxis: {minInterval: 1}}}
+    echartsOptions={{xAxis: {minInterval: 1}}}
 />
 
-<!-- minInterval keeps the axis on whole numbers. A day's movement spans only a
-few subscribers, so the axis would otherwise be divided into half steps, and
-those get rounded back to whole numbers by the label format - printing 1, 1, 0,
--1, -1 down the side. Half a subscriber is not a thing anyway. -->
+<!-- Horizontal because there is one bar per channel and their names only fit
+when written along the side; upright, the axis gives up and prints "...".
+
+minInterval keeps the value axis on whole numbers. A day's movement spans only
+a few subscribers, so the axis would otherwise be divided into half steps, and
+those get rounded back to whole numbers by the label format - printing -1, -1,
+0, 1, 1 along the top. Half a subscriber is not a thing anyway. It is set on
+xAxis rather than yAxis because swapXY hands the value axis to x and the
+channel names to y. -->
 
 
 ## Subscribers by channel
@@ -135,8 +141,12 @@ order by participants desc
     data={by_channel}
     x=display_name
     y=participants
+    swapXY=true
     yAxisTitle="subscribers"
 />
+
+<!-- No chartAreaHeight on either chart: a horizontal chart already grows by
+bars/8, so pinning the area at 700px stretched these two to some 3000px. -->
 
 ```sql latest_day
 select max(date::date) as day from sirens.channel_stats

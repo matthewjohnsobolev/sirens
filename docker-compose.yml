@@ -76,9 +76,6 @@ services:
     tty: true
     command: python run_alerts.py -m ${APP_MODE:-dev}
 
-  # Subscriber snapshot. Not a daemon: started by deploy/bi.sh from cron, counts
-  # subscribers, exits. The "tools" profile keeps `docker compose up -d` and the
-  # deploy from ever starting it - `docker compose run` enables it on demand.
   bi:
     build: .
     container_name: sirens-bi

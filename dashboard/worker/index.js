@@ -127,15 +127,15 @@ export default {
         const { pathname } = new URL(request.url);
 
         for (const key of candidateKeys(pathname)) {
-            const response = await serve(env.SITE, key, request);
+            const response = await serve(env.STATIC, key, request);
             if (response !== null) {
                 return response;
             }
         }
 
-        const notFound = await env.SITE.get('404.html');
+        const notFound = await env.STATIC.get('404.html');
         if (notFound !== null) {
-            return new Response(request.method === 'HEAD' ? null : notFound.body, {
+            return new Response(notFound.body, {
                 status: 404,
                 headers: { 'content-type': CONTENT_TYPES.html, 'cache-control': MUTABLE_CACHE },
             });
@@ -147,3 +147,4 @@ export default {
         });
     },
 };
+

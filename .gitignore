@@ -31,6 +31,8 @@ dist/
 # Node / Evidence dashboard
 node_modules/
 dashboard/.evidence/
+.wrangler/
+
 
 # Testing
 .pytest_cache/

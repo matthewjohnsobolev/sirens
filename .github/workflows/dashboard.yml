@@ -42,25 +42,31 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID || secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY || secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DATA_BUCKET: ${{ vars.CLOUDFLARE_R2_BI_DATA_BUCKET || vars.CLOUDFLARE_R2_DATA_BUCKET || vars.R2_DATA_BUCKET || vars.CLOUDFLARE_R2_BUCKET || vars.R2_BUCKET || 'sirens-bi-data' }}
-          R2_ENDPOINT: ${{ vars.CLOUDFLARE_R2_ENDPOINT || vars.R2_ENDPOINT || format('https://{0}.eu.r2.cloudflarestorage.com', secrets.CLOUDFLARE_ACCOUNT_ID) }}
+          R2_ENDPOINT: ${{ vars.CLOUDFLARE_R2_ENDPOINT || vars.R2_ENDPOINT || format('https://{0}.r2.cloudflarestorage.com', secrets.CLOUDFLARE_ACCOUNT_ID) }}
         run: |
           set -euo pipefail
           test -n "${AWS_ACCESS_KEY_ID:-}" || { echo "R2_ACCESS_KEY_ID or CLOUDFLARE_R2_ACCESS_KEY_ID secret is not set"; exit 1; }
           test -n "${ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID secret is not set"; exit 1; }
 
+          # Check access to data bucket
+          aws s3 ls "s3://${DATA_BUCKET}" --endpoint-url "$R2_ENDPOINT" >/dev/null \
+            || { echo "Cannot access data bucket '${DATA_BUCKET}' at ${R2_ENDPOINT}. Check that your API token has Object Read & Write permissions and the endpoint jurisdiction is correct."; exit 1; }
+
+          # Check if subscribers.csv exists
+          aws s3 ls "s3://${DATA_BUCKET}/subscribers.csv" --endpoint-url "$R2_ENDPOINT" >/dev/null \
+            || { echo "subscribers.csv not found in s3://${DATA_BUCKET}/. Run the BI worker on the server first to generate the initial snapshot."; exit 1; }
+
           mkdir -p sources/sirens
           aws s3 cp "s3://${DATA_BUCKET}/subscribers.csv" sources/sirens/subscribers.csv \
             --endpoint-url "$R2_ENDPOINT"
 
-          # A file carrying nothing but the header row would build a blank site,
-          # and the sync below runs with --delete - so it would replace a good
-          # dashboard with an empty one. Stop here and keep yesterday's instead.
           rows=$(( $(wc -l < sources/sirens/subscribers.csv) - 1 ))
           test "$rows" -gt 0 || { echo "stats export returned no data rows"; exit 1; }
           echo "Downloaded $rows rows"
-
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
@@ -79,21 +85,18 @@ jobs:
           AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WEB_BUCKET: ${{ vars.CLOUDFLARE_R2_BI_WEB_BUCKET || vars.CLOUDFLARE_R2_WEB_BUCKET || vars.R2_WEB_BUCKET || vars.CLOUDFLARE_R2_BUCKET || vars.R2_BUCKET || 'sirens-bi-web' }}
-          R2_ENDPOINT: ${{ vars.CLOUDFLARE_R2_ENDPOINT || vars.R2_ENDPOINT || format('https://{0}.eu.r2.cloudflarestorage.com', secrets.CLOUDFLARE_ACCOUNT_ID) }}
+          R2_ENDPOINT: ${{ vars.CLOUDFLARE_R2_ENDPOINT || vars.R2_ENDPOINT || format('https://{0}.r2.cloudflarestorage.com', secrets.CLOUDFLARE_ACCOUNT_ID) }}
         run: |
           set -euo pipefail
           test -n "${AWS_ACCESS_KEY_ID:-}" || { echo "R2_ACCESS_KEY_ID or CLOUDFLARE_R2_ACCESS_KEY_ID secret is not set"; exit 1; }
           test -n "${ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID secret is not set"; exit 1; }
 
-
-          # Fail with the actual reason rather than sync's "fatal error" wall of
-          # text: a bad key, a missing bucket and the wrong jurisdiction all
-          # surface here as one clear line.
           aws s3 ls "s3://${WEB_BUCKET}" --endpoint-url "$R2_ENDPOINT" >/dev/null \
-            || { echo "Cannot read bucket '${WEB_BUCKET}' at ${R2_ENDPOINT}. Check that R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3 pair (not the R2 token value) with Object Read & Write, that CLOUDFLARE_ACCOUNT_ID matches, and that the endpoint jurisdiction matches the bucket's."; exit 1; }
+            || { echo "Cannot read bucket '${WEB_BUCKET}' at ${R2_ENDPOINT}. Check that R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3 pair with Object Read & Write, and that the endpoint matches."; exit 1; }
 
           # Publish compiled site to web bucket
           aws s3 sync build "s3://${WEB_BUCKET}" --endpoint-url "$R2_ENDPOINT" \
             --delete --no-progress
+
 
 

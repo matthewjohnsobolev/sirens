@@ -31,7 +31,8 @@ R2_WEB_BUCKET = (
 )
 R2_ENDPOINT = os.getenv('CLOUDFLARE_R2_ENDPOINT') or os.getenv('R2_ENDPOINT', '')
 if not R2_ENDPOINT and CLOUDFLARE_ACCOUNT_ID:
-    R2_ENDPOINT = f"https://{CLOUDFLARE_ACCOUNT_ID}.eu.r2.cloudflarestorage.com"
+    R2_ENDPOINT = f"https://{CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
 
 
 # Optional GitHub PAT to trigger workflow_dispatch for dashboard build

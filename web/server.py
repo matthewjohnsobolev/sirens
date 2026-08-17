@@ -1,4 +1,3 @@
-import hmac
 import logging
 import os
 import threading
@@ -15,10 +14,10 @@ from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, jsonify, g, request, Response
 
 from config import (
-    DATABASE_URL, LOGS_PATH, SENTRY_DSN, HEALTHCHECKS_PING_URL_WEB,
-    STATS_EXPORT_TOKEN, VERSION
+    DATABASE_URL, LOGS_PATH, SENTRY_DSN, HEALTHCHECKS_PING_URL_WEB, VERSION
 )
-from web.db import get_all_threats_data, ensure_pg_tables, export_stats_csv, redis_client
+from web.db import get_all_threats_data, ensure_pg_tables, redis_client
+
 
 os.makedirs(LOGS_PATH, exist_ok=True)
 LOG_FILE = os.path.join(LOGS_PATH, "web.log")
@@ -93,22 +92,6 @@ def api() -> Any:
     return jsonify(get_all_threats_data())
 
 
-def bi() -> Any:
-    presented = request.headers.get('X-Stats-Token', '')
-    if not hmac.compare_digest(presented.encode(), STATS_EXPORT_TOKEN.encode()):
-        return Response('unauthorized\n', status=401, mimetype='text/plain')
-
-    try:
-        body = export_stats_csv()
-    except Exception:
-        # Unlike /api, degrading here is harmless: the dashboard build fails
-        # loudly and simply keeps yesterday's published page.
-        log.exception("Failed to export channel stats")
-        return Response('stats unavailable\n', status=503, mimetype='text/plain')
-
-    return Response(body, mimetype='text/csv')
-
-
 def _register_schema_init(app: Flask) -> None:
     state = {"done": False}
 
@@ -142,15 +125,9 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
     app.add_url_rule('/', view_func=index)
     app.add_url_rule('/api', view_func=api, methods=['GET'])
 
-    # No token, no route: an export endpoint that exists but always refuses is
-    # a bigger invitation to probe it than one that is simply not there.
-    if STATS_EXPORT_TOKEN:
-        app.add_url_rule('/bi/stats.csv', view_func=bi, methods=['GET'])
-    else:
-        log.warning("STATS_EXPORT_TOKEN not set; /bi/stats.csv is disabled")
-
     if init_db:
         _register_schema_init(app)
+
 
     if start_healthcheck:
         _start_healthcheck_thread()

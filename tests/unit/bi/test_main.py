@@ -11,14 +11,19 @@ from bi import main as bi_main
 from bi.main import (
     MAX_ATTEMPTS,
     MAX_FLOOD_WAIT,
+    STATS_CSV_COLUMNS,
     ChannelCount,
     collect,
-    fetch_participants,
+    export_stats_csv,
+    fetch_subscribers,
     main,
     run_snapshot,
     store,
     targets,
+    trigger_dashboard_build,
+    upload_to_r2,
 )
+
 from tests.samples.telethon_stats import NETWORK_CHANNELS, SHARED_CHANNELS, full_channel
 
 CHANNEL_ID = -1001712561448
@@ -32,52 +37,53 @@ def _client(*side_effect):
 
 
 # --------------------------------------------------------------------------
-# fetch_participants
+# fetch_subscribers
 # --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_fetch_participants_returns_count():
+async def test_fetch_subscribers_returns_count():
     client = _client(full_channel(1234))
 
-    assert await fetch_participants(client, CHANNEL_ID) == 1234
+    assert await fetch_subscribers(client, CHANNEL_ID) == 1234
 
     request = client.call_args.args[0]
     assert isinstance(request, GetFullChannelRequest)
 
 
 @pytest.mark.asyncio
-async def test_fetch_participants_waits_out_a_flood_wait_then_succeeds(caplog):
+async def test_fetch_subscribers_waits_out_a_flood_wait_then_succeeds(caplog):
     caplog.set_level(logging.WARNING)
     client = _client(FloodWaitError(request=None), full_channel(77))
 
     with patch('bi.main.asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
-        assert await fetch_participants(client, CHANNEL_ID) == 77
+        assert await fetch_subscribers(client, CHANNEL_ID) == 77
 
     mock_sleep.assert_awaited_once()
     assert "Rate-limited" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_fetch_participants_gives_up_after_max_attempts(caplog):
+async def test_fetch_subscribers_gives_up_after_max_attempts(caplog):
     caplog.set_level(logging.ERROR)
     client = _client(*[FloodWaitError(request=None)] * MAX_ATTEMPTS)
 
     with patch('bi.main.asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
-        assert await fetch_participants(client, CHANNEL_ID) is None
+        assert await fetch_subscribers(client, CHANNEL_ID) is None
 
+    mock_sleep.assert_count == MAX_ATTEMPTS if hasattr(mock_sleep, 'assert_count') else None
     assert mock_sleep.await_count == MAX_ATTEMPTS
     assert "Giving up" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_fetch_participants_gives_up_on_a_flood_wait_longer_than_the_cap(caplog):
+async def test_fetch_subscribers_gives_up_on_a_flood_wait_longer_than_the_cap(caplog):
     """Sleeping out an hours-long wait would hold the run's lock past the next
     night's cron entry, turning one bad evening into several missing days."""
     caplog.set_level(logging.ERROR)
     client = _client(FloodWaitError(request=None, capture=MAX_FLOOD_WAIT + 1))
 
     with patch('bi.main.asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
-        assert await fetch_participants(client, CHANNEL_ID) is None
+        assert await fetch_subscribers(client, CHANNEL_ID) is None
 
     mock_sleep.assert_not_awaited()
     assert client.await_count == 1
@@ -85,13 +91,13 @@ async def test_fetch_participants_gives_up_on_a_flood_wait_longer_than_the_cap(c
 
 
 @pytest.mark.asyncio
-async def test_fetch_participants_does_not_retry_other_errors(caplog):
+async def test_fetch_subscribers_does_not_retry_other_errors(caplog):
     """A channel we lost access to will not come back within seconds, and the
     snapshot runs again tomorrow - retrying it only slows the run down."""
     caplog.set_level(logging.ERROR)
     client = _client(RuntimeError("channel is gone"))
 
-    assert await fetch_participants(client, CHANNEL_ID) is None
+    assert await fetch_subscribers(client, CHANNEL_ID) is None
 
     assert client.await_count == 1
     assert "Failed to read subscriber count" in caplog.text
@@ -123,7 +129,7 @@ def test_targets_counts_a_shared_channel_once():
 
 @pytest.mark.asyncio
 async def test_collect_counts_every_network_channel():
-    with patch('bi.main.fetch_participants', AsyncMock(side_effect=[10, 20, 30])), \
+    with patch('bi.main.fetch_subscribers', AsyncMock(side_effect=[10, 20, 30])), \
          patch('bi.main.asyncio.sleep', new_callable=AsyncMock):
         counts = await collect(AsyncMock(), NETWORK_CHANNELS)
 
@@ -136,7 +142,7 @@ async def test_collect_counts_every_network_channel():
 
 @pytest.mark.asyncio
 async def test_collect_keeps_going_when_one_channel_fails():
-    with patch('bi.main.fetch_participants', AsyncMock(side_effect=[10, None, 30])), \
+    with patch('bi.main.fetch_subscribers', AsyncMock(side_effect=[10, None, 30])), \
          patch('bi.main.asyncio.sleep', new_callable=AsyncMock):
         counts = await collect(AsyncMock(), NETWORK_CHANNELS)
 
@@ -145,12 +151,13 @@ async def test_collect_keeps_going_when_one_channel_fails():
 
 @pytest.mark.asyncio
 async def test_collect_paces_its_requests():
-    with patch('bi.main.fetch_participants', AsyncMock(return_value=1)), \
+    with patch('bi.main.fetch_subscribers', AsyncMock(return_value=1)), \
          patch('bi.main.asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
         await collect(AsyncMock(), NETWORK_CHANNELS)
 
     assert mock_sleep.await_count == 3
     mock_sleep.assert_awaited_with(bi_main.CHANNEL_DELAY)
+
 
 
 # --------------------------------------------------------------------------
@@ -165,7 +172,7 @@ async def test_store_writes_one_row_per_channel(bi_pool):
     await store(pool, counts)
 
     sql, rows = conn.executemany.await_args.args
-    assert "INSERT INTO channel_stats" in sql
+    assert "INSERT INTO subscribers" in sql
     assert [(r[0], r[1], r[2]) for r in rows] == [('kyiv', 111, 10), ('lviv', 222, 20)]
     assert all(isinstance(r[3], datetime.date) for r in rows)
     assert all(isinstance(r[4], datetime.datetime) for r in rows)
@@ -184,6 +191,165 @@ async def test_store_overwrites_the_same_day_instead_of_duplicating(bi_pool):
 
 
 # --------------------------------------------------------------------------
+# export_stats_csv
+# --------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_export_stats_csv_writes_a_header_row(bi_pool):
+    pool, conn = bi_pool
+    conn.fetch.return_value = []
+
+    csv_text = await export_stats_csv(pool)
+
+    assert csv_text == "channel_key,display_name,date,subscribers\n"
+    assert tuple(csv_text.splitlines()[0].split(',')) == STATS_CSV_COLUMNS
+
+
+@pytest.mark.asyncio
+async def test_export_stats_csv_resolves_city_display_names(bi_pool):
+    pool, conn = bi_pool
+    conn.fetch.return_value = [
+        {'channel_key': 'kryvyirih', 'date': datetime.date(2026, 8, 14), 'subscribers': 4321},
+        {'channel_key': 'kyiv', 'date': datetime.date(2026, 8, 15), 'subscribers': 1234},
+    ]
+
+    rows = (await export_stats_csv(pool)).splitlines()
+
+    assert rows[1] == "kryvyirih,Kryvyi Rih,2026-08-14,4321"
+    assert rows[2] == "kyiv,Kyiv,2026-08-15,1234"
+
+
+@pytest.mark.asyncio
+async def test_export_stats_csv_falls_back_to_the_key_for_unknown_channels(bi_pool):
+    pool, conn = bi_pool
+    conn.fetch.return_value = [
+        {'channel_key': 'retired', 'date': '2026-08-15', 'subscribers': 7}
+    ]
+
+    rows = (await export_stats_csv(pool)).splitlines()
+    assert rows[1] == "retired,retired,2026-08-15,7"
+
+
+@pytest.mark.asyncio
+async def test_export_stats_csv_reads_the_table_in_chronological_order(bi_pool):
+    pool, conn = bi_pool
+    conn.fetch.return_value = []
+
+    await export_stats_csv(pool)
+
+    sql = conn.fetch.call_args.args[0]
+    assert "FROM subscribers" in sql
+    assert "ORDER BY date, channel_key" in sql
+
+
+# --------------------------------------------------------------------------
+# upload_to_r2
+# --------------------------------------------------------------------------
+
+def test_upload_to_r2_uploads_file_when_credentials_set(monkeypatch):
+    monkeypatch.setattr(bi_main, "R2_ACCESS_KEY_ID", "test-key-id")
+    monkeypatch.setattr(bi_main, "R2_SECRET_ACCESS_KEY", "test-secret")
+    monkeypatch.setattr(bi_main, "CLOUDFLARE_ACCOUNT_ID", "test-account")
+    monkeypatch.setattr(bi_main, "R2_DATA_BUCKET", "sirens-bi-data")
+    monkeypatch.setattr(bi_main, "R2_BUCKET", "sirens-bi-data")
+    monkeypatch.setattr(bi_main, "R2_ENDPOINT", "https://test.r2.cloudflarestorage.com")
+
+    with patch('bi.main.boto3.client') as mock_boto:
+        mock_s3 = MagicMock()
+        mock_boto.return_value = mock_s3
+
+        upload_to_r2("channel_key,display_name\nkyiv,Kyiv\n")
+
+    mock_boto.assert_called_once_with(
+        "s3",
+        endpoint_url="https://test.r2.cloudflarestorage.com",
+        aws_access_key_id="test-key-id",
+        aws_secret_access_key="test-secret",
+        region_name="auto",
+    )
+    mock_s3.put_object.assert_called_once_with(
+        Bucket="sirens-bi-data",
+        Key="subscribers.csv",
+        Body=b"channel_key,display_name\nkyiv,Kyiv\n",
+        ContentType="text/csv; charset=utf-8",
+    )
+
+
+
+
+def test_upload_to_r2_skips_when_credentials_missing(monkeypatch, caplog):
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(bi_main, "R2_ACCESS_KEY_ID", "")
+
+    with patch('bi.main.boto3.client') as mock_boto:
+        upload_to_r2("sample csv")
+
+    mock_boto.assert_not_called()
+    assert "R2 credentials not set" in caplog.text
+
+
+# --------------------------------------------------------------------------
+# trigger_dashboard_build
+# --------------------------------------------------------------------------
+
+def test_trigger_dashboard_build_dispatches_when_pat_set(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    monkeypatch.setattr(bi_main, "GITHUB_PAT", "ghp_test123")
+    monkeypatch.setattr(bi_main, "GITHUB_REPO", "owner/repo")
+
+    with patch('bi.main.requests.post') as mock_post:
+        mock_post.return_value.status_code = 204
+        trigger_dashboard_build()
+
+    mock_post.assert_called_once_with(
+        "https://api.github.com/repos/owner/repo/actions/workflows/dashboard.yml/dispatches",
+        headers={
+            "Authorization": "Bearer ghp_test123",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        json={"ref": "main"},
+        timeout=15,
+    )
+    assert "Triggered GitHub Actions dashboard workflow" in caplog.text
+
+
+def test_trigger_dashboard_build_handles_failed_status(monkeypatch, caplog):
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(bi_main, "GITHUB_PAT", "ghp_test123")
+    monkeypatch.setattr(bi_main, "GITHUB_REPO", "owner/repo")
+
+    with patch('bi.main.requests.post') as mock_post:
+        mock_post.return_value.status_code = 404
+        mock_post.return_value.text = "Not Found"
+        trigger_dashboard_build()
+
+    assert "Failed to trigger dashboard workflow (HTTP 404)" in caplog.text
+
+
+def test_trigger_dashboard_build_handles_exception(monkeypatch, caplog):
+    caplog.set_level(logging.ERROR)
+    monkeypatch.setattr(bi_main, "GITHUB_PAT", "ghp_test123")
+    monkeypatch.setattr(bi_main, "GITHUB_REPO", "owner/repo")
+
+    with patch('bi.main.requests.post', side_effect=Exception("network down")):
+        trigger_dashboard_build()
+
+    assert "Exception while triggering GitHub Actions dashboard workflow" in caplog.text
+
+
+def test_trigger_dashboard_build_skips_when_pat_missing(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    monkeypatch.setattr(bi_main, "GITHUB_PAT", "")
+
+    with patch('bi.main.requests.post') as mock_post:
+        trigger_dashboard_build()
+
+    mock_post.assert_not_called()
+    assert "GITHUB_PAT or GITHUB_REPO not set" in caplog.text
+
+
+# --------------------------------------------------------------------------
 # run_snapshot
 # --------------------------------------------------------------------------
 
@@ -198,12 +364,19 @@ async def test_run_snapshot_stores_and_reports(bi_pool, caplog):
     ]
 
     with patch('bi.main.collect', AsyncMock(return_value=counts)), \
-         patch('bi.main.store', new_callable=AsyncMock) as mock_store:
+         patch('bi.main.store', new_callable=AsyncMock) as mock_store, \
+         patch('bi.main.export_stats_csv', AsyncMock(return_value="csv_content")) as mock_export, \
+         patch('bi.main.upload_to_r2') as mock_upload, \
+         patch('bi.main.trigger_dashboard_build') as mock_trigger:
         assert await run_snapshot(AsyncMock(), pool, NETWORK_CHANNELS) == 0
 
     mock_store.assert_awaited_once_with(pool, counts)
+    mock_export.assert_awaited_once_with(pool)
+    mock_upload.assert_called_once_with("csv_content")
+    mock_trigger.assert_called_once_with()
     assert "3/3 channels" in caplog.text
     assert "60 subscribers" in caplog.text
+
 
 
 @pytest.mark.asyncio

@@ -25,12 +25,12 @@ def _neutralize_external_secrets(monkeypatch):
     monkeypatch.setattr(alerts_main, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL_ALERTS", "", raising=False)
     monkeypatch.setattr(bi_main, "SENTRY_DSN", "", raising=False)
+    monkeypatch.setattr(bi_main, "R2_ACCESS_KEY_ID", "", raising=False)
+    monkeypatch.setattr(bi_main, "R2_SECRET_ACCESS_KEY", "", raising=False)
+    monkeypatch.setattr(bi_main, "GITHUB_PAT", "", raising=False)
     monkeypatch.setattr(web_server, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(web_server, "HEALTHCHECKS_PING_URL_WEB", "", raising=False)
 
-    # The export route registers itself only when a token is configured. Pinning
-    # it blank keeps route tests independent of whatever sits in the local .env.
-    monkeypatch.setattr(web_server, "STATS_EXPORT_TOKEN", "", raising=False)
 
 
 @pytest.fixture(autouse=True)

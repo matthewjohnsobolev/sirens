@@ -10,8 +10,8 @@ a day, shortly after midnight EEST time.
 -- snapshot failed leaves a gap in the history, and counting rows back would
 -- then quietly measure against the wrong day.
 with per_day as (
-    select date::date as date, sum(participants) as total
-    from sirens.channel_stats
+    select date::date as date, sum(subscribers) as total
+    from sirens.subscribers
     group by 1
 )
 select
@@ -44,8 +44,8 @@ limit 1
 ```sql daily_total
 select
     date::date as date,
-    sum(participants) as total
-from sirens.channel_stats
+    sum(subscribers) as total
+from sirens.subscribers
 group by 1
 order by 1
 ```
@@ -66,18 +66,18 @@ order by 1
 -- day when nothing happened. A channel that only appears on the later day is
 -- left out - it has no previous count to be measured against.
 with counts as (
-    select display_name, date::date as date, participants
-    from sirens.channel_stats
+    select display_name, date::date as date, subscribers
+    from sirens.subscribers
 ),
 recent as (
     select distinct date from counts order by date desc limit 2
 )
 select
     later.display_name,
-    later.participants - earlier.participants as change,
+    later.subscribers - earlier.subscribers as change,
     case
-        when later.participants > earlier.participants then 'Gained'
-        when later.participants < earlier.participants then 'Lost'
+        when later.subscribers > earlier.subscribers then 'Gained'
+        when later.subscribers < earlier.subscribers then 'Lost'
         else 'Unchanged'
     end as direction
 from counts later
@@ -93,7 +93,7 @@ order by change desc, later.display_name
 ```sql movement_window
 with recent as (
     select distinct date::date as date
-    from sirens.channel_stats
+    from sirens.subscribers
     order by 1 desc
     limit 2
 )
@@ -131,16 +131,16 @@ channel names to y. -->
 ```sql by_channel
 select
     display_name,
-    participants
-from sirens.channel_stats
-where date::date = (select max(date::date) from sirens.channel_stats)
-order by participants desc
+    subscribers
+from sirens.subscribers
+where date::date = (select max(date::date) from sirens.subscribers)
+order by subscribers desc
 ```
 
 <BarChart
     data={by_channel}
     x=display_name
-    y=participants
+    y=subscribers
     swapXY=true
     yAxisTitle="subscribers"
 />
@@ -149,8 +149,9 @@ order by participants desc
 bars/8, so pinning the area at 700px stretched these two to some 3000px. -->
 
 ```sql latest_day
-select max(date::date) as day from sirens.channel_stats
+select max(date::date) as day from sirens.subscribers
 ```
+
 
 Data as of <Value data={latest_day} column=day/>. The history starts on the day
 counting was switched on. A day the snapshot could not reach most of the network

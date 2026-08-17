@@ -10,11 +10,15 @@ README.md.
 import asyncio
 import datetime
 import logging
+import csv
+import io
 import os
 import sys
 from typing import NamedTuple
 
 import asyncpg
+import boto3
+import requests
 import sentry_sdk
 from sentry_sdk.integrations.logging import LoggingIntegration
 
@@ -25,9 +29,13 @@ from telethon.tl.functions.channels import GetFullChannelRequest
 from bi import cli
 
 from config import (
-    api_id, api_hash, SESSION_PATH, DATABASE_URL, SENTRY_DSN, VERSION
+    api_id, api_hash, SESSION_PATH, DATABASE_URL, SENTRY_DSN, VERSION,
+    REGION_CONFIG, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, CLOUDFLARE_ACCOUNT_ID,
+    R2_DATA_BUCKET, R2_BUCKET, R2_ENDPOINT, GITHUB_PAT, GITHUB_REPO
 )
+
 from web.db import ensure_pg_tables
+
 
 # stdout only: deploy/bi.sh owns logs/bi.log, and a second writer with its own
 # rotation would interleave badly with the shell's output.
@@ -63,10 +71,10 @@ MAX_FLOOD_WAIT = 300  # seconds
 MIN_COVERAGE = 0.9
 
 INSERT_SQL = """
-    INSERT INTO channel_stats (channel_key, channel_id, participants, date, collected_at)
+    INSERT INTO subscribers (channel_key, channel_id, subscribers, date, collected_at)
     VALUES ($1, $2, $3, $4, $5)
     ON CONFLICT (channel_key, date) DO UPDATE
-        SET participants = EXCLUDED.participants,
+        SET subscribers = EXCLUDED.subscribers,
             channel_id   = EXCLUDED.channel_id,
             collected_at = EXCLUDED.collected_at
 """
@@ -75,7 +83,7 @@ INSERT_SQL = """
 class ChannelCount(NamedTuple):
     channel_key: str
     channel_id: int
-    participants: int
+    subscribers: int
 
 
 def targets(channels: dict) -> list[tuple[str, int]]:
@@ -97,7 +105,7 @@ def targets(channels: dict) -> list[tuple[str, int]]:
     return picked
 
 
-async def fetch_participants(client: TelegramClient, channel_id: int) -> int | None:
+async def fetch_subscribers(client: TelegramClient, channel_id: int) -> int | None:
     """Subscriber count for one channel, or None if it could not be read.
 
     Only a short FloodWaitError is retried: it says exactly how long to wait and
@@ -128,16 +136,19 @@ async def fetch_participants(client: TelegramClient, channel_id: int) -> int | N
     return None
 
 
+fetch_participants = fetch_subscribers
+
+
 async def collect(client: TelegramClient, channels: dict) -> list[ChannelCount]:
     """Count every network channel. One unreadable channel does not stop the run."""
     counts: list[ChannelCount] = []
 
     for channel_key, channel_id in targets(channels):
-        participants = await fetch_participants(client, channel_id)
-        if participants is None:
+        subscribers = await fetch_subscribers(client, channel_id)
+        if subscribers is None:
             continue
 
-        counts.append(ChannelCount(channel_key, channel_id, participants))
+        counts.append(ChannelCount(channel_key, channel_id, subscribers))
         await asyncio.sleep(CHANNEL_DELAY)
 
     return counts
@@ -146,12 +157,99 @@ async def collect(client: TelegramClient, channels: dict) -> list[ChannelCount]:
 async def store(pool, counts: list[ChannelCount]) -> None:
     now = datetime.datetime.now()
     rows = [
-        (c.channel_key, c.channel_id, c.participants, now.date(), now)
+        (c.channel_key, c.channel_id, c.subscribers, now.date(), now)
         for c in counts
     ]
 
     async with pool.acquire() as conn:
         await conn.executemany(INSERT_SQL, rows)
+
+
+SELECT_ALL_STATS_SQL = """
+    SELECT channel_key, date, subscribers
+    FROM subscribers
+    ORDER BY date, channel_key
+"""
+
+STATS_CSV_COLUMNS = ("channel_key", "display_name", "date", "subscribers")
+
+
+async def export_stats_csv(pool) -> str:
+    """The whole subscribers table as CSV, oldest day first.
+
+    Assembled in Python so the human-readable city names from REGION_CONFIG
+    can be folded in.
+    """
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(SELECT_ALL_STATS_SQL)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(STATS_CSV_COLUMNS)
+
+    for record in rows:
+        channel_key = record["channel_key"]
+        date_val = record["date"]
+        subscribers = record["subscribers"]
+        display_name = REGION_CONFIG.get(channel_key, {}).get("display_name", channel_key)
+        date_str = date_val.isoformat() if hasattr(date_val, "isoformat") else str(date_val)
+        writer.writerow([channel_key, display_name, date_str, subscribers])
+
+    return buffer.getvalue()
+
+
+export_subscribers_csv = export_stats_csv
+
+
+def upload_to_r2(csv_content: str) -> None:
+    """Uploads the consolidated CSV to the Cloudflare R2 data bucket."""
+    if not (R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and (R2_ENDPOINT or CLOUDFLARE_ACCOUNT_ID)):
+        log.warning("R2 credentials not set; skipping upload to R2")
+        return
+
+    endpoint = R2_ENDPOINT or f"https://{CLOUDFLARE_ACCOUNT_ID}.eu.r2.cloudflarestorage.com"
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        region_name="auto",
+    )
+    bucket = R2_DATA_BUCKET or R2_BUCKET
+    key = "subscribers.csv"
+    log.info("Uploading subscribers CSV to s3://%s/%s (%d bytes)", bucket, key, len(csv_content.encode("utf-8")))
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=csv_content.encode("utf-8"),
+        ContentType="text/csv; charset=utf-8",
+    )
+    log.info("Successfully uploaded subscribers CSV to R2 data bucket %s", bucket)
+
+
+
+
+def trigger_dashboard_build() -> None:
+    """Triggers GitHub Actions workflow_dispatch to build the dashboard immediately."""
+    if not GITHUB_PAT or not GITHUB_REPO:
+        log.info("GITHUB_PAT or GITHUB_REPO not set; skipping dashboard build trigger")
+        return
+
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/dashboard.yml/dispatches"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_PAT}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    data = {"ref": "main"}
+    try:
+        resp = requests.post(url, headers=headers, json=data, timeout=15)
+        if resp.status_code in (204, 201, 200):
+            log.info("Triggered GitHub Actions dashboard workflow successfully")
+        else:
+            log.warning("Failed to trigger dashboard workflow (HTTP %d): %s", resp.status_code, resp.text)
+    except Exception:
+        log.exception("Exception while triggering GitHub Actions dashboard workflow")
 
 
 async def run_snapshot(client: TelegramClient, pool, channels: dict) -> int:
@@ -178,12 +276,19 @@ async def run_snapshot(client: TelegramClient, pool, channels: dict) -> int:
 
     await store(pool, counts)
 
-    total = sum(c.participants for c in counts)
+    total = sum(c.subscribers for c in counts)
     log.info(
         "Snapshot done: %d/%d channels, %d subscribers in total",
         len(counts), expected, total
     )
+
+
+    csv_data = await export_stats_csv(pool)
+    await asyncio.to_thread(upload_to_r2, csv_data)
+    await asyncio.to_thread(trigger_dashboard_build)
+
     return 0
+
 
 
 async def main() -> int:

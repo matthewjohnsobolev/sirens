@@ -4,7 +4,8 @@
 # for input: either records today's subscriber counts or exits non-zero.
 #
 # Starts the one-shot `bi` container, which counts subscribers across the
-# network channels and writes one row per channel per day into channel_stats.
+# network channels and writes one row per channel per day into subscribers.
+
 # The container is removed afterwards, so nothing stays resident between runs.
 #
 #   ./deploy/bi.sh                 # count and store

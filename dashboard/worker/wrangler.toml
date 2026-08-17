@@ -16,5 +16,5 @@ compatibility_date = "2026-08-01"
 # fixed at creation time - changing it means making a new bucket.
 [[r2_buckets]]
 binding = "SITE"
-bucket_name = "sirens-bi"
+bucket_name = "sirens-bi-web"
 jurisdiction = "eu"

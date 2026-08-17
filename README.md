@@ -136,7 +136,7 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 ## Channel Statistics
 
 The project tracks how many subscribers the network has. A snapshot counts every
-channel once a day and stores one row per channel per day in `channel_stats`;
+channel once a day and stores one row per channel per day in `subscribers`;
 a dashboard renders the result.
 
 ### Collecting
@@ -175,26 +175,16 @@ is fixed.
 
 ### Publishing
 
-`GET /bi/stats.csv` exports the table as CSV. **This endpoint is not public**:
-it is guarded by the `X-Stats-Token` header, whose value comes from
-`STATS_EXPORT_TOKEN` in `.env`. Leaving that variable unset removes the route
-entirely.
+After recording the subscriber snapshot, the BI worker exports the consolidated history as CSV directly to the Cloudflare R2 data bucket (`s3://sirens-bi-data/subscribers.csv`) and optionally triggers GitHub Actions via `workflow_dispatch`.
 
-The [dashboard](dashboard/) is built from that CSV by
-`.github/workflows/dashboard.yml` once a day and synced into a Cloudflare R2
-bucket. Nothing in this path touches the server beyond a single HTTP request.
+The [dashboard](dashboard/) is built from that CSV by `.github/workflows/dashboard.yml` and synced into the public Cloudflare R2 web bucket (`sirens-bi-web`). Nothing in this build path touches the production web server.
 
-It is **not** on Cloudflare Pages: Pages rejects any file over 25 MiB and
-Evidence bundles a 32.7 MiB `duckdb-eh.wasm`. R2 has no such limit, but it also
-serves objects by exact key — so [`dashboard/worker`](dashboard/worker) maps
-request paths to keys, resolves `index.html`, sets content types and passes
-range requests through.
+It is **not** on Cloudflare Pages: Pages rejects any file over 25 MiB and Evidence bundles a 32.7 MiB `duckdb-eh.wasm`. R2 has no such limit, but it also serves objects by exact key — so [`dashboard/worker`](dashboard/worker) maps request paths to keys, resolves `index.html`, sets content types and passes range requests through.
 
 One-time setup, in order:
 
-1. Create the R2 bucket `sirens-bi`. It currently lives in the **EU**
-   jurisdiction, which changes the S3 endpoint host (`<id>.eu.r2...`) and has to
-   be repeated in the Worker binding. Jurisdiction is fixed at creation, so
+1. Create the R2 buckets `sirens-bi-data` (private data bucket) and `sirens-bi-web` (public web bucket). They live in the **EU** jurisdiction, which changes the S3 endpoint host (`<id>.eu.r2...`).
+
    picking a different one means a new bucket and matching edits in
    `dashboard/worker/wrangler.toml` and the workflow's `R2_ENDPOINT`.
 2. Create an R2 API token with **Object Read & Write** on that bucket — the sync
@@ -204,12 +194,13 @@ One-time setup, in order:
    interchangeable: there the key id is the token's `id` and the secret is the
    SHA-256 of its value, so pasting the token string itself just fails to sign.
    Store the pair as the `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` GitHub
-   secrets, alongside `CLOUDFLARE_ACCOUNT_ID` and `STATS_EXPORT_TOKEN`.
+   secrets and in the server's `.env`, alongside `CLOUDFLARE_ACCOUNT_ID`.
 3. Deploy the Worker: `cd dashboard/worker && npx wrangler deploy`.
 4. Attach the custom domain to the **Worker** (Workers & Pages → `sirens-bi` →
    Settings → Domains & Routes).
 5. Put Cloudflare Access in front of that hostname. A built Evidence site ships
    the whole dataset to the browser and has no login of its own.
+
 
 CI only syncs files into the bucket; the Worker is deployed by hand and changes
 roughly never.

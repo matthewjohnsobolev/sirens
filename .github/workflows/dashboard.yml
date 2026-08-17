@@ -1,21 +1,14 @@
 name: dashboard
 
 # Builds the Evidence dashboard and syncs it into R2, where the sirens-bi Worker
-# serves it from. It downloads the CSV the web service exports, so nothing here
-# needs access to Postgres. See "Channel Statistics" in README.md for the setup
-# this expects and why the site is not on Cloudflare Pages.
+# serves it from. It downloads the consolidated raw CSV directly from R2,
+# so nothing here needs access to the server or Postgres. See "Channel Statistics"
+# in README.md for the setup this expects.
 #
-# Required secrets: STATS_EXPORT_TOKEN (same value as in the server's .env),
-#   CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
-# Optional variables: STATS_URL (default https://sirens.live/bi/stats.csv),
-#   R2_BUCKET (default sirens-bi), R2_ENDPOINT
+# Required secrets: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+# Optional variables: R2_BUCKET (default sirens-bi), R2_ENDPOINT
 
 on:
-  schedule:
-    # GitHub schedules are UTC only, and 00:10 Kyiv falls on 21:10 UTC in summer
-    # but 22:10 UTC in winter. 23:00 UTC is the first hour that lands after the
-    # snapshot in both, and it reads as 02:00 / 01:00 Kyiv.
-    - cron: "0 23 * * *"   # UTC
   push:
     branches: [main]
     paths:
@@ -44,25 +37,30 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
-      - name: Download subscriber history
+      - name: Download subscriber history from R2
         env:
-          STATS_TOKEN: ${{ secrets.STATS_EXPORT_TOKEN }}
-          STATS_URL: ${{ vars.STATS_URL || 'https://sirens.live/bi/stats.csv' }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID || secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY || secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DATA_BUCKET: ${{ vars.CLOUDFLARE_R2_BI_DATA_BUCKET || vars.CLOUDFLARE_R2_DATA_BUCKET || vars.R2_DATA_BUCKET || vars.CLOUDFLARE_R2_BUCKET || vars.R2_BUCKET || 'sirens-bi-data' }}
+          R2_ENDPOINT: ${{ vars.CLOUDFLARE_R2_ENDPOINT || vars.R2_ENDPOINT || format('https://{0}.eu.r2.cloudflarestorage.com', secrets.CLOUDFLARE_ACCOUNT_ID) }}
         run: |
           set -euo pipefail
-          test -n "$STATS_TOKEN" || { echo "STATS_EXPORT_TOKEN secret is not set"; exit 1; }
-          # -f so an error page never gets published as if it were data.
-          curl -fsS --retry 3 --retry-delay 5 --max-time 60 \
-            -H "X-Stats-Token: $STATS_TOKEN" \
-            -o sources/sirens/channel_stats.csv \
-            "$STATS_URL"
+          test -n "${AWS_ACCESS_KEY_ID:-}" || { echo "R2_ACCESS_KEY_ID or CLOUDFLARE_R2_ACCESS_KEY_ID secret is not set"; exit 1; }
+          test -n "${ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID secret is not set"; exit 1; }
 
-          # A 200 carrying nothing but the header row would build a blank site,
+          mkdir -p sources/sirens
+          aws s3 cp "s3://${DATA_BUCKET}/subscribers.csv" sources/sirens/subscribers.csv \
+            --endpoint-url "$R2_ENDPOINT"
+
+          # A file carrying nothing but the header row would build a blank site,
           # and the sync below runs with --delete - so it would replace a good
           # dashboard with an empty one. Stop here and keep yesterday's instead.
-          rows=$(( $(wc -l < sources/sirens/channel_stats.csv) - 1 ))
+          rows=$(( $(wc -l < sources/sirens/subscribers.csv) - 1 ))
           test "$rows" -gt 0 || { echo "stats export returned no data rows"; exit 1; }
           echo "Downloaded $rows rows"
+
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
@@ -74,29 +72,28 @@ jobs:
 
       - name: Publish to R2
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID || secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY || secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           AWS_REQUEST_CHECKSUM_CALCULATION: when_required
           AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          BUCKET: ${{ vars.R2_BUCKET || 'sirens-bi' }}
-          R2_ENDPOINT: ${{ vars.R2_ENDPOINT || format('https://{0}.eu.r2.cloudflarestorage.com', secrets.CLOUDFLARE_ACCOUNT_ID) }}
+          WEB_BUCKET: ${{ vars.CLOUDFLARE_R2_BI_WEB_BUCKET || vars.CLOUDFLARE_R2_WEB_BUCKET || vars.R2_WEB_BUCKET || vars.CLOUDFLARE_R2_BUCKET || vars.R2_BUCKET || 'sirens-bi-web' }}
+          R2_ENDPOINT: ${{ vars.CLOUDFLARE_R2_ENDPOINT || vars.R2_ENDPOINT || format('https://{0}.eu.r2.cloudflarestorage.com', secrets.CLOUDFLARE_ACCOUNT_ID) }}
         run: |
           set -euo pipefail
-          test -n "${AWS_ACCESS_KEY_ID:-}" || { echo "R2_ACCESS_KEY_ID secret is not set"; exit 1; }
+          test -n "${AWS_ACCESS_KEY_ID:-}" || { echo "R2_ACCESS_KEY_ID or CLOUDFLARE_R2_ACCESS_KEY_ID secret is not set"; exit 1; }
           test -n "${ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID secret is not set"; exit 1; }
+
 
           # Fail with the actual reason rather than sync's "fatal error" wall of
           # text: a bad key, a missing bucket and the wrong jurisdiction all
           # surface here as one clear line.
-          aws s3 ls "s3://${BUCKET}" --endpoint-url "$R2_ENDPOINT" >/dev/null \
-            || { echo "Cannot read bucket '${BUCKET}' at ${R2_ENDPOINT}. Check that R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3 pair (not the R2 token value) with Object Read & Write, that CLOUDFLARE_ACCOUNT_ID matches, and that the endpoint jurisdiction matches the bucket's."; exit 1; }
+          aws s3 ls "s3://${WEB_BUCKET}" --endpoint-url "$R2_ENDPOINT" >/dev/null \
+            || { echo "Cannot read bucket '${WEB_BUCKET}' at ${R2_ENDPOINT}. Check that R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3 pair (not the R2 token value) with Object Read & Write, that CLOUDFLARE_ACCOUNT_ID matches, and that the endpoint jurisdiction matches the bucket's."; exit 1; }
 
-          # --delete keeps the bucket a mirror of the build: Evidence renames
-          # content-hashed assets every release, so without it the bucket only
-          # ever grows. Content types are not set here on purpose - the Worker
-          # derives them from the extension, which is the one place that can get
-          # .wasm right regardless of what the uploader guessed.
-          aws s3 sync build "s3://${BUCKET}" --endpoint-url "$R2_ENDPOINT" \
+          # Publish compiled site to web bucket
+          aws s3 sync build "s3://${WEB_BUCKET}" --endpoint-url "$R2_ENDPOINT" \
             --delete --no-progress
+
+

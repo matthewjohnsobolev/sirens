@@ -1,6 +1,4 @@
-import csv
 import datetime
-import io
 import logging
 from typing import Any, Dict, Optional, Union
 from functools import partial
@@ -9,6 +7,7 @@ import psycopg2
 import redis
 
 from config import REDIS_URL, DATABASE_URL, REGION_CONFIG, real_channels, test_channels
+
 
 log = logging.getLogger(__name__)
 
@@ -53,19 +52,20 @@ def ensure_pg_tables() -> None:
                 # One snapshot per channel per day; the UNIQUE constraint is what
                 # lets the snapshot re-run safely (INSERT ... ON CONFLICT DO UPDATE).
                 cur.execute("""
-                    CREATE TABLE IF NOT EXISTS channel_stats (
+                    CREATE TABLE IF NOT EXISTS subscribers (
                         id SERIAL PRIMARY KEY,
                         channel_key TEXT NOT NULL,
                         channel_id BIGINT NOT NULL,
-                        participants INTEGER NOT NULL,
+                        subscribers INTEGER NOT NULL,
                         date DATE NOT NULL,
                         collected_at TIMESTAMP NOT NULL,
                         UNIQUE (channel_key, date)
                     )
                 """)
                 cur.execute(
-                    "CREATE INDEX IF NOT EXISTS channel_stats_date_idx ON channel_stats (date)"
+                    "CREATE INDEX IF NOT EXISTS subscribers_date_idx ON subscribers (date)"
                 )
+
             conn.commit()
     except Exception:
         log.exception("Failed to ensure the database schema exists")
@@ -73,37 +73,9 @@ def ensure_pg_tables() -> None:
 
     log.info("PostgreSQL schema ready")
 
-STATS_CSV_COLUMNS = ("channel_key", "display_name", "date", "participants")
-
-
-def export_stats_csv() -> str:
-    """The whole channel_stats table as CSV, oldest day first.
-
-    Assembled in Python rather than with COPY so the human-readable city names
-    from REGION_CONFIG can be folded in - the dashboard has no business knowing
-    about internal channel keys. A year of data is ~13k rows, so the cost of
-    building it in memory is nil.
-    """
-    with get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT channel_key, date, participants FROM channel_stats "
-                "ORDER BY date, channel_key"
-            )
-            rows = cur.fetchall()
-
-    buffer = io.StringIO()
-    writer = csv.writer(buffer, lineterminator="\n")
-    writer.writerow(STATS_CSV_COLUMNS)
-
-    for channel_key, date, participants in rows:
-        display_name = REGION_CONFIG.get(channel_key, {}).get('display_name', channel_key)
-        writer.writerow([channel_key, display_name, date.isoformat(), participants])
-
-    return buffer.getvalue()
-
 
 THREAT_TABLES = {"alerts", "explosions", "shellings"}
+
 
 def _validate_table(table_name: str) -> None:
     if table_name not in THREAT_TABLES:

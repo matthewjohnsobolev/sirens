@@ -15,16 +15,25 @@ SUCCESS_MARKER = 'Ваше повідомлення успішно надісл�
 def test_index_route(client):
     response = client.get('/')
     assert response.status_code == 200
+    assert response.headers.get('Cache-Control') == 'no-cache, must-revalidate'
 
 
 def test_api_route(client):
-    payload = {"kyiv": {"alert": {"status": 1}}}
+    payload = {"kyiv": {"alert": {"status": True}}}
     with patch('web.server.get_all_threats_data', return_value=payload) as mock_data:
         response = client.get('/api')
 
     assert response.status_code == 200
     assert response.json == payload
+    assert response.headers.get('Cache-Control') == 'public, max-age=2, s-maxage=2'
     mock_data.assert_called_once_with()
+
+
+def test_static_caching_header(client):
+    response = client.get('/static/ukraine.geojson')
+    if response.status_code == 200:
+        assert response.headers.get('Cache-Control') == 'public, max-age=2592000, immutable'
+
 
 def test_stats_csv_route_not_found(client):
     assert client.get('/bi/stats.csv').status_code == 404

@@ -184,23 +184,13 @@ def ensure_pg_tables() -> None:
                         ) THEN
                             ALTER TABLE subscribers ADD COLUMN date DATE;
                         END IF;
-                        IF EXISTS (
-                            SELECT 1 FROM pg_constraint WHERE conname = 'subscribers_channel_key_date_key'
-                        ) THEN
-                            ALTER TABLE subscribers DROP CONSTRAINT subscribers_channel_key_date_key;
-                        END IF;
-                        IF EXISTS (
-                            SELECT 1 FROM pg_constraint WHERE conname = 'subscribers_channel_key_collected_at_key'
-                        ) THEN
-                            ALTER TABLE subscribers DROP CONSTRAINT subscribers_channel_key_collected_at_key;
-                        END IF;
-                        IF EXISTS (
-                            SELECT 1 FROM pg_constraint WHERE conname = 'channel_stats_channel_key_date_key'
-                        ) THEN
-                            ALTER TABLE subscribers DROP CONSTRAINT channel_stats_channel_key_date_key;
-                        END IF;
+                        ALTER TABLE subscribers DROP CONSTRAINT IF EXISTS subscribers_channel_key_date_key;
+                        ALTER TABLE subscribers DROP CONSTRAINT IF EXISTS subscribers_channel_key_collected_at_key;
+                        ALTER TABLE subscribers DROP CONSTRAINT IF EXISTS channel_stats_channel_key_date_key;
                         IF NOT EXISTS (
-                            SELECT 1 FROM pg_constraint WHERE conname = 'subscribers_channel_key_time_key'
+                            SELECT 1 FROM pg_constraint 
+                            WHERE conname = 'subscribers_channel_key_time_key'
+                              AND conrelid = 'subscribers'::regclass
                         ) THEN
                             ALTER TABLE subscribers ADD CONSTRAINT subscribers_channel_key_time_key UNIQUE (channel_key, time);
                         END IF;

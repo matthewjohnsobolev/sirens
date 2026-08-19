@@ -67,6 +67,30 @@ def ensure_pg_tables() -> None:
                         ) THEN
                             ALTER TABLE alert_history ADD COLUMN oblast_key TEXT;
                         END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'alert_history' AND column_name = 'time'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN time TEXT;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'alert_history' AND column_name = 'date'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN date DATE;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'alert_history' AND column_name = 'datetime'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN datetime TIMESTAMP;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'alert_history' AND column_name = 'type'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN type TEXT;
+                        END IF;
                         IF EXISTS (
                             SELECT 1 FROM information_schema.columns 
                             WHERE table_name = 'alert_history' AND column_name = 'oblast'
@@ -85,6 +109,20 @@ def ensure_pg_tables() -> None:
                     "CREATE INDEX IF NOT EXISTS alert_history_datetime_idx ON alert_history (datetime DESC)"
                 )
                 cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.tables 
+                            WHERE table_name = 'channel_stats'
+                        ) AND NOT EXISTS (
+                            SELECT 1 FROM information_schema.tables 
+                            WHERE table_name = 'subscribers'
+                        ) THEN
+                            ALTER TABLE channel_stats RENAME TO subscribers;
+                        END IF;
+                    END $$;
+                """)
+                cur.execute("""
                     CREATE TABLE IF NOT EXISTS subscribers (
                         id SERIAL PRIMARY KEY,
                         channel_key TEXT NOT NULL,
@@ -95,18 +133,24 @@ def ensure_pg_tables() -> None:
                         UNIQUE (channel_key, time)
                     )
                 """)
-                cur.execute(
-                    "CREATE INDEX IF NOT EXISTS subscribers_date_idx ON subscribers (date)"
-                )
-                cur.execute(
-                    "CREATE INDEX IF NOT EXISTS subscribers_time_idx ON subscribers (time)"
-                )
                 cur.execute("""
                     DO $$
                     BEGIN
                         IF EXISTS (
                             SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'subscribers' AND column_name = 'participants'
+                        ) AND NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'subscribers' AND column_name = 'subscribers'
+                        ) THEN
+                            ALTER TABLE subscribers RENAME COLUMN participants TO subscribers;
+                        END IF;
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns
                             WHERE table_name = 'subscribers' AND column_name = 'collected_at'
+                        ) AND NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'subscribers' AND column_name = 'time'
                         ) THEN
                             ALTER TABLE subscribers RENAME COLUMN collected_at TO time;
                         END IF;
@@ -115,6 +159,30 @@ def ensure_pg_tables() -> None:
                             WHERE table_name = 'subscribers' AND column_name = 'time'
                         ) THEN
                             ALTER TABLE subscribers ADD COLUMN time TIMESTAMP;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'subscribers' AND column_name = 'channel_key'
+                        ) THEN
+                            ALTER TABLE subscribers ADD COLUMN channel_key TEXT;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'subscribers' AND column_name = 'channel_id'
+                        ) THEN
+                            ALTER TABLE subscribers ADD COLUMN channel_id BIGINT;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'subscribers' AND column_name = 'subscribers'
+                        ) THEN
+                            ALTER TABLE subscribers ADD COLUMN subscribers INTEGER;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'subscribers' AND column_name = 'date'
+                        ) THEN
+                            ALTER TABLE subscribers ADD COLUMN date DATE;
                         END IF;
                         IF EXISTS (
                             SELECT 1 FROM pg_constraint WHERE conname = 'subscribers_channel_key_date_key'
@@ -126,6 +194,11 @@ def ensure_pg_tables() -> None:
                         ) THEN
                             ALTER TABLE subscribers DROP CONSTRAINT subscribers_channel_key_collected_at_key;
                         END IF;
+                        IF EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'channel_stats_channel_key_date_key'
+                        ) THEN
+                            ALTER TABLE subscribers DROP CONSTRAINT channel_stats_channel_key_date_key;
+                        END IF;
                         IF NOT EXISTS (
                             SELECT 1 FROM pg_constraint WHERE conname = 'subscribers_channel_key_time_key'
                         ) THEN
@@ -133,6 +206,12 @@ def ensure_pg_tables() -> None:
                         END IF;
                     END $$;
                 """)
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS subscribers_date_idx ON subscribers (date)"
+                )
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS subscribers_time_idx ON subscribers (time)"
+                )
 
             conn.commit()
     except Exception:

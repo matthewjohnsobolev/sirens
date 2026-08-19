@@ -134,6 +134,7 @@ order by 1
     yScale=true
     markers=true
     chartAreaHeight=280
+    echartsOptions={{useUTC: true}}
 />
 
 ## Daily Channel Movement

@@ -27,18 +27,13 @@ from telethon.errors import FloodWaitError
 from telethon.tl.functions.channels import GetFullChannelRequest
 
 from bi import cli
-
 from config import (
     api_id, api_hash, SESSION_PATH, DATABASE_URL, SENTRY_DSN, VERSION,
     REGION_CONFIG, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, CLOUDFLARE_ACCOUNT_ID,
     R2_DATA_BUCKET, R2_BUCKET, R2_ENDPOINT, GITHUB_PAT, GITHUB_REPO
 )
-
 from web.db import ensure_pg_tables
 
-
-# stdout only: deploy/bi.sh owns logs/bi.log, and a second writer with its own
-# rotation would interleave badly with the shell's output.
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s %(message)s",
@@ -48,32 +43,17 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 logging.getLogger("telethon").setLevel(logging.WARNING)
 
-# The alerts worker holds sirens.session. One session file cannot serve two
-# running processes: that means SQLite lock contention and a real risk of
-# AuthKeyDuplicatedError, which alerts treats as fatal.
 SESSION_NAME = "bi"
-
-# The source channel is somebody else's: we read alerts from it, it is not part
-# of the network we publish to.
 SOURCE_KEY = "source"
-
 MAX_ATTEMPTS = 3
-CHANNEL_DELAY = 1  # seconds; pacing 35 calls costs nothing on a job with no deadline
-
-# A FloodWait this long is Telegram asking for hours, not seconds. Waiting it
-# out would hold deploy/bi.sh's lock past the next night's run, so one bad
-# evening would silently swallow several days.
-MAX_FLOOD_WAIT = 300  # seconds
-
-# A day's total is only meaningful next to the days around it. Below this share
-# of the network the run is discarded rather than stored: a gap in the chart is
-# obvious, whereas a short day reads as subscribers walking away.
+CHANNEL_DELAY = 1
+MAX_FLOOD_WAIT = 300
 MIN_COVERAGE = 0.9
 
 INSERT_SQL = """
-    INSERT INTO subscribers (channel_key, channel_id, subscribers, date, collected_at)
+    INSERT INTO subscribers (channel_key, channel_id, subscribers, date, time)
     VALUES ($1, $2, $3, $4, $5)
-    ON CONFLICT (channel_key, collected_at) DO UPDATE
+    ON CONFLICT (channel_key, time) DO UPDATE
         SET subscribers = EXCLUDED.subscribers,
             channel_id   = EXCLUDED.channel_id,
             date         = EXCLUDED.date
@@ -87,12 +67,6 @@ class ChannelCount(NamedTuple):
 
 
 def targets(channels: dict) -> list[tuple[str, int]]:
-    """The (key, id) pairs worth counting.
-
-    Drops the foreign source channel, and counts an id once however many keys
-    point at it - in dev mode nearly every city shares one test channel, which
-    would otherwise report a network thirty times its real size.
-    """
     seen: set[int] = set()
     picked: list[tuple[str, int]] = []
 
@@ -106,12 +80,6 @@ def targets(channels: dict) -> list[tuple[str, int]]:
 
 
 async def fetch_subscribers(client: TelegramClient, channel_id: int) -> int | None:
-    """Subscriber count for one channel, or None if it could not be read.
-
-    Only a short FloodWaitError is retried: it says exactly how long to wait and
-    then succeeds. Anything else (channel gone, lost admin rights) will not fix
-    itself within seconds, and the snapshot runs again tomorrow anyway.
-    """
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             full = await client(GetFullChannelRequest(channel=channel_id))
@@ -140,7 +108,6 @@ fetch_participants = fetch_subscribers
 
 
 async def collect(client: TelegramClient, channels: dict) -> list[ChannelCount]:
-    """Count every network channel. One unreadable channel does not stop the run."""
     counts: list[ChannelCount] = []
 
     for channel_key, channel_id in targets(channels):
@@ -166,20 +133,15 @@ async def store(pool, counts: list[ChannelCount]) -> None:
 
 
 SELECT_ALL_STATS_SQL = """
-    SELECT channel_key, collected_at, date, subscribers
+    SELECT channel_key, time, date, subscribers
     FROM subscribers
-    ORDER BY collected_at, channel_key
+    ORDER BY time, channel_key
 """
 
 STATS_CSV_COLUMNS = ("channel_key", "display_name", "date", "subscribers")
 
 
 async def export_stats_csv(pool) -> str:
-    """The whole subscribers table as CSV, oldest day first.
-
-    Assembled in Python so the human-readable city names from REGION_CONFIG
-    can be folded in.
-    """
     async with pool.acquire() as conn:
         rows = await conn.fetch(SELECT_ALL_STATS_SQL)
 
@@ -189,7 +151,7 @@ async def export_stats_csv(pool) -> str:
 
     for record in rows:
         channel_key = record["channel_key"]
-        date_val = record["collected_at"] if "collected_at" in record else record["date"]
+        date_val = record["time"] if "time" in record else record["date"]
         subscribers = record["subscribers"]
         display_name = REGION_CONFIG.get(channel_key, {}).get("display_name", channel_key)
         if isinstance(date_val, datetime.datetime):
@@ -207,7 +169,6 @@ export_subscribers_csv = export_stats_csv
 
 
 def upload_to_r2(csv_content: str) -> None:
-    """Uploads the consolidated CSV to the Cloudflare R2 data bucket."""
     if not (R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and (R2_ENDPOINT or CLOUDFLARE_ACCOUNT_ID)):
         log.warning("R2 credentials not set; skipping upload to R2")
         return
@@ -232,10 +193,7 @@ def upload_to_r2(csv_content: str) -> None:
     log.info("Successfully uploaded subscribers CSV to R2 data bucket %s", bucket)
 
 
-
-
 def trigger_dashboard_build() -> None:
-    """Triggers GitHub Actions workflow_dispatch to build the dashboard immediately."""
     if not GITHUB_PAT or not GITHUB_REPO:
         log.info("GITHUB_PAT or GITHUB_REPO not set; skipping dashboard build trigger")
         return
@@ -258,15 +216,11 @@ def trigger_dashboard_build() -> None:
 
 
 async def run_snapshot(client: TelegramClient, pool, channels: dict) -> int:
-    """Collect and store, returning the process exit code."""
     expected = len(targets(channels))
 
     counts = await collect(client, channels)
 
     if not counts:
-        # Not a quiet no-op: it means the session died or Telegram is
-        # unreachable, and the dashboard would keep showing yesterday's numbers
-        # as if they were today's.
         log.error("Snapshot collected no channels at all")
         return 1
 
@@ -287,13 +241,11 @@ async def run_snapshot(client: TelegramClient, pool, channels: dict) -> int:
         len(counts), expected, total
     )
 
-
     csv_data = await export_stats_csv(pool)
     await asyncio.to_thread(upload_to_r2, csv_data)
     await asyncio.to_thread(trigger_dashboard_build)
 
     return 0
-
 
 
 async def main() -> int:
@@ -314,11 +266,6 @@ async def main() -> int:
     session_file = os.path.join(SESSION_PATH, SESSION_NAME)
 
     try:
-        # Entering the client logs in, prompting for a phone number and code when
-        # the session is missing - that is how ./deploy/setup.sh bi creates it.
-        # Under cron there is no stdin, so the prompt raises instead of hanging.
-        # Telegram comes before the database deliberately: creating the session
-        # must not also require a healthy db container.
         async with TelegramClient(session_file, api_id, api_hash) as client:
             await asyncio.to_thread(ensure_pg_tables)
             pool = await asyncpg.create_pool(DATABASE_URL)

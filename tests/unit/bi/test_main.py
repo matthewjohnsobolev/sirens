@@ -150,7 +150,7 @@ async def test_store_overwrites_the_same_day_instead_of_duplicating(bi_pool):
     await store(pool, [ChannelCount('kyiv', 111, 10)])
 
     sql = conn.executemany.await_args.args[0]
-    assert "ON CONFLICT (channel_key, collected_at) DO UPDATE" in sql
+    assert "ON CONFLICT (channel_key, time) DO UPDATE" in sql
 
 
 @pytest.mark.asyncio
@@ -218,7 +218,7 @@ async def test_export_stats_csv(bi_pool):
     pool, conn = bi_pool
     now = datetime.datetime(2026, 8, 19, 12, 0, 0)
     conn.fetch.return_value = [
-        {"channel_key": "kyiv", "collected_at": now, "date": now.date(), "subscribers": 100},
+        {"channel_key": "kyiv", "time": now, "date": now.date(), "subscribers": 100},
         {"channel_key": "custom", "date": now.date(), "subscribers": 50},
     ]
 

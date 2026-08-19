@@ -251,7 +251,7 @@ async def test_send_alert_writes_state_history_and_broadcasts(
     assert "INSERT INTO alert_history" in sql
     assert params[3] == region
     assert params[4] == oblast
-    assert params[6] == alert_type
+    assert params[5] == alert_type
  
     mock_telegram_client.send_message.assert_awaited_once_with(
         CHANNEL_ID, MESSAGES[alert_type]

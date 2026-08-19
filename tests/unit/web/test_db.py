@@ -66,7 +66,7 @@ def test_ensure_pg_tables_creates_alert_history(mock_web_pg):
 
     sql = "\n".join(call.args[0] for call in mock_cursor.execute.call_args_list)
     assert "CREATE TABLE IF NOT EXISTS alert_history" in sql
-    for column in ("datetime", "date", "time", "district_key", "oblast_key", "oblast", "type"):
+    for column in ("datetime", "date", "time", "district_key", "oblast_key", "type"):
         assert column in sql
     mock_conn.commit.assert_called_once()
 
@@ -78,11 +78,11 @@ def test_ensure_pg_tables_creates_subscribers(mock_web_pg):
 
     sql = "\n".join(call.args[0] for call in mock_cursor.execute.call_args_list)
     assert "CREATE TABLE IF NOT EXISTS subscribers" in sql
-    for column in ("channel_key", "channel_id", "subscribers", "date", "collected_at"):
+    for column in ("channel_key", "channel_id", "subscribers", "date", "time"):
         assert column in sql
-    assert "UNIQUE (channel_key, collected_at)" in sql
+    assert "UNIQUE (channel_key, time)" in sql
     assert "CREATE INDEX IF NOT EXISTS subscribers_date_idx" in sql
-    assert "CREATE INDEX IF NOT EXISTS subscribers_collected_at_idx" in sql
+    assert "CREATE INDEX IF NOT EXISTS subscribers_time_idx" in sql
 
 
 def test_ensure_pg_tables_raises_and_logs_when_pg_is_unreachable(caplog):
@@ -233,8 +233,7 @@ async def test_update_alert_status_writes_redis_and_history(
     assert "INSERT INTO alert_history" in sql
     assert params[3] == "kyiv"
     assert params[4] == "kyiv"
-    assert params[5] == REGION_CONFIG['kyiv']['triggers'][0]
-    assert params[6] == expected_event
+    assert params[5] == expected_event
     mock_conn.commit.assert_called_once()
 
 

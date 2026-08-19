@@ -69,24 +69,60 @@ Aggregate subscriber trajectory across all monitored alert channels over time.
 with per_snapshot as (
     select
         date,
+        date::date as day_date,
         sum(subscribers) as total
     from sirens.subscribers
-    group by 1
+    group by 1, 2
+),
+latest_per_day as (
+    select
+        day_date as date,
+        total
+    from (
+        select
+            day_date,
+            total,
+            row_number() over (partition by day_date order by date desc) as rn
+        from per_snapshot
+    )
+    where rn = 1
+),
+view_24h as (
+    select
+        date,
+        total
+    from per_snapshot
+    where date >= (select max(date) from per_snapshot) - interval '24 hours'
+),
+view_7d as (
+    select
+        date::timestamp as date,
+        total
+    from latest_per_day
+    where date >= (select max(date) from latest_per_day) - interval '7 days'
+),
+view_30d as (
+    select
+        date::timestamp as date,
+        total
+    from latest_per_day
+    where date >= (select max(date) from latest_per_day) - interval '30 days'
 )
 select
     date,
     total
-from per_snapshot
-where
-    date >= (select max(date) from per_snapshot) -
-    case
-        when '${inputs.timeframe.value}' = '24h' or '${inputs.timeframe}' = '24h'
-            then interval '24 hours'
-        when '${inputs.timeframe.value}' = '30d' or '${inputs.timeframe}' = '30d'
-            then interval '30 days'
-        else
-            interval '7 days'
-    end
+from (
+    select * from view_24h
+    where '${inputs.timeframe.value}' = '24h' or '${inputs.timeframe}' = '24h'
+    union all
+    select * from view_7d
+    where ('${inputs.timeframe.value}' = '7d' or '${inputs.timeframe}' = '7d')
+       or ('${inputs.timeframe.value}' is null and '${inputs.timeframe}' is null)
+       or ('${inputs.timeframe.value}' not in ('24h', '30d') and '${inputs.timeframe}' not in ('24h', '30d'))
+    union all
+    select * from view_30d
+    where '${inputs.timeframe.value}' = '30d' or '${inputs.timeframe}' = '30d'
+)
 order by 1
 ```
 
@@ -103,41 +139,58 @@ order by 1
 ## Daily Channel Movement
 
 ```sql movement_window
-with recent as (
-    select distinct date
+with current_run as (
+    select max(date) as current_time
     from sirens.subscribers
-    order by 1 desc
-    limit 2
+),
+previous_day_run as (
+    select coalesce(
+        (select max(date) from sirens.subscribers where date::date < (select current_time::date from current_run)),
+        (select min(date) from sirens.subscribers)
+    ) as prev_time
+    from current_run
 )
 select
-    strftime(min(date), '%B %-d, %Y %H:%M') as earlier,
-    strftime(max(date), '%B %-d, %Y %H:%M') as later
-from recent
+    strftime(previous_day_run.prev_time, '%B %-d, %Y %H:%M') as earlier,
+    strftime(current_run.current_time, '%B %-d, %Y %H:%M') as later
+from current_run, previous_day_run
 ```
 
 Net subscriber change per channel between {movement_window[0].earlier} and {movement_window[0].later}.
 
 ```sql movement
-with counts as (
-    select display_name, date, subscribers
+with current_run as (
+    select max(date) as current_time
     from sirens.subscribers
 ),
-recent as (
-    select distinct date from counts order by date desc limit 2
+previous_day_run as (
+    select coalesce(
+        (select max(date) from sirens.subscribers where date::date < (select current_time::date from current_run)),
+        (select min(date) from sirens.subscribers)
+    ) as prev_time
+    from current_run
+),
+later_counts as (
+    select display_name, subscribers
+    from sirens.subscribers, current_run
+    where date = current_run.current_time
+),
+earlier_counts as (
+    select display_name, subscribers
+    from sirens.subscribers, previous_day_run
+    where date = previous_day_run.prev_time
 )
 select
     later.display_name,
-    later.subscribers - earlier.subscribers as change,
+    later.subscribers - coalesce(earlier.subscribers, later.subscribers) as change,
     case
-        when later.subscribers > earlier.subscribers then 'Gained'
-        when later.subscribers < earlier.subscribers then 'Lost'
+        when later.subscribers > coalesce(earlier.subscribers, later.subscribers) then 'Gained'
+        when later.subscribers < coalesce(earlier.subscribers, later.subscribers) then 'Lost'
         else 'Unchanged'
     end as direction
-from counts later
-join counts earlier
-      on earlier.display_name = later.display_name
-     and earlier.date = (select min(date) from recent)
-where later.date = (select max(date) from recent)
+from later_counts later
+left join earlier_counts earlier
+       on earlier.display_name = later.display_name
 order by change desc, later.display_name
 ```
 

@@ -6,41 +6,49 @@ and broadcasts them to Sirens network channels.
 """
 
 import asyncio
+import datetime
 import logging
 import os
 import re
 import sys
-import datetime
 from logging.handlers import RotatingFileHandler
 
-import redis.asyncio as redis
 import asyncpg
+import redis.asyncio as redis
 import requests
 import sentry_sdk
 from sentry_sdk.integrations.logging import LoggingIntegration
-
 from telethon import TelegramClient, events
 from telethon.errors import (
-    FloodWaitError,
     AuthKeyDuplicatedError,
     AuthKeyNotFound,
+    FloodWaitError,
     UnauthorizedError,
 )
 from telethon.tl.functions.channels import EditPhotoRequest
 from telethon.tl.types import (
-    InputChatUploadedPhoto, 
-    UpdateNewChannelMessage, 
-    MessageService, 
-    MessageActionChatEditPhoto
+    InputChatUploadedPhoto,
+    MessageActionChatEditPhoto,
+    MessageService,
+    UpdateNewChannelMessage,
 )
 
 from alerts import cli
-
 from config import (
-    api_id, api_hash, REGION_CONFIG, MESSAGES, IMAGES_PATH,
-    LOGS_PATH, SESSION_PATH,
-    REDIS_URL, DATABASE_URL, HEALTHCHECKS_PING_URL_ALERTS, SENTRY_DSN, VERSION
+    DATABASE_URL,
+    HEALTHCHECKS_PING_URL_ALERTS,
+    IMAGES_PATH,
+    LOGS_PATH,
+    MESSAGES,
+    REDIS_URL,
+    REGION_CONFIG,
+    SENTRY_DSN,
+    SESSION_PATH,
+    VERSION,
+    api_hash,
+    api_id,
 )
+from web.db import ensure_pg_tables, rehydrate_state_from_db
 
 os.makedirs(LOGS_PATH, exist_ok=True)
 LOG_FILE = os.path.join(LOGS_PATH, "alerts.log")
@@ -63,7 +71,6 @@ redis_client = None
 pg_pool = None
 client: TelegramClient = None
 
-
 CHANNEL_PHOTO_PATHS = {
     "air_raid_alert": f"{IMAGES_PATH}/air-raid-alert.png",
     "air_raid_alert_cancelled": f"{IMAGES_PATH}/air-raid-alert-cancelled.png",
@@ -73,9 +80,6 @@ CHANNEL_PHOTO_PATHS = {
 
 
 def spawn_tracked_task(coro, description: str):
-    """Fire-and-forget a coroutine, keeping a strong reference so it is not garbage
-    collected mid-flight, and logging failures instead of letting them disappear
-    into a task result nobody retrieves."""
     task = asyncio.create_task(coro)
     running_tasks.add(task)
 
@@ -138,19 +142,15 @@ async def process_channel_photo_update(channel_id, region, alert_type):
 
         try:
             channel_entity = await client.get_entity(channel_id)
-            
             result = await update_channel_photo(channel_entity, file_path)
-            
             await delete_photo_update_service_message(channel_entity, result)
             return
-
         except FloodWaitError as e:
             log.warning(
                 "Photo update rate-limited for %s (attempt %d/%d), retrying in %ds",
                 display_name, attempt, PHOTO_UPDATE_MAX_ATTEMPTS, e.seconds
             )
             await asyncio.sleep(e.seconds)
-
         except Exception:
             log.exception(
                 "Error changing photo for %s (attempt %d/%d)",
@@ -165,29 +165,69 @@ async def process_channel_photo_update(channel_id, region, alert_type):
 
 
 async def _record_alert_state(channel_id: int, region: str, alert_type: str):
-    """Persist the new state to Redis (dedup key + map status) and PG (history)."""
-    await redis_client.set(f"channel_state:{channel_id}", alert_type)
-
-    status = 1 if alert_type in ("air_raid_alert", "threat_of_shelling") else 0
-    oblast = REGION_CONFIG.get(region, {}).get('oblast', region)
+    district_key = region
+    oblast_key = REGION_CONFIG.get(region, {}).get('oblast', region)
+    is_active = alert_type in ("air_raid_alert", "threat_of_shelling")
+    status_str = "true" if is_active else "false"
     now = datetime.datetime.now()
     current_time = now.strftime("%H:%M")
 
-    await redis_client.hset(
-        f"threat:alerts:{oblast}",
-        mapping={
-            "status": status,
-            "time": current_time,
-            "source": "telegram"
-        }
-    )
+    if redis_client:
+        try:
+            await redis_client.set(f"channel_state:{channel_id}", alert_type)
+
+            await redis_client.hset(
+                f"threat:alerts:city:{district_key}",
+                mapping={
+                    "status": status_str,
+                    "time": current_time,
+                    "source": "telegram",
+                    "type": alert_type,
+                }
+            )
+
+            active_key = f"threat:alerts:active:{oblast_key}"
+            if is_active:
+                await redis_client.sadd(active_key, district_key)
+            else:
+                await redis_client.srem(active_key, district_key)
+
+            active_count = await redis_client.scard(active_key)
+            try:
+                is_oblast_active = int(active_count or 0) > 0
+            except (ValueError, TypeError):
+                is_oblast_active = bool(active_count)
+
+            await redis_client.hset(
+                f"threat:alerts:{oblast_key}",
+                mapping={
+                    "status": "true" if is_oblast_active else "false",
+                    "time": current_time,
+                    "source": "telegram",
+                }
+            )
+
+            if "shelling" in alert_type:
+                await redis_client.hset(
+                    f"threat:shellings:{district_key}",
+                    mapping={
+                        "status": status_str,
+                        "time": current_time,
+                        "source": "telegram",
+                    }
+                )
+        except Exception:
+            log.exception("Failed to update Redis state for %s", district_key)
 
     if pg_pool:
         try:
+            city_ua = REGION_CONFIG.get(region, {}).get('triggers', [region])[0]
             async with pg_pool.acquire() as conn:
                 await conn.execute(
-                    "INSERT INTO alert_history (datetime, date, time, oblast, type) VALUES ($1, $2, $3, $4, $5)",
-                    now, now.date(), current_time, oblast, alert_type
+                    """INSERT INTO alert_history 
+                       (datetime, date, time, district_key, oblast_key, oblast, type) 
+                       VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                    now, now.date(), current_time, district_key, oblast_key, city_ua, alert_type
                 )
         except Exception as e:
             log.error("Failed to insert alert history into PG: %s", e)
@@ -210,17 +250,16 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
                     alert_type, display_name
                 )
                 return
-
-            await _record_alert_state(channel_id, region, alert_type)
         except Exception:
-            # Redis only backs dedup and the map; it must never block the broadcast.
             log.exception(
-                "Redis unavailable for %s; broadcasting %s without dedup",
+                "Redis unavailable for %s; broadcasting %s without dedup check",
                 display_name, alert_type
             )
 
+    send_succeeded = False
     try:
         await client.send_message(channel_id, message_text)
+        send_succeeded = True
         if alert_type == "air_raid_alert":
             log.info("Air raid alert sent to %s", display_name)
         elif alert_type == "air_raid_alert_cancelled":
@@ -235,39 +274,33 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
         else:
             log.exception("Failed to send %s to %s", alert_type.replace('_', ' '), display_name)
 
-    if CHANNEL_PHOTO_PATHS.get(alert_type):
-        spawn_tracked_task(
-            process_channel_photo_update(channel_id, region, alert_type),
-            f"Photo update for {display_name}"
-        )
-    else:
-        log.debug("No photo mapping for '%s', skipping photo update", alert_type)
+    if send_succeeded:
+        await _record_alert_state(channel_id, region, alert_type)
+
+        if CHANNEL_PHOTO_PATHS.get(alert_type):
+            spawn_tracked_task(
+                process_channel_photo_update(channel_id, region, alert_type),
+                f"Photo update for {display_name}"
+            )
+        else:
+            log.debug("No photo mapping for '%s', skipping photo update", alert_type)
 
 
-# A post that clears one place while the alert runs on elsewhere lists those
-# other places at the end:
-#
-#   🟡 08:01 Відбій тривоги в м. Нікополь та Нікопольська територіальна громада.
-#   Зверніть увагу, тривога ще триває у:
-#   - Дніпропетровська область
-#   - Нікопольський район
-#
-# That trailing list is the opposite of the announcement: the alert is still on
-# there. Matched as if it were part of the announcement, one city's all-clear
-# reaches every channel the list names — above, the whole of Dnipropetrovsk
-# oblast is told the alert is over while it is still running.
 ONGOING_NOTICE_RE = re.compile(r"^[^\n]*ще трива[^\n]*$", re.MULTILINE)
 
 
 def strip_ongoing_notice(message_text: str) -> str:
-    """Return the part of the post that announces the event, dropping any
-    trailing "тривога ще триває у: ..." note about where it is still running."""
+    if not message_text:
+        return ""
     notice = ONGOING_NOTICE_RE.search(message_text)
     return message_text[:notice.start()] if notice else message_text
 
 
 def build_message_handler(region_channels: dict):
     async def handle_incoming_message(event):
+        if not event.message or not getattr(event.message, 'message', None):
+            return
+
         message_text = strip_ongoing_notice(event.message.message)
 
         for region_key, region_config in REGION_CONFIG.items():
@@ -305,8 +338,8 @@ def build_message_handler(region_channels: dict):
 FATAL_SESSION_ERRORS = (AuthKeyDuplicatedError, AuthKeyNotFound, UnauthorizedError)
 TRANSIENT_CONNECTION_ERRORS = (OSError,)
 
-HEALTHCHECK_PING_INTERVAL = 60  # seconds; pair with a ~3min period on the healthchecks.io check
-HEALTHCHECK_PING_TIMEOUT = 10  # seconds
+HEALTHCHECK_PING_INTERVAL = 60
+HEALTHCHECK_PING_TIMEOUT = 10
 
 
 def _ping_healthcheck(suffix: str = "") -> None:
@@ -352,6 +385,12 @@ async def main():
         pg_pool = await asyncpg.create_pool(DATABASE_URL)
     except Exception as e:
         log.error("Failed to connect to PostgreSQL: %s", e)
+
+    try:
+        await asyncio.to_thread(ensure_pg_tables)
+        await asyncio.to_thread(rehydrate_state_from_db)
+    except Exception as e:
+        log.error("Failed database initialization / rehydration: %s", e)
 
     region_channels, source_channel = cli.get_mode_config(args)
     os.makedirs(SESSION_PATH, exist_ok=True)

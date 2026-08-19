@@ -1,15 +1,20 @@
+"""
+Database access and state management for Sirens.
+Handles PostgreSQL schema/storage and Redis threat state caching.
+"""
+
 import datetime
 import logging
-from typing import Any, Dict, Optional, Union
 from functools import partial
+from typing import Any, Dict, Optional, Union
 
 import psycopg2
 import redis
 
-from config import REDIS_URL, DATABASE_URL, REGION_CONFIG, real_channels, test_channels
-
+from config import DATABASE_URL, REDIS_URL, REGION_CONFIG, real_channels, test_channels
 
 log = logging.getLogger(__name__)
+
 
 def get_region_by_channel_id(channel_id: int) -> Optional[str]:
     for name, cid in real_channels.items():
@@ -20,24 +25,21 @@ def get_region_by_channel_id(channel_id: int) -> Optional[str]:
             return name
     return None
 
+
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+
 
 def get_pg_conn() -> psycopg2.extensions.connection:
     return psycopg2.connect(DATABASE_URL)
 
-SCHEMA_LOCK_KEY = 8110921  # arbitrary, shared by every process that runs this DDL
+
+SCHEMA_LOCK_KEY = 8110921
 
 
 def ensure_pg_tables() -> None:
     try:
         with get_pg_conn() as conn:
             with conn.cursor() as cur:
-                # CREATE TABLE IF NOT EXISTS is not atomic against a concurrent
-                # creator: both sessions pass the existence check, then one fails
-                # creating the sequence ("duplicate key ... pg_class_relname_nsp_index").
-                # Several gunicorn workers plus the bi job all call this, so take
-                # an advisory lock first and make check-and-create one serialized
-                # step. The lock is released when the transaction ends.
                 cur.execute("SELECT pg_advisory_xact_lock(%s)", (SCHEMA_LOCK_KEY,))
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS alert_history (
@@ -45,12 +47,44 @@ def ensure_pg_tables() -> None:
                         datetime TIMESTAMP NOT NULL,
                         date DATE NOT NULL,
                         time TEXT NOT NULL,
-                        oblast TEXT NOT NULL,
+                        district_key TEXT,
+                        oblast_key TEXT,
+                        oblast TEXT,
                         type TEXT NOT NULL
                     )
                 """)
-                # One snapshot per channel per run; the UNIQUE constraint is what
-                # lets the snapshot re-run safely (INSERT ... ON CONFLICT DO UPDATE).
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'alert_history' AND column_name = 'district_key'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN district_key TEXT;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'alert_history' AND column_name = 'oblast_key'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN oblast_key TEXT;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'alert_history' AND column_name = 'oblast'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN oblast TEXT;
+                        END IF;
+                    END $$;
+                """)
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS alert_history_district_dt_idx ON alert_history (district_key, datetime DESC)"
+                )
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS alert_history_oblast_dt_idx ON alert_history (oblast_key, datetime DESC)"
+                )
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS alert_history_datetime_idx ON alert_history (datetime DESC)"
+                )
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS subscribers (
                         id SERIAL PRIMARY KEY,
@@ -100,55 +134,66 @@ def _validate_table(table_name: str) -> None:
         raise ValueError(f"Invalid threat table: {table_name}")
 
 
-def _get_threat_field(table_name: str, oblast: str, field_name: str) -> Union[int, str]:
+def _normalize_status(val: Any) -> bool:
+    if val is None:
+        return False
+    return str(val).lower() in ['true', '1', 'active']
+
+
+def _get_threat_field(table_name: str, target: str, field_name: str) -> Union[bool, str]:
     _validate_table(table_name)
-    key = f"threat:{table_name}:{oblast}"
+    key = f"threat:{table_name}:{target}"
     val = redis_client.hget(key, field_name)
     if field_name == "status":
-        if val is None:
-            return 0
-        return 1 if str(val).lower() in ['true', '1', 'active'] else 0
+        return _normalize_status(val)
     return str(val) if val is not None else "None"
 
 
-def get_threat_status(table_name: str, oblast: str) -> int:
-    return int(_get_threat_field(table_name, oblast, "status"))
+def get_threat_status(table_name: str, target: str) -> bool:
+    return bool(_get_threat_field(table_name, target, "status"))
 
 
-def get_threat_time(table_name: str, oblast: str) -> str:
-    return str(_get_threat_field(table_name, oblast, "time"))
+def get_threat_time(table_name: str, target: str) -> str:
+    return str(_get_threat_field(table_name, target, "time"))
 
 
-def get_threat_source(table_name: str, oblast: str) -> str:
-    return str(_get_threat_field(table_name, oblast, "source"))
+def get_threat_source(table_name: str, target: str) -> str:
+    return str(_get_threat_field(table_name, target, "source"))
 
 
-def update_threat_status(table_name: str, oblast: str, status: int = 1, time_val: Optional[str] = None, source_val: Optional[str] = None) -> None:
+def update_threat_status(
+    table_name: str, 
+    target: str, 
+    status: Union[bool, int, str] = True, 
+    time_val: Optional[str] = None, 
+    source_val: Optional[str] = None
+) -> None:
     _validate_table(table_name)
-    key = f"threat:{table_name}:{oblast}"
+    key = f"threat:{table_name}:{target}"
     if time_val is None:
         time_val = datetime.datetime.now().strftime("%H:%M")
     
-    updates = {"status": str(status), "time": time_val}
+    st_bool = _normalize_status(status)
+    updates = {"status": "true" if st_bool else "false", "time": time_val}
     if source_val is not None:
         updates["source"] = source_val
         
     redis_client.hset(key, mapping=updates)
 
 
-def reset_threat_status(table_name: str, oblast: str) -> None:
+def reset_threat_status(table_name: str, target: str) -> None:
     _validate_table(table_name)
-    key = f"threat:{table_name}:{oblast}"
+    key = f"threat:{table_name}:{target}"
     redis_client.hset(key, mapping={
-        "status": "0",
+        "status": "false",
         "time": "None",
         "source": "None"
     })
 
 
-update_explosion_status = partial(update_threat_status, "explosions", status=1)
+update_explosion_status = partial(update_threat_status, "explosions", status=True)
 reset_explosion_status = partial(reset_threat_status, "explosions")
-update_shelling_status = partial(update_threat_status, "shellings", status=1)
+update_shelling_status = partial(update_threat_status, "shellings", status=True)
 reset_shelling_status = partial(reset_threat_status, "shellings")
 
 get_alert_status = partial(get_threat_status, "alerts")
@@ -163,65 +208,146 @@ get_alert_source = partial(get_threat_source, "alerts")
 get_explosion_source = partial(get_threat_source, "explosions")
 get_shelling_source = partial(get_threat_source, "shellings")
 
-def update_explosion_source(oblast: str, link: str) -> None:
-    update_threat_status("explosions", oblast, source_val=link)
 
-def update_shelling_source(oblast: str, link: str) -> None:
-    update_threat_status("shellings", oblast, source_val=link)
+def update_explosion_source(target: str, link: str) -> None:
+    update_threat_status("explosions", target, source_val=link)
+
+
+def update_shelling_source(target: str, link: str) -> None:
+    update_threat_status("shellings", target, source_val=link)
+
 
 def update_alert_source(channel_id: int, link: str) -> None:
-    region_name = get_region_by_channel_id(channel_id)
-    if region_name and region_name in REGION_CONFIG:
-        oblast = REGION_CONFIG[region_name]['oblast']
-        key = f"threat:alerts:{oblast}"
-        redis_client.hset(key, "source", link)
+    district_key = get_region_by_channel_id(channel_id)
+    if district_key and district_key in REGION_CONFIG:
+        oblast_key = REGION_CONFIG[district_key]['oblast']
+        redis_client.hset(f"threat:alerts:{oblast_key}", "source", link)
+        redis_client.hset(f"threat:alerts:city:{district_key}", "source", link)
 
 
 async def update_alert_status(channel_id: int, status: str) -> None:
-    region_name = get_region_by_channel_id(channel_id)
-    if not region_name or region_name not in REGION_CONFIG:
+    district_key = get_region_by_channel_id(channel_id)
+    if not district_key or district_key not in REGION_CONFIG:
         return
         
-    oblast = REGION_CONFIG[region_name]['oblast']
+    oblast_key = REGION_CONFIG[district_key]['oblast']
         
     now = datetime.datetime.now()
     current_time = now.strftime("%H:%M")
     
     event_type = None
-    st_val = None
-    if status == "Повітряна тривога":
-        st_val = 1
-        event_type = "start"
-    elif status == "Відбій повітряної тривоги":
-        st_val = 0
-        event_type = "end"
+    is_active: Optional[bool] = None
+    if status in ("Повітряна тривога", "air_raid_alert"):
+        is_active = True
+        event_type = "air_raid_alert"
+    elif status in ("Відбій повітряної тривоги", "air_raid_alert_cancelled"):
+        is_active = False
+        event_type = "air_raid_alert_cancelled"
+    elif status in ("Загроза артилерійського обстрілу", "threat_of_shelling"):
+        is_active = True
+        event_type = "threat_of_shelling"
+    elif status in ("Відбій загрози артобстрілу", "threat_of_shelling_cancelled"):
+        is_active = False
+        event_type = "threat_of_shelling_cancelled"
 
-    key = f"threat:alerts:{oblast}"
+    city_key = f"threat:alerts:city:{district_key}"
     updates = {"time": current_time}
-    if st_val is not None:
-        updates["status"] = str(st_val)
+    if is_active is not None:
+        updates["status"] = "true" if is_active else "false"
+        if event_type:
+            updates["type"] = event_type
         
-    redis_client.hset(key, mapping=updates)
-    
+    redis_client.hset(city_key, mapping=updates)
+
+    if is_active is not None:
+        active_set_key = f"threat:alerts:active:{oblast_key}"
+        if is_active:
+            redis_client.sadd(active_set_key, district_key)
+        else:
+            redis_client.srem(active_set_key, district_key)
+
+        active_count = redis_client.scard(active_set_key)
+        try:
+            is_active_oblast = int(active_count or 0) > 0
+        except (ValueError, TypeError):
+            is_active_oblast = bool(active_count)
+
+        redis_client.hset(
+            f"threat:alerts:{oblast_key}",
+            mapping={
+                "status": "true" if is_active_oblast else "false",
+                "time": current_time,
+                "source": "telegram"
+            }
+        )
+
     if event_type:
-        city_ua = REGION_CONFIG[region_name]['triggers'][0]
+        city_ua = REGION_CONFIG[district_key]['triggers'][0]
         try:
             with get_pg_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "INSERT INTO alert_history (datetime, date, time, oblast, type) VALUES (%s, %s, %s, %s, %s)",
-                        (now, now.date(), current_time, city_ua, event_type)
+                        """INSERT INTO alert_history 
+                           (datetime, date, time, district_key, oblast_key, oblast, type) 
+                           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                        (now, now.date(), current_time, district_key, oblast_key, city_ua, event_type)
                     )
                 conn.commit()
         except Exception:
-            log.exception("Failed to record alert %s for %s in history", event_type, oblast)
+            log.exception("Failed to record alert %s for %s in history", event_type, district_key)
             raise
 
 
+def rehydrate_state_from_db() -> None:
+    try:
+        with get_pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT DISTINCT ON (COALESCE(district_key, oblast))
+                        COALESCE(district_key, '') as district_key,
+                        COALESCE(oblast_key, '') as oblast_key,
+                        type,
+                        time,
+                        datetime
+                    FROM alert_history
+                    ORDER BY COALESCE(district_key, oblast), datetime DESC
+                """)
+                rows = cur.fetchall()
+    except Exception:
+        log.exception("Failed to query alert_history for rehydration")
+        raise
+
+    for d_name, conf in REGION_CONFIG.items():
+        o_name = conf['oblast']
+        redis_client.delete(f"threat:alerts:active:{o_name}")
+
+    pipeline = redis_client.pipeline()
+    for row in rows:
+        d_key, o_key, alert_type, alert_time, dt = row
+        if not d_key and o_key:
+            d_key = o_key
+        if not o_key and d_key in REGION_CONFIG:
+            o_key = REGION_CONFIG[d_key]['oblast']
+
+        is_active = str(alert_type).lower() in ("air_raid_alert", "threat_of_shelling", "start", "1", "true")
+        st_str = "true" if is_active else "false"
+
+        if d_key:
+            pipeline.hset(f"threat:alerts:city:{d_key}", mapping={
+                "status": st_str,
+                "time": alert_time or dt.strftime("%H:%M"),
+                "source": "telegram",
+                "type": alert_type or ("air_raid_alert" if is_active else "air_raid_alert_cancelled")
+            })
+            if is_active and o_key:
+                pipeline.sadd(f"threat:alerts:active:{o_key}", d_key)
+
+    pipeline.set("system:state_initialized", "true")
+    pipeline.execute()
+    log.info("Redis state rehydrated successfully from PostgreSQL (%d records)", len(rows))
+
+
 def get_all_threats_data() -> Dict[str, Any]:
-    """
-    Пакетная выборка данных всех угроз для API через Redis pipeline.
-    """
     tables = ["alerts", "explosions", "shellings"]
     oblasts = [
         'cherkasy_oblast', 'chernihiv_oblast', 'chernivtsi_oblast', 'crimea',
@@ -234,8 +360,8 @@ def get_all_threats_data() -> Dict[str, Any]:
         'zaporizhzhia_oblast', 'zhytomyr_oblast',
     ]
     
-    # adding specific cities for shelling
-    fetch_oblasts = oblasts + ['nikopol', 'kherson']
+    districts = list(REGION_CONFIG.keys())
+    fetch_cities_for_shelling = ['nikopol', 'kherson']
     
     keys_order = []
 
@@ -243,36 +369,64 @@ def get_all_threats_data() -> Dict[str, Any]:
         pipeline = redis_client.pipeline()
 
         for table in tables:
-            for oblast in fetch_oblasts:
+            for oblast in oblasts:
                 key = f"threat:{table}:{oblast}"
                 pipeline.hgetall(key)
                 keys_order.append((table, oblast))
 
+        for district in districts:
+            pipeline.hgetall(f"threat:alerts:city:{district}")
+            keys_order.append(("city_alerts", district))
+
+        for city in fetch_cities_for_shelling:
+            pipeline.hgetall(f"threat:shellings:{city}")
+            keys_order.append(("city_shellings", city))
+
+        for oblast in oblasts:
+            pipeline.smembers(f"threat:alerts:active:{oblast}")
+            keys_order.append(("active_districts", oblast))
+
         results = pipeline.execute()
     except Exception:
-        # Deliberately not degrading to empty data: a map rendered from zeros
-        # reads as "no alerts anywhere", which is a dangerous lie during a raid.
-        # Fail the request loudly instead and let the caller see the 500.
         log.exception("Failed to read threat data from Redis; /api cannot be served")
         raise
     
-    raw_data: Dict[str, Dict[str, Any]] = {t: {} for t in tables}
-    for (table, oblast), data in zip(keys_order, results):
-        if not data:
-            data = {'status': 0, 'time': 'None', 'source': 'None'}
+    raw_data: Dict[str, Dict[str, Any]] = {
+        "alerts": {},
+        "explosions": {},
+        "shellings": {},
+        "city_alerts": {},
+        "city_shellings": {},
+        "active_districts": {}
+    }
+
+    for (category, target), data in zip(keys_order, results):
+        if category == "active_districts":
+            raw_data["active_districts"][target] = list(data) if data else []
+        elif not data:
+            raw_data[category][target] = {'status': False, 'time': 'None', 'source': 'None'}
         else:
-            raw_status = data.get('status', 0)
-            data['status'] = 1 if str(raw_status).lower() in ['true', '1', 'active'] else 0
-            data['time'] = data.get('time', 'None')
-            data['source'] = data.get('source', 'None')
-        raw_data[table][oblast] = data
+            raw_status = data.get('status', False)
+            raw_data[category][target] = {
+                'status': _normalize_status(raw_status),
+                'time': data.get('time', 'None'),
+                'source': data.get('source', 'None')
+            }
         
     result: Dict[str, Any] = {}
     
     def build_oblast_entry(oblast: str) -> Dict[str, Any]:
+        active_set = raw_data['active_districts'].get(oblast, [])
+        oblast_alert = raw_data['alerts'].get(oblast, {'status': False, 'time': 'None', 'source': 'None'}).copy()
+        if active_set:
+            oblast_alert['status'] = True
+            oblast_alert['active_districts'] = active_set
+        else:
+            oblast_alert['active_districts'] = []
+
         return {
-            'alert': raw_data['alerts'].get(oblast, {'status': 0, 'time': 'None', 'source': 'None'}),
-            'explosion': raw_data['explosions'].get(oblast, {'status': 0, 'time': 'None', 'source': 'None'}),
+            'alert': oblast_alert,
+            'explosion': raw_data['explosions'].get(oblast, {'status': False, 'time': 'None', 'source': 'None'}),
         }
         
     for o in oblasts:
@@ -280,7 +434,7 @@ def get_all_threats_data() -> Dict[str, Any]:
         
     for city, parent_oblast in [('nikopol', 'dnipropetrovsk_oblast'), ('kherson', 'kherson_oblast')]:
         entry = build_oblast_entry(parent_oblast)
-        entry['shelling'] = raw_data['shellings'].get(city, {'status': 0, 'time': 'None', 'source': 'None'})
+        entry['shelling'] = raw_data['city_shellings'].get(city, {'status': False, 'time': 'None', 'source': 'None'})
         result[city] = entry
         
     return result

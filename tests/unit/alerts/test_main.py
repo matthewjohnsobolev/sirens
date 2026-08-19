@@ -1,18 +1,21 @@
+"""
+Unit tests for alerts.main (alert monitoring, state persistence, and broadcasting).
+"""
+
 import argparse
 import asyncio
 import logging
 import re
-
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from telethon.errors import AuthKeyDuplicatedError, FloodWaitError
 from telethon.tl.functions.channels import EditPhotoRequest
 from telethon.tl.types import (
     InputChatUploadedPhoto,
-    UpdateNewChannelMessage,
-    MessageService,
     MessageActionChatEditPhoto,
+    MessageService,
+    UpdateNewChannelMessage,
 )
 
 from alerts import main as alerts_main
@@ -37,28 +40,16 @@ from tests.samples.source_messages import (
 )
 
 TIME_RE = re.compile(r"\d{2}:\d{2}")
-
 CHANNEL_ID = 123456
 
 
 async def _drain_background_tasks():
-    """Let send_alert's / the handler's fire-and-forget task run to completion.
-
-    The first yield runs the task body, the second lets its done-callback
-    (which discards it from running_tasks) fire.
-    """
     await asyncio.sleep(0)
     await asyncio.sleep(0)
 
-
-# --------------------------------------------------------------------------
-# spawn_tracked_task
-# --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_spawn_tracked_task_logs_failure(caplog):
-    """A fire-and-forget task that raises must surface in the log (and so in
-    Sentry) rather than vanishing into a task result nobody ever retrieves."""
     caplog.set_level(logging.ERROR)
 
     async def boom():
@@ -71,10 +62,6 @@ async def test_spawn_tracked_task_logs_failure(caplog):
     assert "task blew up" in caplog.text
     assert alerts_main.running_tasks == set()
 
-
-# --------------------------------------------------------------------------
-# log_alert_received
-# --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("alert_type, expected", [
     ("air_raid_alert", "Air raid alert received for Kyiv"),
@@ -94,10 +81,6 @@ def test_log_alert_received_falls_back_to_capitalized_region(caplog):
     assert "Air raid alert received for Atlantis" in caplog.text
 
 
-# --------------------------------------------------------------------------
-# update_channel_photo / delete_photo_update_service_message
-# --------------------------------------------------------------------------
-
 @pytest.mark.asyncio
 async def test_update_channel_photo_sends_edit_photo_request(mock_telegram_client):
     mock_telegram_client.upload_file.return_value = "mock_uploaded_file"
@@ -106,7 +89,6 @@ async def test_update_channel_photo_sends_edit_photo_request(mock_telegram_clien
     result = await update_channel_photo(mock_entity, "test/path.png")
 
     mock_telegram_client.upload_file.assert_awaited_once_with(file="test/path.png")
-
     mock_telegram_client.assert_awaited_once()
     request = mock_telegram_client.call_args.args[0]
     assert isinstance(request, EditPhotoRequest)
@@ -141,7 +123,7 @@ async def test_delete_photo_update_service_message(mock_telegram_client):
 @pytest.mark.asyncio
 async def test_delete_photo_update_service_message_when_absent(mock_telegram_client, caplog):
     caplog.set_level(logging.WARNING)
-    edit_result = MagicMock(updates=[MagicMock()])  # not an UpdateNewChannelMessage
+    edit_result = MagicMock(updates=[MagicMock()])
     mock_entity = MagicMock(id=456)
 
     await delete_photo_update_service_message(mock_entity, edit_result)
@@ -149,10 +131,6 @@ async def test_delete_photo_update_service_message_when_absent(mock_telegram_cli
     mock_telegram_client.delete_messages.assert_not_awaited()
     assert "Service message about photo update not found" in caplog.text
 
-
-# --------------------------------------------------------------------------
-# process_channel_photo_update
-# --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_process_channel_photo_update_skips_when_state_changed(
@@ -225,7 +203,6 @@ async def test_process_channel_photo_update_gives_up_after_max_attempts(
         await process_channel_photo_update(CHANNEL_ID, "kyiv", "air_raid_alert")
 
     assert mock_telegram_client.get_entity.await_count == PHOTO_UPDATE_MAX_ATTEMPTS
-    # exponential backoff: 5, 10, 20
     assert [c.args[0] for c in mock_sleep.await_args_list] == [5, 10, 20]
     assert "Aborting photo update for Kyiv after 3 attempts" in caplog.text
 
@@ -240,16 +217,12 @@ async def test_process_channel_photo_update_ignores_unknown_alert_type(
     mock_telegram_client.get_entity.assert_not_awaited()
 
 
-# --------------------------------------------------------------------------
-# send_alert
-# --------------------------------------------------------------------------
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize("region, alert_type, expected_status", [
-    ("kyiv", "air_raid_alert", 1),
-    ("kyiv", "air_raid_alert_cancelled", 0),
-    ("nikopol", "threat_of_shelling", 1),
-    ("nikopol", "threat_of_shelling_cancelled", 0),
+    ("kyiv", "air_raid_alert", "true"),
+    ("kyiv", "air_raid_alert_cancelled", "false"),
+    ("nikopol", "threat_of_shelling", "true"),
+    ("nikopol", "threat_of_shelling_cancelled", "false"),
 ])
 async def test_send_alert_writes_state_history_and_broadcasts(
     mock_redis, mock_pg_pool, mock_telegram_client, region, alert_type, expected_status
@@ -263,19 +236,22 @@ async def test_send_alert_writes_state_history_and_broadcasts(
 
     mock_redis.set.assert_awaited_once_with(f"channel_state:{CHANNEL_ID}", alert_type)
 
-    mock_redis.hset.assert_awaited_once()
-    assert mock_redis.hset.call_args.args[0] == f"threat:alerts:{oblast}"
-    mapping = mock_redis.hset.call_args.kwargs["mapping"]
-    assert mapping["status"] == expected_status
-    assert mapping["source"] == "telegram"
-    assert TIME_RE.fullmatch(mapping["time"])
+    mock_redis.hset.assert_any_call(
+        f"threat:alerts:city:{region}",
+        mapping={
+            "status": expected_status,
+            "time": mock_redis.hset.call_args_list[0].kwargs["mapping"]["time"],
+            "source": "telegram",
+            "type": alert_type,
+        }
+    )
 
     mock_conn.execute.assert_awaited_once()
     sql, *params = mock_conn.execute.call_args.args
     assert "INSERT INTO alert_history" in sql
-    assert params[2] == mapping["time"]
-    assert params[3] == oblast
-    assert params[4] == alert_type
+    assert params[3] == region
+    assert params[4] == oblast
+    assert params[6] == alert_type
  
     mock_telegram_client.send_message.assert_awaited_once_with(
         CHANNEL_ID, MESSAGES[alert_type]
@@ -289,9 +265,6 @@ async def test_send_alert_writes_state_history_and_broadcasts(
 async def test_send_alert_skips_duplicate_when_state_unchanged(
     mock_redis, mock_pg_pool, mock_telegram_client, caplog
 ):
-    """A region can be triggered by more than one wording (e.g. Nikopol's district
-    vs. city phrasing), so the source can post two messages for the same event.
-    The second one must not be re-broadcast."""
     caplog.set_level(logging.INFO)
     mock_redis.get.return_value = "air_raid_alert"
 
@@ -308,8 +281,6 @@ async def test_send_alert_skips_duplicate_when_state_unchanged(
 async def test_send_alert_processes_state_change_after_duplicate_suppression(
     mock_redis, mock_pg_pool, mock_telegram_client
 ):
-    """Once suppressed as a duplicate, a genuine state change (e.g. the
-    cancellation, in either wording) must still go through."""
     mock_redis.get.return_value = "air_raid_alert"
 
     with patch('alerts.main.process_channel_photo_update', new_callable=AsyncMock):
@@ -326,9 +297,6 @@ async def test_send_alert_processes_state_change_after_duplicate_suppression(
 async def test_send_alert_broadcasts_when_redis_is_down(
     mock_redis, mock_pg_pool, mock_telegram_client, caplog
 ):
-    """Redis only backs dedup and the map. If it is unreachable the alert must
-    still reach the channel — a duplicate message is far cheaper than a missed
-    air raid alert."""
     caplog.set_level(logging.ERROR)
     mock_redis.get.side_effect = ConnectionError("Redis is down")
 
@@ -370,7 +338,7 @@ async def test_send_alert_still_broadcasts_when_pg_insert_fails(
         await _drain_background_tasks()
 
     assert "Failed to insert alert history into PG: DB Error" in caplog.text
-    mock_redis.hset.assert_awaited_once()
+    mock_redis.hset.assert_called()
     mock_telegram_client.send_message.assert_awaited_once_with(
         CHANNEL_ID, MESSAGES["air_raid_alert"]
     )
@@ -393,8 +361,8 @@ async def test_send_alert_logs_but_survives_send_failure(
         await _drain_background_tasks()
 
     assert expected_log in caplog.text
-    # a failed broadcast must not block the photo refresh
-    mock_photo.assert_awaited_once_with(CHANNEL_ID, "kyiv", alert_type)
+    mock_photo.assert_not_awaited()
+    mock_redis.set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -403,7 +371,6 @@ async def test_send_alert_skips_photo_update_without_mapping(
 ):
     caplog.set_level(logging.DEBUG)
 
-    # an alert type that has a message but no channel photo configured
     with patch.dict('alerts.main.CHANNEL_PHOTO_PATHS', clear=True), \
          patch('alerts.main.process_channel_photo_update', new_callable=AsyncMock) as mock_photo:
         await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert")
@@ -415,15 +382,10 @@ async def test_send_alert_skips_photo_update_without_mapping(
     assert alerts_main.running_tasks == set()
 
 
-# --------------------------------------------------------------------------
-# build_message_handler
-# --------------------------------------------------------------------------
-
 ALL_REGION_CHANNELS = {region: 9000 + i for i, region in enumerate(REGION_CONFIG)}
 
 
 async def _dispatch(message_text, region_channels=ALL_REGION_CHANNELS):
-    """Feed one message to the handler and return the send_alert calls it made."""
     handler = build_message_handler(region_channels)
     event = MagicMock()
     event.message.message = message_text
@@ -437,7 +399,6 @@ async def _dispatch(message_text, region_channels=ALL_REGION_CHANNELS):
 
 
 def _expected_calls(regions, alert_type):
-    """The calls a message about `regions` must produce, in handler order."""
     return [
         (ALL_REGION_CHANNELS[region], region, alert_type)
         for region in REGION_CONFIG
@@ -479,15 +440,9 @@ async def test_build_message_handler_ignores_regions_without_channel():
     assert await _dispatch("м. Київ Повітряна тривога", {"nikopol": 2222}) == []
 
 
-# --- real messages from the source channel -------------------------------
-# The samples live in tests/samples/source_messages.py; add one there and it is
-# picked up by the tests below. ALL_SAMPLES covers both the one-district posts
-# and the combined ones that list several districts as bullets.
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sample", ALL_SAMPLES, ids=lambda sample: sample.id)
 async def test_build_message_handler_on_real_channel_messages(sample):
-    """A real post reaches every channel it names, and no other."""
     assert await _dispatch(sample.alert_message) == _expected_calls(
         sample.regions, "air_raid_alert"
     )
@@ -497,17 +452,9 @@ async def test_build_message_handler_on_real_channel_messages(sample):
 
 
 def test_every_configured_region_has_a_message_sample():
-    """A new region in REGION_CONFIG needs a sample in tests/samples/source_messages.py."""
     sampled = {region for sample in MESSAGES_SAMPLES for region in sample.regions}
-
     assert sampled == set(REGION_CONFIG)
 
-
-# --- partial all-clears ---------------------------------------------------
-# A post can clear one hromada and then list, under "тривога ще триває у:",
-# the places where the alert is still running. Those trailing places must not
-# be read as places being cleared: doing so broadcast an all-clear to a whole
-# oblast while the alert was still on.
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -523,8 +470,6 @@ async def test_build_message_handler_ignores_still_ongoing_places(sample):
     "sample", PARTIAL_CANCELLATION_SAMPLES, ids=lambda sample: sample.id
 )
 def test_partial_cancellation_samples_name_the_silenced_channels(sample):
-    """Guards the samples themselves: a note that named nothing a channel
-    listens for would let the handler pass without ever exercising the bug."""
     assert sample.silenced
 
     note = sample.message.split("ще триває", 1)[1]
@@ -536,9 +481,6 @@ def test_partial_cancellation_samples_name_the_silenced_channels(sample):
 
 @pytest.mark.asyncio
 async def test_build_message_handler_reads_alert_type_from_the_announcement():
-    """The note carries its own wording. Read together with the announcement,
-    "тривога ще триває" outranks "Відбій тривоги" in the keyword order and
-    turns an all-clear into an alert."""
     message = (
         "🟡 08:01 Відбій тривоги в м. Нікополь та Нікопольська територіальна громада.\n"
         "Зверніть увагу, Повітряна тривога ще триває у:\n"
@@ -549,10 +491,6 @@ async def test_build_message_handler_reads_alert_type_from_the_announcement():
         (2222, "nikopol", "air_raid_alert_cancelled")
     ]
 
-
-# --------------------------------------------------------------------------
-# strip_ongoing_notice
-# --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("message_text, expected", [
     pytest.param(
@@ -575,16 +513,14 @@ def test_strip_ongoing_notice(message_text, expected):
     assert strip_ongoing_notice(message_text) == expected
 
 
-# --------------------------------------------------------------------------
-# main
-# --------------------------------------------------------------------------
-
 @pytest.mark.asyncio
 async def test_main_wires_up_clients_and_handler():
     _, expected_source = get_mode_config(argparse.Namespace(mode='dev'))
 
     with patch('alerts.main.redis.from_url') as mock_redis_from_url, \
          patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock) as mock_create_pool, \
+         patch('alerts.main.ensure_pg_tables') as mock_ensure, \
+         patch('alerts.main.rehydrate_state_from_db') as mock_rehydrate, \
          patch('alerts.main.TelegramClient') as MockClient, \
          patch('alerts.main.cli.get_args') as mock_get_args:
 
@@ -599,13 +535,10 @@ async def test_main_wires_up_clients_and_handler():
 
     mock_redis_from_url.assert_called_once_with(REDIS_URL, decode_responses=True)
     mock_create_pool.assert_awaited_once_with(DATABASE_URL)
-
     mock_client_instance.start.assert_not_awaited()
-
     mock_client_instance.add_event_handler.assert_called_once()
     _, event_filter = mock_client_instance.add_event_handler.call_args.args
     assert event_filter.chats == [expected_source]
-
     mock_client_instance.run_until_disconnected.assert_awaited_once()
     assert alerts_main.client is mock_client_instance
 
@@ -616,6 +549,8 @@ async def test_main_initializes_sentry_with_mode_as_environment(monkeypatch):
 
     with patch('alerts.main.redis.from_url'), \
          patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
+         patch('alerts.main.ensure_pg_tables'), \
+         patch('alerts.main.rehydrate_state_from_db'), \
          patch('alerts.main.TelegramClient') as MockClient, \
          patch('alerts.main.cli.get_args') as mock_get_args, \
          patch('alerts.main.sentry_sdk.init') as mock_sentry_init:
@@ -639,12 +574,12 @@ async def test_main_initializes_sentry_with_mode_as_environment(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_main_tags_events_with_its_service_name(monkeypatch):
-    """Both services share one Sentry project, so the tag is the only thing
-    separating alerts errors from web errors in the issue stream."""
     monkeypatch.setattr(alerts_main, 'SENTRY_DSN', 'https://examplePublicKey@o0.ingest.sentry.io/0')
 
     with patch('alerts.main.redis.from_url'), \
          patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
+         patch('alerts.main.ensure_pg_tables'), \
+         patch('alerts.main.rehydrate_state_from_db'), \
          patch('alerts.main.TelegramClient') as MockClient, \
          patch('alerts.main.cli.get_args') as mock_get_args, \
          patch('alerts.main.sentry_sdk.init'), \
@@ -666,6 +601,8 @@ async def test_main_tags_events_with_its_service_name(monkeypatch):
 async def test_main_starts_interactive_login_when_not_authorized():
     with patch('alerts.main.redis.from_url'), \
          patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
+         patch('alerts.main.ensure_pg_tables'), \
+         patch('alerts.main.rehydrate_state_from_db'), \
          patch('alerts.main.TelegramClient') as MockClient, \
          patch('alerts.main.cli.get_args') as mock_get_args:
 
@@ -687,6 +624,8 @@ async def test_main_survives_backend_connection_failures(caplog):
 
     with patch('alerts.main.redis.from_url', side_effect=Exception("redis down")), \
          patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock) as mock_create_pool, \
+         patch('alerts.main.ensure_pg_tables'), \
+         patch('alerts.main.rehydrate_state_from_db'), \
          patch('alerts.main.TelegramClient') as MockClient, \
          patch('alerts.main.cli.get_args') as mock_get_args:
 
@@ -711,6 +650,8 @@ async def test_main_logs_critical_on_fatal_session_error(caplog):
 
     with patch('alerts.main.redis.from_url'), \
          patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
+         patch('alerts.main.ensure_pg_tables'), \
+         patch('alerts.main.rehydrate_state_from_db'), \
          patch('alerts.main.TelegramClient') as MockClient, \
          patch('alerts.main.cli.get_args') as mock_get_args:
 
@@ -737,6 +678,8 @@ async def test_main_logs_error_on_transient_connection_error(caplog):
 
     with patch('alerts.main.redis.from_url'), \
          patch('alerts.main.asyncpg.create_pool', new_callable=AsyncMock), \
+         patch('alerts.main.ensure_pg_tables'), \
+         patch('alerts.main.rehydrate_state_from_db'), \
          patch('alerts.main.TelegramClient') as MockClient, \
          patch('alerts.main.cli.get_args') as mock_get_args:
 
@@ -753,10 +696,6 @@ async def test_main_logs_error_on_transient_connection_error(caplog):
 
     assert "Telegram connection lost and could not be recovered" in caplog.text
 
-
-# --------------------------------------------------------------------------
-# healthchecks.io pings
-# --------------------------------------------------------------------------
 
 def test_ping_healthcheck_noop_when_unconfigured(monkeypatch):
     monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', '')

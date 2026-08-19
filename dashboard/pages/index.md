@@ -1,9 +1,9 @@
 ---
-title: Sirens Internal Statistics
+title: Sirens Network Analytics
 ---
 
-How many people the Sirens alert channels reach. Every channel is counted once
-a day, shortly after midnight EEST time.
+Total audience reach and growth dynamics across all Sirens alert channels.
+Snapshots are recorded daily shortly after midnight (EEST).
 
 ```sql headline
 -- Comparisons are looked up by date rather than with lag(n): a night the
@@ -28,7 +28,7 @@ limit 1
 <BigValue
     data={headline}
     value=total
-    title="Subscribers across the network"
+    title="Total Network Audience"
     comparison=change_1d
     comparisonTitle="since yesterday"
 />
@@ -36,19 +36,17 @@ limit 1
 <BigValue
     data={headline}
     value=change_7d
-    title="Change over the past week"
+    title="7-Day Net Growth"
 />
 
-## Growth over time
+## Network Growth
 
-Total subscriber network growth over time across all tracked alert channels.
+Aggregate subscriber trajectory across all monitored alert channels over time.
 
 <ButtonGroup name=timeframe defaultValue="7d">
     <ButtonGroupItem valueLabel="24H" value="24h" />
     <ButtonGroupItem valueLabel="7D" value="7d" />
     <ButtonGroupItem valueLabel="30D" value="30d" />
-    <ButtonGroupItem valueLabel="90D" value="90d" />
-    <ButtonGroupItem valueLabel="All" value="all" />
 </ButtonGroup>
 
 ```sql daily_total
@@ -57,33 +55,30 @@ select
     sum(subscribers) as total
 from sirens.subscribers
 where
+    date::date >= (select max(date::date) from sirens.subscribers) -
     case
-        when '${inputs.timeframe.value}' in ('24h', '1d') or '${inputs.timeframe}' in ('24h', '1d')
-            then date::date >= (select max(date::date) from sirens.subscribers) - interval '1 day'
+        when '${inputs.timeframe.value}' = '24h' or '${inputs.timeframe}' = '24h'
+            then interval '1 day'
         when '${inputs.timeframe.value}' = '30d' or '${inputs.timeframe}' = '30d'
-            then date::date >= (select max(date::date) from sirens.subscribers) - interval '30 days'
-        when '${inputs.timeframe.value}' = '90d' or '${inputs.timeframe}' = '90d'
-            then date::date >= (select max(date::date) from sirens.subscribers) - interval '90 days'
-        when '${inputs.timeframe.value}' = 'all' or '${inputs.timeframe}' = 'all'
-            then true
+            then interval '30 days'
         else
-            date::date >= (select max(date::date) from sirens.subscribers) - interval '7 days'
+            interval '7 days'
     end
 group by 1
 order by 1
 ```
-
 
 <LineChart
     data={daily_total}
     x=date
     y=total
     yAxisTitle="subscribers"
-    yMin=0
+    yScale=true
+    markers=true
     chartAreaHeight=280
 />
 
-## Who gained and who lost
+## Daily Channel Movement
 
 ```sql movement_window
 with recent as (
@@ -92,11 +87,13 @@ with recent as (
     order by 1 desc
     limit 2
 )
-select min(date) as earlier, max(date) as later from recent
+select
+    strftime(min(date), '%B %-d, %Y') as earlier,
+    strftime(max(date), '%B %-d, %Y') as later
+from recent
 ```
 
-Subscribers gained and lost between <Value data={movement_window} column=earlier/>
-and <Value data={movement_window} column=later/>.
+Net subscriber change per channel between {movement_window[0].earlier} and {movement_window[0].later}.
 
 ```sql movement
 with counts as (
@@ -134,9 +131,9 @@ order by change desc, later.display_name
     echartsOptions={{xAxis: {minInterval: 1}}}
 />
 
-## Subscribers by channel
+## Subscribers by Channel
 
-Audience breakdown across each Telegram alert channel, ranked from largest to smallest.
+Audience distribution by channel, ranked by total subscriber count.
 
 ```sql by_channel
 select
@@ -155,11 +152,7 @@ order by subscribers desc
     yAxisTitle="subscribers"
 />
 
-```sql latest_day
-select max(date::date) as day from sirens.subscribers
-```
-
-Data as of <Value data={latest_day} column=day/>. The history starts on the day
-counting was switched on. A day the snapshot could not reach most of the network
-is left out entirely rather than recorded short, so a gap in the line means a
-failed run, never lost subscribers.
+Data as of {movement_window[0].later}. Historical tracking begins from the date
+metrics collection was enabled. To ensure data integrity, incomplete snapshots
+are omitted rather than recorded partially — any gaps in the trend line indicate
+a missed run, not lost subscribers.

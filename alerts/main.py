@@ -221,13 +221,12 @@ async def _record_alert_state(channel_id: int, region: str, alert_type: str):
 
     if pg_pool:
         try:
-            city_ua = REGION_CONFIG.get(region, {}).get('triggers', [region])[0]
             async with pg_pool.acquire() as conn:
                 await conn.execute(
                     """INSERT INTO alert_history 
-                       (datetime, date, time, district_key, oblast_key, oblast, type) 
-                       VALUES ($1, $2, $3, $4, $5, $6, $7)""",
-                    now, now.date(), current_time, district_key, oblast_key, city_ua, alert_type
+                       (datetime, date, time, district_key, oblast_key, type) 
+                       VALUES ($1, $2, $3, $4, $5, $6)""",
+                    now, now.date(), current_time, district_key, oblast_key, alert_type
                 )
         except Exception as e:
             log.error("Failed to insert alert history into PG: %s", e)

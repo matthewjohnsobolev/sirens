@@ -49,7 +49,6 @@ def ensure_pg_tables() -> None:
                         time TEXT NOT NULL,
                         district_key TEXT,
                         oblast_key TEXT,
-                        oblast TEXT,
                         type TEXT NOT NULL
                     )
                 """)
@@ -68,11 +67,11 @@ def ensure_pg_tables() -> None:
                         ) THEN
                             ALTER TABLE alert_history ADD COLUMN oblast_key TEXT;
                         END IF;
-                        IF NOT EXISTS (
+                        IF EXISTS (
                             SELECT 1 FROM information_schema.columns 
                             WHERE table_name = 'alert_history' AND column_name = 'oblast'
                         ) THEN
-                            ALTER TABLE alert_history ADD COLUMN oblast TEXT;
+                            ALTER TABLE alert_history DROP COLUMN oblast;
                         END IF;
                     END $$;
                 """)
@@ -92,28 +91,45 @@ def ensure_pg_tables() -> None:
                         channel_id BIGINT NOT NULL,
                         subscribers INTEGER NOT NULL,
                         date DATE NOT NULL,
-                        collected_at TIMESTAMP NOT NULL,
-                        UNIQUE (channel_key, collected_at)
+                        time TIMESTAMP NOT NULL,
+                        UNIQUE (channel_key, time)
                     )
                 """)
                 cur.execute(
                     "CREATE INDEX IF NOT EXISTS subscribers_date_idx ON subscribers (date)"
                 )
                 cur.execute(
-                    "CREATE INDEX IF NOT EXISTS subscribers_collected_at_idx ON subscribers (collected_at)"
+                    "CREATE INDEX IF NOT EXISTS subscribers_time_idx ON subscribers (time)"
                 )
                 cur.execute("""
                     DO $$
                     BEGIN
                         IF EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'subscribers' AND column_name = 'collected_at'
+                        ) THEN
+                            ALTER TABLE subscribers RENAME COLUMN collected_at TO time;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'subscribers' AND column_name = 'time'
+                        ) THEN
+                            ALTER TABLE subscribers ADD COLUMN time TIMESTAMP;
+                        END IF;
+                        IF EXISTS (
                             SELECT 1 FROM pg_constraint WHERE conname = 'subscribers_channel_key_date_key'
                         ) THEN
                             ALTER TABLE subscribers DROP CONSTRAINT subscribers_channel_key_date_key;
                         END IF;
-                        IF NOT EXISTS (
+                        IF EXISTS (
                             SELECT 1 FROM pg_constraint WHERE conname = 'subscribers_channel_key_collected_at_key'
                         ) THEN
-                            ALTER TABLE subscribers ADD CONSTRAINT subscribers_channel_key_collected_at_key UNIQUE (channel_key, collected_at);
+                            ALTER TABLE subscribers DROP CONSTRAINT subscribers_channel_key_collected_at_key;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'subscribers_channel_key_time_key'
+                        ) THEN
+                            ALTER TABLE subscribers ADD CONSTRAINT subscribers_channel_key_time_key UNIQUE (channel_key, time);
                         END IF;
                     END $$;
                 """)
@@ -282,15 +298,14 @@ async def update_alert_status(channel_id: int, status: str) -> None:
         )
 
     if event_type:
-        city_ua = REGION_CONFIG[district_key]['triggers'][0]
         try:
             with get_pg_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """INSERT INTO alert_history 
-                           (datetime, date, time, district_key, oblast_key, oblast, type) 
-                           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                        (now, now.date(), current_time, district_key, oblast_key, city_ua, event_type)
+                           (datetime, date, time, district_key, oblast_key, type) 
+                           VALUES (%s, %s, %s, %s, %s, %s)""",
+                        (now, now.date(), current_time, district_key, oblast_key, event_type)
                     )
                 conn.commit()
         except Exception:
@@ -303,14 +318,15 @@ def rehydrate_state_from_db() -> None:
         with get_pg_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT DISTINCT ON (COALESCE(district_key, oblast))
+                    SELECT DISTINCT ON (district_key)
                         COALESCE(district_key, '') as district_key,
                         COALESCE(oblast_key, '') as oblast_key,
                         type,
                         time,
                         datetime
                     FROM alert_history
-                    ORDER BY COALESCE(district_key, oblast), datetime DESC
+                    WHERE district_key IS NOT NULL
+                    ORDER BY district_key, datetime DESC
                 """)
                 rows = cur.fetchall()
     except Exception:

@@ -84,7 +84,7 @@ def test_ensure_pg_tables_creates_alert_history(mock_web_pg):
 
 def test_ensure_pg_tables_creates_subscribers(mock_web_pg):
     """The UNIQUE constraint is the load-bearing part: it is what lets the
-    snapshot re-run on the same day without duplicating rows."""
+    snapshot re-run without duplicating rows."""
     _, mock_cursor = mock_web_pg
 
     ensure_pg_tables()
@@ -93,8 +93,9 @@ def test_ensure_pg_tables_creates_subscribers(mock_web_pg):
     assert "CREATE TABLE IF NOT EXISTS subscribers" in sql
     for column in ("channel_key", "channel_id", "subscribers", "date", "collected_at"):
         assert column in sql
-    assert "UNIQUE (channel_key, date)" in sql
+    assert "UNIQUE (channel_key, collected_at)" in sql
     assert "CREATE INDEX IF NOT EXISTS subscribers_date_idx" in sql
+    assert "CREATE INDEX IF NOT EXISTS subscribers_collected_at_idx" in sql
 
 
 

@@ -4,20 +4,18 @@
 # for input: either records today's subscriber counts or exits non-zero.
 #
 # Starts the one-shot `bi` container, which counts subscribers across the
-# network channels and writes one row per channel per day into subscribers.
-
+# network channels and writes one row per channel per run into subscribers.
 # The container is removed afterwards, so nothing stays resident between runs.
 #
 #   ./deploy/bi.sh                 # count and store
 #   MODE=dev ./deploy/bi.sh        # count test channels instead
 #
 #   crontab -e
-#   10 0 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
+#   0 */4 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
 #
 # Needs data/sessions/bi.session (create once with ./deploy/setup.sh bi), and
 # optionally HEALTHCHECKS_PING_URL_BI in .env. See "Channel Statistics" in
-# README.md for why the schedule is ten past midnight and what a failed run
-# means.
+# README.md.
 #
 set -euo pipefail
 

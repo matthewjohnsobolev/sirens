@@ -179,15 +179,15 @@ async def test_store_writes_one_row_per_channel(bi_pool):
 
 
 @pytest.mark.asyncio
-async def test_store_overwrites_the_same_day_instead_of_duplicating(bi_pool):
-    """The UNIQUE (channel_key, date) constraint plus DO UPDATE is what makes a
-    manual re-run safe at any hour."""
+async def test_store_overwrites_the_same_run_instead_of_duplicating(bi_pool):
+    """The UNIQUE (channel_key, collected_at) constraint plus DO UPDATE is what makes a
+    re-run safe."""
     pool, conn = bi_pool
 
     await store(pool, [ChannelCount('kyiv', 111, 10)])
 
     sql = conn.executemany.await_args.args[0]
-    assert "ON CONFLICT (channel_key, date) DO UPDATE" in sql
+    assert "ON CONFLICT (channel_key, collected_at) DO UPDATE" in sql
 
 
 # --------------------------------------------------------------------------
@@ -209,25 +209,36 @@ async def test_export_stats_csv_writes_a_header_row(bi_pool):
 async def test_export_stats_csv_resolves_city_display_names(bi_pool):
     pool, conn = bi_pool
     conn.fetch.return_value = [
-        {'channel_key': 'kryvyirih', 'date': datetime.date(2026, 8, 14), 'subscribers': 4321},
-        {'channel_key': 'kyiv', 'date': datetime.date(2026, 8, 15), 'subscribers': 1234},
+        {'channel_key': 'kryvyirih', 'collected_at': datetime.datetime(2026, 8, 14, 4, 0, 0), 'subscribers': 4321},
+        {'channel_key': 'kyiv', 'collected_at': datetime.datetime(2026, 8, 15, 8, 0, 0), 'subscribers': 1234},
     ]
 
     rows = (await export_stats_csv(pool)).splitlines()
 
-    assert rows[1] == "kryvyirih,Kryvyi Rih,2026-08-14,4321"
-    assert rows[2] == "kyiv,Kyiv,2026-08-15,1234"
+    assert rows[1] == "kryvyirih,Kryvyi Rih,2026-08-14 04:00:00,4321"
+    assert rows[2] == "kyiv,Kyiv,2026-08-15 08:00:00,1234"
+
+
+@pytest.mark.asyncio
+async def test_export_stats_csv_falls_back_to_date_when_collected_at_missing(bi_pool):
+    pool, conn = bi_pool
+    conn.fetch.return_value = [
+        {'channel_key': 'kyiv', 'date': datetime.date(2026, 8, 15), 'subscribers': 1234},
+    ]
+
+    rows = (await export_stats_csv(pool)).splitlines()
+    assert rows[1] == "kyiv,Kyiv,2026-08-15,1234"
 
 
 @pytest.mark.asyncio
 async def test_export_stats_csv_falls_back_to_the_key_for_unknown_channels(bi_pool):
     pool, conn = bi_pool
     conn.fetch.return_value = [
-        {'channel_key': 'retired', 'date': '2026-08-15', 'subscribers': 7}
+        {'channel_key': 'retired', 'collected_at': '2026-08-15 12:00:00', 'subscribers': 7}
     ]
 
     rows = (await export_stats_csv(pool)).splitlines()
-    assert rows[1] == "retired,retired,2026-08-15,7"
+    assert rows[1] == "retired,retired,2026-08-15 12:00:00,7"
 
 
 @pytest.mark.asyncio
@@ -239,7 +250,7 @@ async def test_export_stats_csv_reads_the_table_in_chronological_order(bi_pool):
 
     sql = conn.fetch.call_args.args[0]
     assert "FROM subscribers" in sql
-    assert "ORDER BY date, channel_key" in sql
+    assert "ORDER BY collected_at, channel_key" in sql
 
 
 # --------------------------------------------------------------------------

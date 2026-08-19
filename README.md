@@ -136,8 +136,8 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 ## Channel Statistics
 
 The project tracks how many subscribers the network has. A snapshot counts every
-channel once a day and stores one row per channel per day in `subscribers`;
-a dashboard renders the result.
+channel periodically (e.g. every 4 hours) and stores snapshot rows with timestamps
+in `subscribers`; a dashboard renders the result.
 
 ### Collecting
 
@@ -152,25 +152,19 @@ holds `sirens.session` and one session file cannot serve two running processes:
 ./deploy/bi.sh              # run it once by hand to check
 ```
 
-Then schedule it, ten past midnight:
+Then schedule it (e.g. every 4 hours):
 
 ```
-10 0 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
+0 */4 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
 ```
 
-Just after midnight rather than just before: rows are dated from the clock
-inside the container, so a run at 23:50 held up by ten minutes would file itself
-under the following day. The dashboard build then runs at 23:00 UTC, which is
-one to two hours later depending on the season — GitHub schedules cannot be
-given a timezone, and 00:10 Kyiv is 21:10 UTC in summer but 22:10 UTC in winter.
-
-Re-running on the same day is safe: it overwrites that day's rows instead of
+Re-running is safe: it updates existing rows for the snapshot timestamp instead of
 adding duplicates.
 
 A run that reaches fewer than 90% of the channels is **discarded rather than
 stored**, and exits non-zero so the healthcheck fires. Summed across the
-network, a short day looks exactly like subscribers walking away, while a gap
-in the chart is visibly a gap — and re-running fills the day in once the cause
+network, a short run looks exactly like subscribers walking away, while a gap
+in the chart is visibly a gap — and re-running fills the data in once the cause
 is fixed.
 
 ### Publishing

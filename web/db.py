@@ -49,7 +49,7 @@ def ensure_pg_tables() -> None:
                         type TEXT NOT NULL
                     )
                 """)
-                # One snapshot per channel per day; the UNIQUE constraint is what
+                # One snapshot per channel per run; the UNIQUE constraint is what
                 # lets the snapshot re-run safely (INSERT ... ON CONFLICT DO UPDATE).
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS subscribers (
@@ -59,12 +59,30 @@ def ensure_pg_tables() -> None:
                         subscribers INTEGER NOT NULL,
                         date DATE NOT NULL,
                         collected_at TIMESTAMP NOT NULL,
-                        UNIQUE (channel_key, date)
+                        UNIQUE (channel_key, collected_at)
                     )
                 """)
                 cur.execute(
                     "CREATE INDEX IF NOT EXISTS subscribers_date_idx ON subscribers (date)"
                 )
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS subscribers_collected_at_idx ON subscribers (collected_at)"
+                )
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'subscribers_channel_key_date_key'
+                        ) THEN
+                            ALTER TABLE subscribers DROP CONSTRAINT subscribers_channel_key_date_key;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'subscribers_channel_key_collected_at_key'
+                        ) THEN
+                            ALTER TABLE subscribers ADD CONSTRAINT subscribers_channel_key_collected_at_key UNIQUE (channel_key, collected_at);
+                        END IF;
+                    END $$;
+                """)
 
             conn.commit()
     except Exception:

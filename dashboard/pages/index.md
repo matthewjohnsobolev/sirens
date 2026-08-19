@@ -3,24 +3,40 @@ title: Sirens Network Analytics
 ---
 
 Total audience reach and growth dynamics across all Sirens alert channels.
-Snapshots are recorded daily shortly after midnight (EEST).
+Snapshots are recorded throughout the day.
 
 ```sql headline
--- Comparisons are looked up by date rather than with lag(n): a night the
--- snapshot failed leaves a gap in the history, and counting rows back would
--- then quietly measure against the wrong day.
-with per_day as (
-    select date::date as date, sum(subscribers) as total
+-- Comparisons are looked up by date rather than with lag(n): a missed snapshot
+-- leaves a gap in the history, and counting rows back would measure against
+-- the wrong day.
+with per_snapshot as (
+    select
+        date,
+        date::date as day_date,
+        sum(subscribers) as total
     from sirens.subscribers
-    group by 1
+    group by 1, 2
+),
+latest_per_day as (
+    select
+        day_date as date,
+        total
+    from (
+        select
+            day_date,
+            total,
+            row_number() over (partition by day_date order by date desc) as rn
+        from per_snapshot
+    )
+    where rn = 1
 )
 select
     day.total,
     day.total - prev_day.total  as change_1d,
     day.total - prev_week.total as change_7d
-from per_day day
-left join per_day prev_day  on prev_day.date  = day.date - 1
-left join per_day prev_week on prev_week.date = day.date - 7
+from latest_per_day day
+left join latest_per_day prev_day  on prev_day.date  = day.date - 1
+left join latest_per_day prev_week on prev_week.date = day.date - 7
 order by day.date desc
 limit 1
 ```
@@ -50,21 +66,27 @@ Aggregate subscriber trajectory across all monitored alert channels over time.
 </ButtonGroup>
 
 ```sql daily_total
+with per_snapshot as (
+    select
+        date,
+        sum(subscribers) as total
+    from sirens.subscribers
+    group by 1
+)
 select
-    date::date as date,
-    sum(subscribers) as total
-from sirens.subscribers
+    date,
+    total
+from per_snapshot
 where
-    date::date >= (select max(date::date) from sirens.subscribers) -
+    date >= (select max(date) from per_snapshot) -
     case
         when '${inputs.timeframe.value}' = '24h' or '${inputs.timeframe}' = '24h'
-            then interval '1 day'
+            then interval '24 hours'
         when '${inputs.timeframe.value}' = '30d' or '${inputs.timeframe}' = '30d'
             then interval '30 days'
         else
             interval '7 days'
     end
-group by 1
 order by 1
 ```
 
@@ -82,14 +104,14 @@ order by 1
 
 ```sql movement_window
 with recent as (
-    select distinct date::date as date
+    select distinct date
     from sirens.subscribers
     order by 1 desc
     limit 2
 )
 select
-    strftime(min(date), '%B %-d, %Y') as earlier,
-    strftime(max(date), '%B %-d, %Y') as later
+    strftime(min(date), '%B %-d, %Y %H:%M') as earlier,
+    strftime(max(date), '%B %-d, %Y %H:%M') as later
 from recent
 ```
 
@@ -97,7 +119,7 @@ Net subscriber change per channel between {movement_window[0].earlier} and {move
 
 ```sql movement
 with counts as (
-    select display_name, date::date as date, subscribers
+    select display_name, date, subscribers
     from sirens.subscribers
 ),
 recent as (
@@ -140,7 +162,7 @@ select
     display_name,
     subscribers
 from sirens.subscribers
-where date::date = (select max(date::date) from sirens.subscribers)
+where date = (select max(date) from sirens.subscribers)
 order by subscribers desc
 ```
 

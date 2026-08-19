@@ -73,10 +73,10 @@ MIN_COVERAGE = 0.9
 INSERT_SQL = """
     INSERT INTO subscribers (channel_key, channel_id, subscribers, date, collected_at)
     VALUES ($1, $2, $3, $4, $5)
-    ON CONFLICT (channel_key, date) DO UPDATE
+    ON CONFLICT (channel_key, collected_at) DO UPDATE
         SET subscribers = EXCLUDED.subscribers,
             channel_id   = EXCLUDED.channel_id,
-            collected_at = EXCLUDED.collected_at
+            date         = EXCLUDED.date
 """
 
 
@@ -155,7 +155,7 @@ async def collect(client: TelegramClient, channels: dict) -> list[ChannelCount]:
 
 
 async def store(pool, counts: list[ChannelCount]) -> None:
-    now = datetime.datetime.now()
+    now = datetime.datetime.now().replace(microsecond=0)
     rows = [
         (c.channel_key, c.channel_id, c.subscribers, now.date(), now)
         for c in counts
@@ -166,9 +166,9 @@ async def store(pool, counts: list[ChannelCount]) -> None:
 
 
 SELECT_ALL_STATS_SQL = """
-    SELECT channel_key, date, subscribers
+    SELECT channel_key, collected_at, date, subscribers
     FROM subscribers
-    ORDER BY date, channel_key
+    ORDER BY collected_at, channel_key
 """
 
 STATS_CSV_COLUMNS = ("channel_key", "display_name", "date", "subscribers")
@@ -189,10 +189,15 @@ async def export_stats_csv(pool) -> str:
 
     for record in rows:
         channel_key = record["channel_key"]
-        date_val = record["date"]
+        date_val = record["collected_at"] if "collected_at" in record else record["date"]
         subscribers = record["subscribers"]
         display_name = REGION_CONFIG.get(channel_key, {}).get("display_name", channel_key)
-        date_str = date_val.isoformat() if hasattr(date_val, "isoformat") else str(date_val)
+        if isinstance(date_val, datetime.datetime):
+            date_str = date_val.strftime("%Y-%m-%d %H:%M:%S")
+        elif hasattr(date_val, "isoformat"):
+            date_str = date_val.isoformat()
+        else:
+            date_str = str(date_val)
         writer.writerow([channel_key, display_name, date_str, subscribers])
 
     return buffer.getvalue()

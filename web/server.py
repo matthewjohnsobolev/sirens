@@ -92,6 +92,16 @@ def api() -> Any:
     return jsonify(get_all_threats_data())
 
 
+def add_caching_headers(response: Response) -> Response:
+    if request.path == '/api':
+        response.headers['Cache-Control'] = 'public, max-age=2, s-maxage=2'
+    elif request.path.startswith('/static/') or request.path.endswith('.geojson'):
+        response.headers['Cache-Control'] = 'public, max-age=2592000, immutable'
+    elif request.method == 'GET' and response.status_code == 200:
+        response.headers['Cache-Control'] = 'no-cache, must-revalidate'
+    return response
+
+
 def _register_schema_init(app: Flask) -> None:
     state = {"done": False}
 
@@ -121,6 +131,7 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
     sentry_sdk.set_tag("service", "web")
 
     app.teardown_appcontext(close_db)
+    app.after_request(add_caching_headers)
 
     app.add_url_rule('/', view_func=index)
     app.add_url_rule('/api', view_func=api, methods=['GET'])
@@ -128,14 +139,12 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
     if init_db:
         _register_schema_init(app)
 
-
     if start_healthcheck:
         _start_healthcheck_thread()
 
     return app
 
 
-# gunicorn entry point: web.server:app
 app = create_app()
 
 

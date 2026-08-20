@@ -49,3 +49,11 @@ def test_config_github_repo_normalization(monkeypatch):
     assert config.GITHUB_REPO == "matthewjohnsobolev/sirens"
 
 
+def test_config_districts_by_oblast():
+    assert 'cherkasy_oblast' in config.DISTRICTS_BY_OBLAST
+    assert set(config.DISTRICTS_BY_OBLAST['cherkasy_oblast']) == {'cherkasy', 'uman', 'zvenyhorodka', 'zolotonosha'}
+    assert set(config.DISTRICTS_BY_OBLAST['kyiv_oblast']) == {'bilatserkva', 'bucha', 'fastiv'}
+    assert config.DISTRICTS_BY_OBLAST['lviv_oblast'] == ['lviv']
+    assert sum(len(d) for d in config.DISTRICTS_BY_OBLAST.values()) == len(config.REGION_CONFIG)
+
+

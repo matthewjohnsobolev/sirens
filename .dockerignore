@@ -1,32 +1,29 @@
-# Git
-.git/
+.git
 .gitignore
-.gitattributes
-
-# Secrets
-.env
-*.env
-
-# Not needed inside the image
-README.md
-Dockerfile
-docker-compose.yml
 .dockerignore
-deploy/
-.github/
+.env
+.claude
 
-# Runtime
-data/
-logs/
-backups/
-
-# Python
+# Python artifacts & virtual environments
 venv/
 .venv/
+env/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+.coverage
+htmlcov/
 *.egg-info/
-build/
-dist/
+
+# Node / Dashboard artifacts
+node_modules/
+dashboard/node_modules/
+dashboard/build/
+dashboard/.evidence/
+
+# Local data & logs
+backups/
+logs/
+data/

@@ -236,15 +236,27 @@ async def test_send_alert_writes_state_history_and_broadcasts(
 
     mock_redis.set.assert_awaited_once_with(f"channel_state:{CHANNEL_ID}", alert_type)
 
-    mock_redis.hset.assert_any_call(
-        f"threat:alerts:city:{region}",
-        mapping={
-            "status": expected_status,
-            "time": mock_redis.hset.call_args_list[0].kwargs["mapping"]["time"],
-            "source": "telegram",
-            "type": alert_type,
-        }
-    )
+    if "shelling" in alert_type:
+        mock_redis.hset.assert_any_call(
+            f"threat:shellings:{region}",
+            mapping={
+                "status": expected_status,
+                "time": mock_redis.hset.call_args_list[0].kwargs["mapping"]["time"],
+                "source": "telegram",
+                "updated_at": mock_redis.hset.call_args_list[0].kwargs["mapping"]["updated_at"],
+            }
+        )
+    else:
+        mock_redis.hset.assert_any_call(
+            f"threat:alerts:city:{region}",
+            mapping={
+                "status": expected_status,
+                "time": mock_redis.hset.call_args_list[0].kwargs["mapping"]["time"],
+                "source": "telegram",
+                "type": alert_type,
+                "updated_at": mock_redis.hset.call_args_list[0].kwargs["mapping"]["updated_at"],
+            }
+        )
 
     mock_conn.execute.assert_awaited_once()
     sql, *params = mock_conn.execute.call_args.args

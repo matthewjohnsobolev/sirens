@@ -11,39 +11,19 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '')
 HEALTHCHECKS_PING_URL_ALERTS = os.getenv('HEALTHCHECKS_PING_URL_ALERTS', '')
 HEALTHCHECKS_PING_URL_WEB = os.getenv('HEALTHCHECKS_PING_URL_WEB', '')
-# R2 credentials for BI stats upload:
-R2_ACCESS_KEY_ID = os.getenv('CLOUDFLARE_R2_ACCESS_KEY_ID') or os.getenv('R2_ACCESS_KEY_ID', '')
-R2_SECRET_ACCESS_KEY = os.getenv('CLOUDFLARE_R2_SECRET_ACCESS_KEY') or os.getenv('R2_SECRET_ACCESS_KEY', '')
+
+R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '')
+R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '')
 CLOUDFLARE_ACCOUNT_ID = os.getenv('CLOUDFLARE_ACCOUNT_ID', '')
-R2_DATA_BUCKET = (
-    os.getenv('CLOUDFLARE_R2_BI_DATA_BUCKET')
-    or os.getenv('CLOUDFLARE_R2_DATA_BUCKET')
-    or os.getenv('CLOUDFLARE_R2_BUCKET')
-    or os.getenv('CLUDFLARE_R2_BUCKET')
-    or os.getenv('R2_DATA_BUCKET')
-    or os.getenv('R2_BUCKET', 'sirens-bi-data')
-)
-R2_BUCKET = R2_DATA_BUCKET
-R2_WEB_BUCKET = (
-    os.getenv('CLOUDFLARE_R2_BI_WEB_BUCKET')
-    or os.getenv('CLOUDFLARE_R2_WEB_BUCKET')
-    or os.getenv('R2_WEB_BUCKET', 'sirens-bi-web')
-)
-R2_ENDPOINT = os.getenv('CLOUDFLARE_R2_ENDPOINT') or os.getenv('R2_ENDPOINT', '')
+R2_BUCKET = os.getenv('R2_BUCKET', 'sirens-bi')
+R2_ENDPOINT = os.getenv('R2_ENDPOINT', '')
 if not R2_ENDPOINT and CLOUDFLARE_ACCOUNT_ID:
-    R2_ENDPOINT = f"https://{CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+    R2_ENDPOINT = f"https://{CLOUDFLARE_ACCOUNT_ID}.eu.r2.cloudflarestorage.com"
 
 
-
-# Optional GitHub PAT to trigger workflow_dispatch for dashboard build
 GITHUB_PAT = os.getenv('GITHUB_PAT', '')
-_raw_repo = os.getenv('GITHUB_REPO', 'matthewjohnsobolev/sirens')
-GITHUB_REPO = _raw_repo.replace('https://github.com/', '').replace('http://github.com/', '').replace('git@github.com:', '').strip('/')
+GITHUB_REPO = os.getenv('GITHUB_REPO', 'matthewjohnsobolev/sirens')
 
-
-# One Sentry project for both services: they share config.py and fail together
-# (a Redis outage hits both), so a single issue stream keeps an incident whole.
-# Events are told apart by the "service" tag each service sets after init.
 SENTRY_DSN = os.getenv('SENTRY_DSN', '')
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))

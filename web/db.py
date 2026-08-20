@@ -5,13 +5,21 @@ Handles PostgreSQL schema/storage and Redis threat state caching.
 
 import datetime
 import logging
+import time
 from functools import partial
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import psycopg2
 import redis
 
-from config import DATABASE_URL, REDIS_URL, REGION_CONFIG, real_channels, test_channels
+from config import (
+    DATABASE_URL,
+    DISTRICTS_BY_OBLAST,
+    REDIS_URL,
+    REGION_CONFIG,
+    real_channels,
+    test_channels,
+)
 
 log = logging.getLogger(__name__)
 
@@ -259,7 +267,11 @@ def update_threat_status(
         time_val = datetime.datetime.now().strftime("%H:%M")
     
     st_bool = _normalize_status(status)
-    updates = {"status": "true" if st_bool else "false", "time": time_val}
+    updates = {
+        "status": "true" if st_bool else "false",
+        "time": time_val,
+        "updated_at": str(int(time.time()))
+    }
     if source_val is not None:
         updates["source"] = source_val
         
@@ -272,7 +284,8 @@ def reset_threat_status(table_name: str, target: str) -> None:
     redis_client.hset(key, mapping={
         "status": "false",
         "time": "None",
-        "source": "None"
+        "source": "None",
+        "updated_at": str(int(time.time()))
     })
 
 
@@ -319,6 +332,7 @@ async def update_alert_status(channel_id: int, status: str) -> None:
         
     now = datetime.datetime.now()
     current_time = now.strftime("%H:%M")
+    now_epoch = str(int(time.time()))
     
     event_type = None
     is_active: Optional[bool] = None
@@ -335,36 +349,49 @@ async def update_alert_status(channel_id: int, status: str) -> None:
         is_active = False
         event_type = "threat_of_shelling_cancelled"
 
-    city_key = f"threat:alerts:city:{district_key}"
-    updates = {"time": current_time}
-    if is_active is not None:
-        updates["status"] = "true" if is_active else "false"
-        if event_type:
-            updates["type"] = event_type
-        
-    redis_client.hset(city_key, mapping=updates)
+    if "shelling" in (event_type or ""):
+        if is_active is not None:
+            redis_client.hset(
+                f"threat:shellings:{district_key}",
+                mapping={
+                    "status": "true" if is_active else "false",
+                    "time": current_time,
+                    "source": "telegram",
+                    "updated_at": now_epoch,
+                }
+            )
+    else:
+        city_key = f"threat:alerts:city:{district_key}"
+        updates = {"time": current_time, "updated_at": now_epoch}
+        if is_active is not None:
+            updates["status"] = "true" if is_active else "false"
+            if event_type:
+                updates["type"] = event_type
+            
+        redis_client.hset(city_key, mapping=updates)
 
-    if is_active is not None:
-        active_set_key = f"threat:alerts:active:{oblast_key}"
-        if is_active:
-            redis_client.sadd(active_set_key, district_key)
-        else:
-            redis_client.srem(active_set_key, district_key)
+        if is_active is not None:
+            active_set_key = f"threat:alerts:active:{oblast_key}"
+            if is_active:
+                redis_client.sadd(active_set_key, district_key)
+            else:
+                redis_client.srem(active_set_key, district_key)
 
-        active_count = redis_client.scard(active_set_key)
-        try:
-            is_active_oblast = int(active_count or 0) > 0
-        except (ValueError, TypeError):
-            is_active_oblast = bool(active_count)
+            active_count = redis_client.scard(active_set_key)
+            try:
+                is_active_oblast = int(active_count or 0) > 0
+            except (ValueError, TypeError):
+                is_active_oblast = bool(active_count)
 
-        redis_client.hset(
-            f"threat:alerts:{oblast_key}",
-            mapping={
-                "status": "true" if is_active_oblast else "false",
-                "time": current_time,
-                "source": "telegram"
-            }
-        )
+            redis_client.hset(
+                f"threat:alerts:{oblast_key}",
+                mapping={
+                    "status": "true" if is_active_oblast else "false",
+                    "time": current_time,
+                    "source": "telegram",
+                    "updated_at": now_epoch,
+                }
+            )
 
     if event_type:
         try:
@@ -414,22 +441,61 @@ def rehydrate_state_from_db() -> None:
         if not o_key and d_key in REGION_CONFIG:
             o_key = REGION_CONFIG[d_key]['oblast']
 
-        is_active = str(alert_type).lower() in ("air_raid_alert", "threat_of_shelling", "start", "1", "true")
-        st_str = "true" if is_active else "false"
+        if "shelling" in str(alert_type).lower():
+            is_active = str(alert_type).lower() in ("threat_of_shelling", "1", "true")
+            st_str = "true" if is_active else "false"
+            if d_key:
+                dt_epoch = str(int(dt.timestamp())) if (dt and hasattr(dt, 'timestamp')) else str(int(time.time()))
+                pipeline.hset(f"threat:shellings:{d_key}", mapping={
+                    "status": st_str,
+                    "time": alert_time or (dt.strftime("%H:%M") if dt else "None"),
+                    "source": "telegram",
+                    "updated_at": dt_epoch,
+                })
+        else:
+            is_active = str(alert_type).lower() in ("air_raid_alert", "start", "1", "true")
+            st_str = "true" if is_active else "false"
 
-        if d_key:
-            pipeline.hset(f"threat:alerts:city:{d_key}", mapping={
-                "status": st_str,
-                "time": alert_time or dt.strftime("%H:%M"),
-                "source": "telegram",
-                "type": alert_type or ("air_raid_alert" if is_active else "air_raid_alert_cancelled")
-            })
-            if is_active and o_key:
-                pipeline.sadd(f"threat:alerts:active:{o_key}", d_key)
+            if d_key:
+                dt_epoch = str(int(dt.timestamp())) if (dt and hasattr(dt, 'timestamp')) else str(int(time.time()))
+                pipeline.hset(f"threat:alerts:city:{d_key}", mapping={
+                    "status": st_str,
+                    "time": alert_time or (dt.strftime("%H:%M") if dt else "None"),
+                    "source": "telegram",
+                    "type": alert_type or ("air_raid_alert" if is_active else "air_raid_alert_cancelled"),
+                    "updated_at": dt_epoch,
+                })
+                if is_active and o_key:
+                    pipeline.sadd(f"threat:alerts:active:{o_key}", d_key)
 
     pipeline.set("system:state_initialized", "true")
     pipeline.execute()
     log.info("Redis state rehydrated successfully from PostgreSQL (%d records)", len(rows))
+
+
+DEFAULT_THREAT: Dict[str, Any] = {
+    'status': False,
+    'time': 'None',
+    'source': 'None',
+    'updated_at': 0,
+}
+
+
+def _aggregate_shelling(districts: Dict[str, Any]) -> Dict[str, Any]:
+    active_shellings = [
+        d['shelling'] for d in districts.values()
+        if d.get('shelling') and d['shelling'].get('status')
+    ]
+    if not active_shellings:
+        return DEFAULT_THREAT.copy()
+
+    latest = max(active_shellings, key=lambda s: s.get('updated_at', 0))
+    return {
+        'status': True,
+        'time': latest.get('time', 'None'),
+        'source': latest.get('source', 'None'),
+        'updated_at': latest.get('updated_at', 0),
+    }
 
 
 def get_all_threats_data() -> Dict[str, Any]:
@@ -446,7 +512,6 @@ def get_all_threats_data() -> Dict[str, Any]:
     ]
     
     districts = list(REGION_CONFIG.keys())
-    fetch_cities_for_shelling = ['nikopol', 'kherson']
     
     keys_order = []
 
@@ -463,9 +528,9 @@ def get_all_threats_data() -> Dict[str, Any]:
             pipeline.hgetall(f"threat:alerts:city:{district}")
             keys_order.append(("city_alerts", district))
 
-        for city in fetch_cities_for_shelling:
-            pipeline.hgetall(f"threat:shellings:{city}")
-            keys_order.append(("city_shellings", city))
+        for district in districts:
+            pipeline.hgetall(f"threat:shellings:{district}")
+            keys_order.append(("city_shellings", district))
 
         for oblast in oblasts:
             pipeline.smembers(f"threat:alerts:active:{oblast}")
@@ -489,29 +554,60 @@ def get_all_threats_data() -> Dict[str, Any]:
         if category == "active_districts":
             raw_data["active_districts"][target] = list(data) if data else []
         elif not data:
-            raw_data[category][target] = {'status': False, 'time': 'None', 'source': 'None'}
+            entry = DEFAULT_THREAT.copy()
+            if category == "city_alerts":
+                entry['type'] = 'None'
+            raw_data[category][target] = entry
         else:
             raw_status = data.get('status', False)
-            raw_data[category][target] = {
+            try:
+                updated_at_val = int(data.get('updated_at', 0))
+            except (ValueError, TypeError):
+                updated_at_val = 0
+
+            entry = {
                 'status': _normalize_status(raw_status),
                 'time': data.get('time', 'None'),
-                'source': data.get('source', 'None')
+                'source': data.get('source', 'None'),
+                'updated_at': updated_at_val,
             }
+            if category == "city_alerts":
+                alert_type = data.get('type', '')
+                if alert_type in ('threat_of_shelling', 'threat_of_shelling_cancelled'):
+                    entry['status'] = False
+                    entry['type'] = alert_type
+                else:
+                    entry['type'] = alert_type or ('air_raid_alert' if entry['status'] else 'air_raid_alert_cancelled')
+            raw_data[category][target] = entry
         
     result: Dict[str, Any] = {}
     
     def build_oblast_entry(oblast: str) -> Dict[str, Any]:
-        active_set = raw_data['active_districts'].get(oblast, [])
-        oblast_alert = raw_data['alerts'].get(oblast, {'status': False, 'time': 'None', 'source': 'None'}).copy()
-        if active_set:
+        tracked = DISTRICTS_BY_OBLAST.get(oblast, [])
+        active = [d for d in raw_data['active_districts'].get(oblast, []) if d in tracked]
+
+        oblast_alert = raw_data['alerts'].get(oblast, DEFAULT_THREAT).copy()
+        oblast_alert['active_districts'] = active
+        oblast_alert['tracked_districts'] = tracked
+        if active:
             oblast_alert['status'] = True
-            oblast_alert['active_districts'] = active_set
+            oblast_alert['coverage'] = 'full' if len(active) >= len(tracked) else 'partial'
         else:
-            oblast_alert['active_districts'] = []
+            oblast_alert['coverage'] = 'none'
+
+        districts_map = {
+            d: {
+                'alert': raw_data['city_alerts'].get(d, DEFAULT_THREAT),
+                'shelling': raw_data['city_shellings'].get(d, DEFAULT_THREAT),
+            }
+            for d in tracked
+        }
 
         return {
             'alert': oblast_alert,
-            'explosion': raw_data['explosions'].get(oblast, {'status': False, 'time': 'None', 'source': 'None'}),
+            'explosion': raw_data['explosions'].get(oblast, DEFAULT_THREAT),
+            'shelling': _aggregate_shelling(districts_map),
+            'districts': districts_map,
         }
         
     for o in oblasts:
@@ -519,7 +615,7 @@ def get_all_threats_data() -> Dict[str, Any]:
         
     for city, parent_oblast in [('nikopol', 'dnipropetrovsk_oblast'), ('kherson', 'kherson_oblast')]:
         entry = build_oblast_entry(parent_oblast)
-        entry['shelling'] = raw_data['city_shellings'].get(city, {'status': False, 'time': 'None', 'source': 'None'})
+        entry['shelling'] = raw_data['city_shellings'].get(city, DEFAULT_THREAT)
         result[city] = entry
         
     return result

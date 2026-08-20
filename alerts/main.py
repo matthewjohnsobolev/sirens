@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import sys
+import time
 from logging.handlers import RotatingFileHandler
 
 import asyncpg
@@ -167,53 +168,59 @@ async def process_channel_photo_update(channel_id, region, alert_type):
 async def _record_alert_state(channel_id: int, region: str, alert_type: str):
     district_key = region
     oblast_key = REGION_CONFIG.get(region, {}).get('oblast', region)
-    is_active = alert_type in ("air_raid_alert", "threat_of_shelling")
-    status_str = "true" if is_active else "false"
     now = datetime.datetime.now()
     current_time = now.strftime("%H:%M")
+    now_epoch = str(int(time.time()))
 
     if redis_client:
         try:
             await redis_client.set(f"channel_state:{channel_id}", alert_type)
 
-            await redis_client.hset(
-                f"threat:alerts:city:{district_key}",
-                mapping={
-                    "status": status_str,
-                    "time": current_time,
-                    "source": "telegram",
-                    "type": alert_type,
-                }
-            )
-
-            active_key = f"threat:alerts:active:{oblast_key}"
-            if is_active:
-                await redis_client.sadd(active_key, district_key)
-            else:
-                await redis_client.srem(active_key, district_key)
-
-            active_count = await redis_client.scard(active_key)
-            try:
-                is_oblast_active = int(active_count or 0) > 0
-            except (ValueError, TypeError):
-                is_oblast_active = bool(active_count)
-
-            await redis_client.hset(
-                f"threat:alerts:{oblast_key}",
-                mapping={
-                    "status": "true" if is_oblast_active else "false",
-                    "time": current_time,
-                    "source": "telegram",
-                }
-            )
-
             if "shelling" in alert_type:
+                is_shelling_active = (alert_type == "threat_of_shelling")
+                status_str = "true" if is_shelling_active else "false"
                 await redis_client.hset(
                     f"threat:shellings:{district_key}",
                     mapping={
                         "status": status_str,
                         "time": current_time,
                         "source": "telegram",
+                        "updated_at": now_epoch,
+                    }
+                )
+            else:
+                is_alert_active = (alert_type == "air_raid_alert")
+                status_str = "true" if is_alert_active else "false"
+                await redis_client.hset(
+                    f"threat:alerts:city:{district_key}",
+                    mapping={
+                        "status": status_str,
+                        "time": current_time,
+                        "source": "telegram",
+                        "type": alert_type,
+                        "updated_at": now_epoch,
+                    }
+                )
+
+                active_key = f"threat:alerts:active:{oblast_key}"
+                if is_alert_active:
+                    await redis_client.sadd(active_key, district_key)
+                else:
+                    await redis_client.srem(active_key, district_key)
+
+                active_count = await redis_client.scard(active_key)
+                try:
+                    is_oblast_active = int(active_count or 0) > 0
+                except (ValueError, TypeError):
+                    is_oblast_active = bool(active_count)
+
+                await redis_client.hset(
+                    f"threat:alerts:{oblast_key}",
+                    mapping={
+                        "status": "true" if is_oblast_active else "false",
+                        "time": current_time,
+                        "source": "telegram",
+                        "updated_at": now_epoch,
                     }
                 )
         except Exception:

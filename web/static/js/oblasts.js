@@ -2,83 +2,90 @@
  * Oblast boundary styles and popup configurations for Sirens map.
  */
 
-function setOblastStyle(oblast, oblastAlert, oblastExplosion, oblastShelling) {
-    if (oblastExplosion) {
-        oblast.bringToFront();
-        oblast.setStyle({ color: "#FF1A1A", weight: 2});
-    } else if (oblastAlert) {
-        oblast.bringToFront();
-        oblast.setStyle({ color: "#FF831A", weight: 2});  
-    } else if (oblastShelling) {
-        oblast.bringToFront();
-        oblast.setStyle({ color: "#FFDA1A", weight: 2});  
-    } else {
-        oblast.bringToBack();
-        oblast.setStyle({ color: "gray", weight: 2});
-    }
+function ensureHatchDefs(map) {
+    const svg = map.getPane('overlayPane').querySelector('svg');
+    if (!svg || svg.querySelector('#alert-hatch')) return;
+    const defs = L.SVG.create('defs');   // createElementNS in SVG namespace
+    defs.innerHTML = `
+      <pattern id="alert-hatch" patternUnits="userSpaceOnUse"
+               width="10" height="10" patternTransform="rotate(45)">
+        <rect width="10" height="10" fill="${ALERT_COLORS.IDLE}"  fill-opacity="0.3"/>
+        <rect width="5"  height="10" fill="${ALERT_COLORS.ALERT}" fill-opacity="0.75"/>
+      </pattern>`;
+    svg.insertBefore(defs, svg.firstChild);
 }
 
+const OBLAST_STYLES = {
+    idle:      { color: ALERT_COLORS.IDLE,      weight: 2, fillColor: ALERT_COLORS.IDLE,      fillOpacity: 0.18 },
+    partial:   { color: ALERT_COLORS.ALERT,     weight: 2 },
+    full:      { color: ALERT_COLORS.ALERT,     weight: 2, fillColor: ALERT_COLORS.ALERT,     fillOpacity: 0.55 },
+    explosion: { color: ALERT_COLORS.EXPLOSION, weight: 2, fillColor: ALERT_COLORS.EXPLOSION, fillOpacity: 0.55 }
+};
+
+function setOblastStyle(layer, data) {
+    const dominant = pickDominant({
+        alert: data.alert, explosion: data.explosion,
+    });
+    const state = dominant === 'alert' ? (data.alert ? data.alert.coverage : 'idle')   // 'partial' | 'full'
+                : dominant || 'idle';                          // 'explosion' | 'idle'
+
+    layer.setStyle(OBLAST_STYLES[state] || OBLAST_STYLES.idle);
+    if (layer._path) {
+        L.DomUtil[state === 'partial' ? 'addClass' : 'removeClass'](layer._path, 'oblast-partial');
+    }
+    layer[state === 'idle' ? 'bringToBack' : 'bringToFront']();
+}
+
+const DISTRICTS_TOGGLE_LABEL = { expanded: 'Згорнути', collapsed: 'Показати всі' };
+
+// Базове положення - вниз (згорнуто); розгорнутий стан повертає його вгору через CSS.
+const CHEVRON_SVG = `
+    <svg class="districts-chevron" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
+        <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"
+              stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+
+// Контент попапа - функція, тож Leaflet перебудовує його на кожному відкритті.
+// Тримаємо стан акордеона зовні, інакше він скидався б щоразу.
+// За замовчуванням згорнутий: спершу зведення по області, деталі - за запитом.
+let districtsExpanded = false;
+
 function getOblastPopupContent(oblastData) {
+    const summary = oblastSummary(oblastData);
+    const alert = (oblastData && oblastData.alert) || {};
+    const tracked = alert.tracked_districts || [];
+
     let popupContent = `
       <div class="container">
-          <div class="scrollable-content">`;
-  
-    if (oblastData && oblastData.alert && oblastData.alert.status) {
-        popupContent += `
-          <div class="info-block">
-              <a href='${oblastData.alert.source}' class='oblast-button-link'>
-                  <button class='orange-oblast-button'>
-                      <div class='icon-container'>
-                          <img class='icon' src='static/img/icons/air-raid-alert-icon.svg'>
-                      </div>
-                      <div class='oblast-description-text'>Повітряна тривога</div>
-                      <div class='oblast-description-time'>${oblastData.alert.time}</div>
-                  </button>
-              </a>
-          </div>`;
-    } else if (oblastData && oblastData.alert) {
-        popupContent += `
-          <div class="info-block">
-              <a href='${oblastData.alert.source}' class='oblast-button-link'>
-                  <button class='green-oblast-button'>
-                      <div class='icon-container'>
-                          <img class='icon' src='static/img/icons/air-raid-alert-cancelled-icon.svg'>
-                      </div>
-                      <div class='oblast-description-text'>Відбій повітряної тривоги</div>
-                      <div class='oblast-description-time'>${oblastData.alert.time}</div>
-                  </button>
-              </a>
-          </div>`;
-    }
+          <div class="scrollable-content scrollable-content--oblast">`;
 
-    if (oblastData && oblastData.explosion && oblastData.explosion.status) {
-        popupContent += `
-          <div class="info-block">
-              <a href='${oblastData.explosion.source}' class='oblast-button-link'>
-                  <button class='red-oblast-button'>
-                      <div class='icon-container'>
-                          <img class='icon' src='static/img/icons/red-logo.svg'>
-                      </div>
-                      <div class='oblast-description-text'>Чутно вибухи</div>
-                      <div class='oblast-description-time'>${oblastData.explosion.time}</div>
-                  </button>
-              </a>
-          </div>`;
-    }
+    popupContent += renderPill({ ...summary, source: alert.source, showTime: false });
 
-    if (oblastData && oblastData.shelling && oblastData.shelling.status) {
+    if (tracked.length) {
         popupContent += `
-          <div class="info-block">
-              <a href='${oblastData.shelling.source}' class='oblast-button-link'>
-                  <button class='yellow-oblast-button'>
-                      <div class='icon-container'>
-                          <img class='icon' src='static/img/icons/yellow-logo.svg'>
-                      </div>
-                      <div class='oblast-description-text'>Загроза артобстрілу</div>
-                      <div class='oblast-description-time'>${oblastData.shelling.time}</div>
-                  </button>
-              </a>
-          </div>`;
+            <button type="button" class="districts-toggle" aria-expanded="${districtsExpanded}">
+                <span class="districts-toggle-text">Міста</span>
+                <span class="districts-toggle-action">
+                    <span class="districts-toggle-label">${districtsExpanded
+                        ? DISTRICTS_TOGGLE_LABEL.expanded
+                        : DISTRICTS_TOGGLE_LABEL.collapsed}</span>
+                    ${CHEVRON_SVG}
+                </span>
+            </button>
+            <div class="districts-list"${districtsExpanded ? '' : ' hidden'}>`;
+
+        for (const key of tracked) {
+            const marker = DISTRICT_MARKERS.find(m => m.district === key);
+            // Назва - фіксована ліва колонка, компактна таблетка забирає решту рядка.
+            popupContent += `
+                <div class="district-row">
+                    <div class="district-name">${marker ? marker.name : key}</div>
+                    ${renderPill({ ...districtPillState(oblastData, key), compact: true })}
+                </div>`;
+        }
+
+        popupContent += `
+            </div>`;
     }
 
     popupContent += `
@@ -87,86 +94,31 @@ function getOblastPopupContent(oblastData) {
     return popupContent;
 }
 
-function getCityPopupContent(cityData) {
-    let popupContent = `
-        <div class="container">
-            <div class="scrollable-content">`;
-  
-    popupContent += `
-            <div class="info-block">
-                <a href="https://www.t.me/kyiv_alert" class="oblast-button-link">
-                    <button class="channel-popup-button">
-                        <div class="icon-container-marker">
-                            <img class="icon-marker" src="static/img/icons/telegram.svg">
-                        </div>
-                        Підпишіться на канал, щоб отримувати сповіщення про тривогу
-                    </button>
-                </a>
-            </div>`;
-  
-    if (cityData && cityData.alert && cityData.alert.status) {
-        popupContent += `
-            <div class="info-block">
-                <a href='${cityData.alert.source}' class='oblast-button-link'>
-                    <button class='orange-oblast-button'>
-                        <div class='icon-container'>
-                            <img class='icon' src='static/img/icons/air-raid-alert-icon.svg'>
-                        </div>
-                        <div class='oblast-description-text'>Повітряна тривога</div>
-                        <div class='oblast-description-time'>${cityData.alert.time}</div>
-                    </button>
-                </a>
-            </div>`;
-    } else if (cityData && cityData.alert) {
-        popupContent += `
-            <div class="info-block">
-                <a href='${cityData.alert.source}' class='oblast-button-link'>
-                    <button class='green-oblast-button'>
-                        <div class='icon-container'>
-                            <img class='icon' src='static/img/icons/air-raid-alert-cancelled-icon.svg'>
-                        </div>
-                        <div class='oblast-description-text'>Відбій повітряної тривоги</div>
-                        <div class='oblast-description-time'>${cityData.alert.time}</div>
-                    </button>
-                </a>
-            </div>`;
-    }
-  
-    if (cityData && cityData.explosion && cityData.explosion.status) {
-        popupContent += `
-            <div class="info-block">
-                <a href='${cityData.explosion.source}' class='oblast-button-link'>
-                    <button class='red-oblast-button'>
-                        <div class='icon-container'>
-                            <img class='icon' src='static/img/icons/red-logo.svg'>
-                        </div>
-                        <div class='oblast-description-text'>Чутно вибухи</div>
-                        <div class='oblast-description-time'>${cityData.explosion.time}</div>
-                    </button>
-                </a>
-            </div>`;
-    }
-  
-    if (cityData && cityData.shelling && cityData.shelling.status) {
-        popupContent += `
-            <div class="info-block">
-                <a href='${cityData.shelling.source}' class='oblast-button-link'>
-                    <button class='yellow-oblast-button'>
-                        <div class='icon-container'>
-                            <img class='icon' src='static/img/icons/yellow-logo.svg'>
-                        </div>
-                        <div class='oblast-description-text'>Загроза артобстрілу</div>
-                        <div class='oblast-description-time'>${cityData.shelling.time}</div>
-                    </button>
-                </a>
-            </div>`;
-    }
-  
-    popupContent += `
-            </div>
-        </div>`;
-        
-    return popupContent;
+// Акордеон живе всередині попапа, який Leaflet перебудовує на кожному відкритті,
+// тож слухача вішаємо на свіжий DOM у popupopen - накопичення обробників немає.
+function bindDistrictsAccordion(map) {
+    map.on('popupopen', function (e) {
+        const root = e.popup.getElement();
+        const toggle = root && root.querySelector('.districts-toggle');
+        const list = root && root.querySelector('.districts-list');
+        if (!toggle || !list) return;
+
+        toggle.addEventListener('click', function () {
+            districtsExpanded = !districtsExpanded;
+            toggle.setAttribute('aria-expanded', String(districtsExpanded));
+            list.hidden = !districtsExpanded;
+
+            const label = toggle.querySelector('.districts-toggle-label');
+            if (label) {
+                label.textContent = districtsExpanded
+                    ? DISTRICTS_TOGGLE_LABEL.expanded
+                    : DISTRICTS_TOGGLE_LABEL.collapsed;
+            }
+            // popup.update() тут не можна: він перевикликає функцію контенту
+            // й перезаписує innerHTML, миттєво повертаючи список назад.
+            // Контейнер попапа має auto-висоту, тож він стискається сам.
+        });
+    });
 }
 
 var customOptions = {'maxWidth': '310', 'width': '310'};
@@ -201,28 +153,24 @@ fetch('/api')
                         };
                         const name = nameMap[regionId] || regionId;
                         
-                        let popupHtml = '<div class="oblast-name">' + name + '</div>';
-                        if (regionId === 'kyiv') {
-                            popupHtml += getCityPopupContent({ ...data, channel_link: "https://www.t.me/kyiv_alert" });
-                        } else {
-                            popupHtml += getOblastPopupContent(data);
-                        }
-                        
-                        layer.bindPopup(popupHtml, customOptions);
+                        // Функція, а не рядок: тривалість рахується у мить відкриття попапа.
+                        layer.bindPopup(
+                            () => '<div class="oblast-name">' + name + '</div>' + getOblastPopupContent(data),
+                            customOptions
+                        );
                     }
                 }).addTo(map);
+
+                ensureHatchDefs(map);
+                bindDistrictsAccordion(map);
 
                 geoLayer.eachLayer(function(layer) {
                     const data = apiData[layer.feature.properties.id];
                     if (!data) return;
-                    setOblastStyle(
-                        layer,
-                        data.alert.status,
-                        data.explosion.status,
-                        data.shelling ? data.shelling.status : false
-                    );
+                    setOblastStyle(layer, data);
                 });
             });
     })
     .catch(error => { console.error('Error fetching data:', error); });
+
   

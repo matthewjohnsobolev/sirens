@@ -143,19 +143,26 @@ def test_get_threat_source_defaults_to_none_string(mock_web_redis):
 def test_update_threat_status(mock_web_redis):
     update_threat_status("alerts", "kyiv", status=True, time_val="12:00")
 
-    mock_web_redis.hset.assert_called_once_with(
-        "threat:alerts:kyiv",
-        mapping={"status": "true", "time": "12:00"},
-    )
+    mock_web_redis.hset.assert_called_once()
+    key = mock_web_redis.hset.call_args.args[0]
+    mapping = mock_web_redis.hset.call_args.kwargs["mapping"]
+    assert key == "threat:alerts:kyiv"
+    assert mapping["status"] == "true"
+    assert mapping["time"] == "12:00"
+    assert "updated_at" in mapping
 
 
 def test_update_threat_status_includes_source_when_given(mock_web_redis):
     update_threat_status("explosions", "kyiv", status=True, time_val="12:00", source_val="https://t.me/x/1")
 
-    mock_web_redis.hset.assert_called_once_with(
-        "threat:explosions:kyiv",
-        mapping={"status": "true", "time": "12:00", "source": "https://t.me/x/1"},
-    )
+    mock_web_redis.hset.assert_called_once()
+    key = mock_web_redis.hset.call_args.args[0]
+    mapping = mock_web_redis.hset.call_args.kwargs["mapping"]
+    assert key == "threat:explosions:kyiv"
+    assert mapping["status"] == "true"
+    assert mapping["time"] == "12:00"
+    assert mapping["source"] == "https://t.me/x/1"
+    assert "updated_at" in mapping
 
 
 def test_update_threat_status_defaults_time_to_now(mock_web_redis):
@@ -166,15 +173,20 @@ def test_update_threat_status_defaults_time_to_now(mock_web_redis):
     assert mapping["status"] == "true"
     assert TIME_RE.fullmatch(mapping["time"])
     assert "source" not in mapping
+    assert "updated_at" in mapping
 
 
 def test_reset_threat_status(mock_web_redis):
     reset_threat_status("alerts", "kyiv")
 
-    mock_web_redis.hset.assert_called_once_with(
-        "threat:alerts:kyiv",
-        mapping={"status": "false", "time": "None", "source": "None"},
-    )
+    mock_web_redis.hset.assert_called_once()
+    key = mock_web_redis.hset.call_args.args[0]
+    mapping = mock_web_redis.hset.call_args.kwargs["mapping"]
+    assert key == "threat:alerts:kyiv"
+    assert mapping["status"] == "false"
+    assert mapping["time"] == "None"
+    assert mapping["source"] == "None"
+    assert "updated_at" in mapping
 
 
 @pytest.mark.parametrize("func, table", [
@@ -189,6 +201,7 @@ def test_update_threat_source_marks_threat_active(mock_web_redis, func, table):
     assert mapping["source"] == 'https://t.me/channel/1'
     assert mapping["status"] == "true"
     assert TIME_RE.fullmatch(mapping["time"])
+    assert "updated_at" in mapping
 
 
 def test_update_alert_source_writes_single_field(mock_web_redis):
@@ -223,10 +236,25 @@ async def test_update_alert_status_writes_redis_and_history(
 
     await update_alert_status(KYIV_CHANNEL, status_text)
 
-    mock_web_redis.hset.assert_any_call(
-        "threat:alerts:city:kyiv",
-        mapping={"status": expected_status, "time": mock_web_redis.hset.call_args_list[0].kwargs["mapping"]["time"], "type": expected_event}
-    )
+    if "shelling" in expected_event:
+        city_calls = [
+            c for c in mock_web_redis.hset.call_args_list
+            if c.args and c.args[0] == "threat:shellings:kyiv"
+        ]
+        assert len(city_calls) == 1
+        mapping = city_calls[0].kwargs["mapping"]
+        assert mapping["status"] == expected_status
+        assert "updated_at" in mapping
+    else:
+        city_calls = [
+            c for c in mock_web_redis.hset.call_args_list
+            if c.args and c.args[0] == "threat:alerts:city:kyiv"
+        ]
+        assert len(city_calls) == 1
+        mapping = city_calls[0].kwargs["mapping"]
+        assert mapping["status"] == expected_status
+        assert mapping["type"] == expected_event
+        assert "updated_at" in mapping
 
     mock_cursor.execute.assert_called_once()
     sql, params = mock_cursor.execute.call_args.args
@@ -282,7 +310,7 @@ def test_rehydrate_state_from_db(mock_web_pg, mock_web_redis):
         ("kyiv", "kyiv", "air_raid_alert", "14:00", now),
         ("lviv", "lviv_oblast", "air_raid_alert_cancelled", "13:00", now),
         (None, "odesa_oblast", "start", "12:00", now),
-        ("nikopol", None, "1", "11:00", now),
+        ("nikopol", "dnipropetrovsk_oblast", "threat_of_shelling", "11:00", now),
     ]
 
     pipeline = MagicMock()
@@ -290,10 +318,26 @@ def test_rehydrate_state_from_db(mock_web_pg, mock_web_redis):
 
     rehydrate_state_from_db()
 
-    pipeline.hset.assert_any_call(
-        "threat:alerts:city:kyiv",
-        mapping={"status": "true", "time": "14:00", "source": "telegram", "type": "air_raid_alert"}
-    )
+    city_calls = [
+        c for c in pipeline.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:city:kyiv"
+    ]
+    assert len(city_calls) == 1
+    mapping = city_calls[0].kwargs["mapping"]
+    assert mapping["status"] == "true"
+    assert mapping["time"] == "14:00"
+    assert mapping["source"] == "telegram"
+    assert mapping["type"] == "air_raid_alert"
+    assert "updated_at" in mapping
+
+    shelling_calls = [
+        c for c in pipeline.hset.call_args_list
+        if c.args and c.args[0] == "threat:shellings:nikopol"
+    ]
+    assert len(shelling_calls) == 1
+    assert shelling_calls[0].kwargs["mapping"]["status"] == "true"
+    assert "updated_at" in shelling_calls[0].kwargs["mapping"]
+
     pipeline.sadd.assert_any_call("threat:alerts:active:kyiv", "kyiv")
     pipeline.set.assert_called_with("system:state_initialized", "true")
     pipeline.execute.assert_called_once()
@@ -337,13 +381,13 @@ class _FakePipeline:
 @pytest.fixture
 def threats_store(mock_web_redis):
     store = {
-        'threat:alerts:kyiv': {'status': 'true', 'time': '10:00', 'source': 'telegram'},
-        'threat:alerts:dnipropetrovsk_oblast': {'status': 'true', 'time': '11:00', 'source': 'tg-dnipro'},
-        'threat:alerts:kherson_oblast': {'status': 'true', 'time': '12:00', 'source': 'tg-kherson'},
-        'threat:alerts:lviv_oblast': {'status': 'false', 'time': '09:00', 'source': 'tg-lviv'},
-        'threat:explosions:dnipropetrovsk_oblast': {'status': 'true', 'time': '11:30', 'source': 'ex-dnipro'},
-        'threat:shellings:nikopol': {'status': 'true', 'time': '11:45', 'source': 'sh-nikopol'},
-        'threat:shellings:kherson': {'status': 'false', 'time': '12:15', 'source': 'sh-kherson'},
+        'threat:alerts:kyiv': {'status': 'true', 'time': '10:00', 'source': 'telegram', 'updated_at': '1000'},
+        'threat:alerts:dnipropetrovsk_oblast': {'status': 'true', 'time': '11:00', 'source': 'tg-dnipro', 'updated_at': '1000'},
+        'threat:alerts:kherson_oblast': {'status': 'true', 'time': '12:00', 'source': 'tg-kherson', 'updated_at': '1000'},
+        'threat:alerts:lviv_oblast': {'status': 'false', 'time': '09:00', 'source': 'tg-lviv', 'updated_at': '1000'},
+        'threat:explosions:dnipropetrovsk_oblast': {'status': 'true', 'time': '11:30', 'source': 'ex-dnipro', 'updated_at': '1000'},
+        'threat:shellings:nikopol': {'status': 'true', 'time': '11:45', 'source': 'sh-nikopol', 'updated_at': '1000'},
+        'threat:shellings:kherson': {'status': 'false', 'time': '12:15', 'source': 'sh-kherson', 'updated_at': '1000'},
     }
     sets = {
         'threat:alerts:active:kyiv': {'kyiv'},
@@ -377,6 +421,7 @@ def test_get_all_threats_data_normalises_status(threats_store):
 
     assert result['kyiv']['alert']['status'] is True
     assert result['kyiv']['alert']['time'] == '10:00'
+    assert result['kyiv']['alert']['updated_at'] == 1000
     assert result['lviv_oblast']['alert']['status'] is False
 
 
@@ -384,7 +429,9 @@ def test_get_all_threats_data_defaults_missing_keys(threats_store):
     result = get_all_threats_data()
 
     assert result['crimea']['alert']['status'] is False
+    assert result['crimea']['alert']['updated_at'] == 0
     assert result['crimea']['explosion']['status'] is False
+    assert result['crimea']['explosion']['updated_at'] == 0
 
 
 @pytest.mark.parametrize("city, parent_oblast", [
@@ -398,13 +445,84 @@ def test_get_all_threats_data_maps_cities_to_parent_oblast(threats_store, city, 
     assert result[city]['explosion'] == result[parent_oblast]['explosion']
 
 
-def test_get_all_threats_data_attaches_shelling_to_cities_only(threats_store):
+def test_get_all_threats_data_aggregates_shelling(threats_store):
     result = get_all_threats_data()
 
     assert result['nikopol']['shelling']['status'] is True
     assert result['kherson']['shelling']['status'] is False
-    assert 'shelling' not in result['kyiv']
-    assert 'shelling' not in result['dnipropetrovsk_oblast']
+    assert result['dnipropetrovsk_oblast']['shelling']['status'] is True
+    assert result['kyiv']['shelling']['status'] is False
+
+
+def test_get_all_threats_data_coverage_partial(mock_web_redis):
+    store = {
+        'threat:alerts:city:bucha': {'status': 'true', 'time': '12:00', 'updated_at': '100'},
+    }
+    sets = {
+        'threat:alerts:active:kyiv_oblast': {'bucha'},
+    }
+    mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
+    result = get_all_threats_data()
+
+    kyiv_obl = result['kyiv_oblast']
+    assert kyiv_obl['alert']['status'] is True
+    assert kyiv_obl['alert']['coverage'] == 'partial'
+    assert kyiv_obl['alert']['active_districts'] == ['bucha']
+    assert set(kyiv_obl['alert']['tracked_districts']) == {'bilatserkva', 'bucha', 'fastiv'}
+    assert 'bucha' in kyiv_obl['districts']
+    assert kyiv_obl['districts']['bucha']['alert']['status'] is True
+
+
+def test_get_all_threats_data_coverage_full(mock_web_redis):
+    store = {}
+    sets = {
+        'threat:alerts:active:volyn_oblast': {'lutsk', 'kovel'},
+        'threat:alerts:active:lviv_oblast': {'lviv'},
+    }
+    mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
+    result = get_all_threats_data()
+
+    assert result['volyn_oblast']['alert']['coverage'] == 'full'
+    assert result['lviv_oblast']['alert']['coverage'] == 'full'
+    assert result['crimea']['alert']['coverage'] == 'none'
+    assert result['crimea']['alert']['active_districts'] == []
+    assert result['crimea']['alert']['tracked_districts'] == []
+
+
+def test_get_all_threats_data_filters_untracked_from_active_districts(mock_web_redis):
+    store = {}
+    sets = {
+        'threat:alerts:active:kyiv_oblast': {'bucha', 'nonexistent_district'},
+    }
+    mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
+    result = get_all_threats_data()
+
+    assert result['kyiv_oblast']['alert']['active_districts'] == ['bucha']
+    assert result['kyiv_oblast']['alert']['coverage'] == 'partial'
+
+
+def test_aggregate_shelling_selects_latest():
+    from web.db import _aggregate_shelling, DEFAULT_THREAT
+
+    districts_empty = {}
+    assert _aggregate_shelling(districts_empty) == DEFAULT_THREAT
+
+    districts_no_active = {
+        'd1': {'shelling': {'status': False, 'time': '10:00', 'updated_at': 50}},
+    }
+    assert _aggregate_shelling(districts_no_active) == DEFAULT_THREAT
+
+    districts_multi = {
+        'd1': {'shelling': {'status': True, 'time': '10:00', 'source': 's1', 'updated_at': 100}},
+        'd2': {'shelling': {'status': True, 'time': '11:00', 'source': 's2', 'updated_at': 200}},
+        'd3': {'shelling': {'status': False, 'time': '12:00', 'source': 's3', 'updated_at': 300}},
+    }
+    agg = _aggregate_shelling(districts_multi)
+    assert agg['status'] is True
+    assert agg['time'] == '11:00'
+    assert agg['source'] == 's2'
+    assert agg['updated_at'] == 200
+
 
 
 

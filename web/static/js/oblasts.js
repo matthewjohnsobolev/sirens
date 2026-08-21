@@ -2,6 +2,12 @@
  * Oblast boundary styles and popup configurations for Sirens map.
  */
 
+// Заливки полігонів: початкові значення Leaflet, які були до появи штриховки.
+const OBLAST_FILL_OPACITY = {
+    idle:  0.18,
+    alert: 0.2
+};
+
 function ensureHatchDefs(map) {
     const svg = map.getPane('overlayPane').querySelector('svg');
     if (!svg || svg.querySelector('#alert-hatch')) return;
@@ -9,16 +15,16 @@ function ensureHatchDefs(map) {
     defs.innerHTML = `
       <pattern id="alert-hatch" patternUnits="userSpaceOnUse"
                width="10" height="10" patternTransform="rotate(45)">
-        <rect width="10" height="10" fill="${ALERT_COLORS.IDLE}"  fill-opacity="0.3"/>
-        <rect width="5"  height="10" fill="${ALERT_COLORS.ALERT}" fill-opacity="0.75"/>
+        <rect x="0" width="5" height="10" fill="${ALERT_COLORS.ALERT}" fill-opacity="${OBLAST_FILL_OPACITY.alert}"/>
+        <rect x="5" width="5" height="10" fill="${ALERT_COLORS.IDLE}"  fill-opacity="${OBLAST_FILL_OPACITY.idle}"/>
       </pattern>`;
     svg.insertBefore(defs, svg.firstChild);
 }
 
 const OBLAST_STYLES = {
-    idle:      { color: ALERT_COLORS.IDLE,      weight: 2, fillColor: ALERT_COLORS.IDLE,      fillOpacity: 0.18 },
+    idle:      { color: ALERT_COLORS.IDLE,      weight: 2, fillColor: ALERT_COLORS.IDLE,      fillOpacity: OBLAST_FILL_OPACITY.idle },
     partial:   { color: ALERT_COLORS.ALERT,     weight: 2 },
-    full:      { color: ALERT_COLORS.ALERT,     weight: 2, fillColor: ALERT_COLORS.ALERT,     fillOpacity: 0.55 },
+    full:      { color: ALERT_COLORS.ALERT,     weight: 2, fillColor: ALERT_COLORS.ALERT,     fillOpacity: OBLAST_FILL_OPACITY.alert },
     explosion: { color: ALERT_COLORS.EXPLOSION, weight: 2, fillColor: ALERT_COLORS.EXPLOSION, fillOpacity: 0.55 }
 };
 

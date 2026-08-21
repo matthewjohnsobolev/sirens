@@ -8,6 +8,12 @@
        моношрифти, усі з кирилицею. */
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
                  Consolas, 'Liberation Mono', monospace;
+
+    /* Тривалість - службове число, а не друга половина повідомлення: тому
+       напівпрозорий чорний замість суцільного. 0.6 - найсвітліше значення,
+       на якому 11px текст лишається вище 4.5:1 на всіх фонах таблеток
+       (найтемніший випадок - смуга штриховки #F0BE91: 4.81:1). */
+    --pill-time-color: rgba(0, 0, 0, 0.6);
 }
 
 .oblast-caption-container {
@@ -144,10 +150,6 @@
         color-mix(in srgb, var(--pill-orange) 94%, #000) 8px 16px);
 }
 
-.hatched-oblast-button .oblast-description-time {
-    color: #000;
-}
-
 .icon-container {
     width: 40px;
     height: 40px;
@@ -174,15 +176,17 @@
 
 /* Тривалість - моношрифтом у всіх попапах: цифри однакової ширини, тож у
    стовпчику таблеток вони стоять одна під одною й не смикаються, поки час іде.
-   Ширина за вмістом, але не менша за 72px (+8 padding = 80px, як було при
-   Inter): моно ширше, і найдовше значення "23 год 59 хв" - це вже ~87px.
-   Лейбл віддає різницю зі свого боку й за потреби ховається під трикрапку. */
+   Ширина за вмістом, але не менша за 66px (+8 padding = 74px): моно 11px дає
+   ~6.6px на символ, тож найдовше значення "23 год 59 хв" - це ~79px, а короткі
+   "щойно" й "5 хв" тримають спільну праву межу. Лейбл віддає різницю зі свого
+   боку й за потреби ховається під трикрапку. */
 .oblast-description-time {
     flex: 0 0 auto;
-    min-width: 72px;
+    min-width: 66px;
     font-family: var(--font-mono);
-    font-weight: 500;
-    font-size: 12px;
+    font-weight: 400;
+    font-size: 11px;
+    color: var(--pill-time-color);
     display: flex;
     align-items: center;
     justify-content: flex-end;

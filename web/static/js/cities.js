@@ -49,9 +49,11 @@ function getMarkerPopupContent(marker, threats) {
     const dominant = pickDominant(threats) || 'idle';
     const winner = threats[dominant] || threats.alert || {};
 
+    // Спершу статус, і лише потім заклик підписатись: у попап заходять,
+    // щоб дізнатись, що зараз коїться, а канал - це вже наступний крок.
     return `<div class='channel-popup-name'>${marker.name}</div>`
-         + subscribeButtonHtml(marker.channel)
-         + renderPill({ variant: dominant, updatedAt: winner.updated_at, source: winner.source });
+         + renderPill({ variant: dominant, updatedAt: winner.updated_at, source: winner.source })
+         + subscribeButtonHtml(marker.channel);
 }
 
 var customOptions = {'maxWidth': '310', 'width': '310'};

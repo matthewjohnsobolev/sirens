@@ -131,7 +131,7 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 * The `shelling` (artillery shelling threat) object is present only for cities near the front line where shelling monitoring is enabled
 * `status`: `1` (Active) or `0` (Inactive)
 * `time`: Time of the event formatted as `HH:MM` in the **Kyiv timezone (`Europe/Kyiv`)**, or `"None"` if not applicable.
-* `source`: URL to the Telegram message source (if available) or `"None"`
+* `source`: URL of the broadcast message in that city's Telegram channel (e.g. `https://t.me/kyiv_alert/512`), so the map can link a pill straight to it. Falls back to `"telegram"` for events recorded before message links were stored or whose link could not be resolved, and `"None"` when there is no event at all.
 
 ## Channel Statistics
 

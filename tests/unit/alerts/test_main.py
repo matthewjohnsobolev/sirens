@@ -23,11 +23,14 @@ from alerts.cli import get_mode_config
 from alerts.main import (
     CHANNEL_PHOTO_PATHS,
     PHOTO_UPDATE_MAX_ATTEMPTS,
+    broadcast_reference,
     build_message_handler,
+    build_message_link,
     delete_photo_update_service_message,
     log_alert_received,
     main,
     process_channel_photo_update,
+    resolve_channel_username,
     send_alert,
     strip_ongoing_notice,
     update_channel_photo,
@@ -215,6 +218,132 @@ async def test_process_channel_photo_update_ignores_unknown_alert_type(
 
     mock_redis.get.assert_not_awaited()
     mock_telegram_client.get_entity.assert_not_awaited()
+
+
+@pytest.fixture(autouse=True)
+def _clear_username_cache():
+    alerts_main.channel_usernames.clear()
+    yield
+    alerts_main.channel_usernames.clear()
+
+
+@pytest.mark.parametrize("channel_id, message_id, username, expected", [
+    (-1001712561448, 42, "kyiv_alert", "https://t.me/kyiv_alert/42"),
+    (-1001712561448, 42, None, "https://t.me/c/1712561448/42"),
+    (-4242, 7, None, "https://t.me/c/4242/7"),
+])
+def test_build_message_link(channel_id, message_id, username, expected):
+    assert build_message_link(channel_id, message_id, username) == expected
+
+
+@pytest.mark.asyncio
+async def test_resolve_channel_username_caches_the_lookup(mock_telegram_client):
+    mock_telegram_client.get_entity.return_value = MagicMock(username="kyiv_alert")
+
+    assert await resolve_channel_username(CHANNEL_ID) == "kyiv_alert"
+    assert await resolve_channel_username(CHANNEL_ID) == "kyiv_alert"
+
+    mock_telegram_client.get_entity.assert_awaited_once_with(CHANNEL_ID)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entity", [
+    pytest.param(MagicMock(username=None), id="private-channel"),
+    pytest.param(MagicMock(username=""), id="empty-username"),
+])
+async def test_resolve_channel_username_returns_none_without_username(
+    mock_telegram_client, entity
+):
+    mock_telegram_client.get_entity.return_value = entity
+
+    assert await resolve_channel_username(CHANNEL_ID) is None
+    assert alerts_main.channel_usernames == {}
+
+
+@pytest.mark.asyncio
+async def test_resolve_channel_username_survives_lookup_failure(mock_telegram_client, caplog):
+    caplog.set_level(logging.WARNING)
+    mock_telegram_client.get_entity.side_effect = ConnectionError("no route")
+
+    assert await resolve_channel_username(CHANNEL_ID) is None
+    assert f"Failed to resolve username for channel {CHANNEL_ID}" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_broadcast_reference_uses_the_public_username(mock_telegram_client):
+    mock_telegram_client.get_entity.return_value = MagicMock(username="kyiv_alert")
+
+    assert await broadcast_reference(CHANNEL_ID, MagicMock(id=77)) == (
+        77, "https://t.me/kyiv_alert/77"
+    )
+
+
+@pytest.mark.asyncio
+async def test_broadcast_reference_without_message_id(mock_telegram_client, caplog):
+    caplog.set_level(logging.WARNING)
+
+    assert await broadcast_reference(CHANNEL_ID, None) == (None, None)
+    assert f"Broadcast to channel {CHANNEL_ID} returned no message id" in caplog.text
+    mock_telegram_client.get_entity.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_send_alert_stores_the_broadcast_message_link(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    _, mock_conn = mock_pg_pool
+    mock_telegram_client.send_message.return_value = MagicMock(id=321)
+    mock_telegram_client.get_entity.return_value = MagicMock(username="kyiv_alert")
+    link = "https://t.me/kyiv_alert/321"
+
+    with patch('alerts.main.process_channel_photo_update', new_callable=AsyncMock):
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert")
+        await _drain_background_tasks()
+
+    for key in ("threat:alerts:city:kyiv", "threat:alerts:kyiv"):
+        calls = [c for c in mock_redis.hset.call_args_list if c.args and c.args[0] == key]
+        assert calls[0].kwargs["mapping"]["source"] == link
+
+    _, *params = mock_conn.execute.call_args.args
+    assert params[6] == CHANNEL_ID
+    assert params[7] == 321
+    assert params[8] == link
+
+
+@pytest.mark.asyncio
+async def test_send_alert_stores_the_shelling_message_link(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    mock_telegram_client.send_message.return_value = MagicMock(id=15)
+    mock_telegram_client.get_entity.return_value = MagicMock(username="nikopol_alert")
+
+    with patch('alerts.main.process_channel_photo_update', new_callable=AsyncMock):
+        await send_alert(CHANNEL_ID, "nikopol", "threat_of_shelling")
+        await _drain_background_tasks()
+
+    calls = [
+        c for c in mock_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:shellings:nikopol"
+    ]
+    assert calls[0].kwargs["mapping"]["source"] == "https://t.me/nikopol_alert/15"
+
+
+@pytest.mark.asyncio
+async def test_send_alert_falls_back_to_a_private_link_without_username(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    mock_telegram_client.send_message.return_value = MagicMock(id=9)
+    mock_telegram_client.get_entity.return_value = MagicMock(username=None)
+
+    with patch('alerts.main.process_channel_photo_update', new_callable=AsyncMock):
+        await send_alert(-1001712561448, "kyiv", "air_raid_alert")
+        await _drain_background_tasks()
+
+    calls = [
+        c for c in mock_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:city:kyiv"
+    ]
+    assert calls[0].kwargs["mapping"]["source"] == "https://t.me/c/1712561448/9"
 
 
 @pytest.mark.asyncio

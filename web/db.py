@@ -36,6 +36,11 @@ def get_region_by_channel_id(channel_id: int) -> Optional[str]:
 
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
+# Джерело за замовчуванням, коли посилання на конкретне повідомлення зібрати не
+# вдалося: воно лишається сумісним зі старими записами й не є URL, тож фронтенд
+# не робить із таблетки покликання в нікуди.
+DEFAULT_SOURCE = "telegram"
+
 
 def get_pg_conn() -> psycopg2.extensions.connection:
     return psycopg2.connect(DATABASE_URL)
@@ -57,7 +62,10 @@ def ensure_pg_tables() -> None:
                         time TEXT NOT NULL,
                         district_key TEXT,
                         oblast_key TEXT,
-                        type TEXT NOT NULL
+                        type TEXT NOT NULL,
+                        channel_id BIGINT,
+                        message_id BIGINT,
+                        message_link TEXT
                     )
                 """)
                 cur.execute("""
@@ -104,6 +112,24 @@ def ensure_pg_tables() -> None:
                             WHERE table_name = 'alert_history' AND column_name = 'oblast'
                         ) THEN
                             ALTER TABLE alert_history DROP COLUMN oblast;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'alert_history' AND column_name = 'channel_id'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN channel_id BIGINT;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'alert_history' AND column_name = 'message_id'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN message_id BIGINT;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'alert_history' AND column_name = 'message_link'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN message_link TEXT;
                         END IF;
                     END $$;
                 """)
@@ -323,7 +349,12 @@ def update_alert_source(channel_id: int, link: str) -> None:
         redis_client.hset(f"threat:alerts:city:{district_key}", "source", link)
 
 
-async def update_alert_status(channel_id: int, status: str) -> None:
+async def update_alert_status(
+    channel_id: int,
+    status: str,
+    message_id: Optional[int] = None,
+    message_link: Optional[str] = None,
+) -> None:
     district_key = get_region_by_channel_id(channel_id)
     if not district_key or district_key not in REGION_CONFIG:
         return
@@ -333,6 +364,7 @@ async def update_alert_status(channel_id: int, status: str) -> None:
     now = datetime.datetime.now()
     current_time = now.strftime("%H:%M")
     now_epoch = str(int(time.time()))
+    source = message_link or DEFAULT_SOURCE
     
     event_type = None
     is_active: Optional[bool] = None
@@ -356,7 +388,7 @@ async def update_alert_status(channel_id: int, status: str) -> None:
                 mapping={
                     "status": "true" if is_active else "false",
                     "time": current_time,
-                    "source": "telegram",
+                    "source": source,
                     "updated_at": now_epoch,
                 }
             )
@@ -365,6 +397,9 @@ async def update_alert_status(channel_id: int, status: str) -> None:
         updates = {"time": current_time, "updated_at": now_epoch}
         if is_active is not None:
             updates["status"] = "true" if is_active else "false"
+            # Джерело переписуємо лише разом зі статусом: нерозпізнаний текст
+            # не має підмінювати посилання на повідомлення чинної тривоги.
+            updates["source"] = source
             if event_type:
                 updates["type"] = event_type
             
@@ -388,7 +423,7 @@ async def update_alert_status(channel_id: int, status: str) -> None:
                 mapping={
                     "status": "true" if is_active_oblast else "false",
                     "time": current_time,
-                    "source": "telegram",
+                    "source": source,
                     "updated_at": now_epoch,
                 }
             )
@@ -399,9 +434,11 @@ async def update_alert_status(channel_id: int, status: str) -> None:
                 with conn.cursor() as cur:
                     cur.execute(
                         """INSERT INTO alert_history 
-                           (datetime, date, time, district_key, oblast_key, type) 
-                           VALUES (%s, %s, %s, %s, %s, %s)""",
-                        (now, now.date(), current_time, district_key, oblast_key, event_type)
+                           (datetime, date, time, district_key, oblast_key, type,
+                            channel_id, message_id, message_link) 
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                        (now, now.date(), current_time, district_key, oblast_key, event_type,
+                         channel_id, message_id, message_link)
                     )
                 conn.commit()
         except Exception:
@@ -419,7 +456,8 @@ def rehydrate_state_from_db() -> None:
                         COALESCE(oblast_key, '') as oblast_key,
                         type,
                         time,
-                        datetime
+                        datetime,
+                        message_link
                     FROM alert_history
                     WHERE district_key IS NOT NULL
                     ORDER BY district_key, datetime DESC
@@ -435,7 +473,8 @@ def rehydrate_state_from_db() -> None:
 
     pipeline = redis_client.pipeline()
     for row in rows:
-        d_key, o_key, alert_type, alert_time, dt = row
+        d_key, o_key, alert_type, alert_time, dt, message_link = row
+        source = message_link or DEFAULT_SOURCE
         if not d_key and o_key:
             d_key = o_key
         if not o_key and d_key in REGION_CONFIG:
@@ -449,7 +488,7 @@ def rehydrate_state_from_db() -> None:
                 pipeline.hset(f"threat:shellings:{d_key}", mapping={
                     "status": st_str,
                     "time": alert_time or (dt.strftime("%H:%M") if dt else "None"),
-                    "source": "telegram",
+                    "source": source,
                     "updated_at": dt_epoch,
                 })
         else:
@@ -461,7 +500,7 @@ def rehydrate_state_from_db() -> None:
                 pipeline.hset(f"threat:alerts:city:{d_key}", mapping={
                     "status": st_str,
                     "time": alert_time or (dt.strftime("%H:%M") if dt else "None"),
-                    "source": "telegram",
+                    "source": source,
                     "type": alert_type or ("air_raid_alert" if is_active else "air_raid_alert_cancelled"),
                     "updated_at": dt_epoch,
                 })

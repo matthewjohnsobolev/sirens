@@ -266,6 +266,66 @@ async def test_update_alert_status_writes_redis_and_history(
 
 
 @pytest.mark.asyncio
+async def test_update_alert_status_stores_broadcast_link(mock_web_redis, mock_web_pg):
+    _, mock_cursor = mock_web_pg
+    link = "https://t.me/kyiv_alert/512"
+
+    await update_alert_status(KYIV_CHANNEL, "Повітряна тривога", message_id=512, message_link=link)
+
+    for key in ("threat:alerts:city:kyiv", "threat:alerts:kyiv"):
+        calls = [c for c in mock_web_redis.hset.call_args_list if c.args and c.args[0] == key]
+        assert calls[0].kwargs["mapping"]["source"] == link
+
+    _, params = mock_cursor.execute.call_args.args
+    assert params[6] == KYIV_CHANNEL
+    assert params[7] == 512
+    assert params[8] == link
+
+
+@pytest.mark.asyncio
+async def test_update_alert_status_falls_back_to_default_source(mock_web_redis, mock_web_pg):
+    _, mock_cursor = mock_web_pg
+
+    await update_alert_status(KYIV_CHANNEL, "Повітряна тривога")
+
+    calls = [
+        c for c in mock_web_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:city:kyiv"
+    ]
+    assert calls[0].kwargs["mapping"]["source"] == "telegram"
+
+    _, params = mock_cursor.execute.call_args.args
+    assert params[7] is None
+    assert params[8] is None
+
+
+@pytest.mark.asyncio
+async def test_update_alert_status_keeps_stored_link_on_unknown_text(mock_web_redis, mock_web_pg):
+    await update_alert_status(KYIV_CHANNEL, "Щось незрозуміле")
+
+    calls = [
+        c for c in mock_web_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:city:kyiv"
+    ]
+    assert "source" not in calls[0].kwargs["mapping"]
+
+
+@pytest.mark.asyncio
+async def test_update_alert_status_stores_shelling_link(mock_web_redis, mock_web_pg):
+    link = "https://t.me/kyiv_alert/900"
+
+    await update_alert_status(
+        KYIV_CHANNEL, "Загроза артилерійського обстрілу", message_id=900, message_link=link
+    )
+
+    calls = [
+        c for c in mock_web_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:shellings:kyiv"
+    ]
+    assert calls[0].kwargs["mapping"]["source"] == link
+
+
+@pytest.mark.asyncio
 async def test_update_alert_status_raises_and_logs_when_history_write_fails(
     mock_web_redis, mock_web_pg, caplog
 ):
@@ -307,10 +367,11 @@ def test_rehydrate_state_from_db(mock_web_pg, mock_web_redis):
     mock_conn, mock_cursor = mock_web_pg
     now = datetime.datetime.now()
     mock_cursor.fetchall.return_value = [
-        ("kyiv", "kyiv", "air_raid_alert", "14:00", now),
-        ("lviv", "lviv_oblast", "air_raid_alert_cancelled", "13:00", now),
-        (None, "odesa_oblast", "start", "12:00", now),
-        ("nikopol", "dnipropetrovsk_oblast", "threat_of_shelling", "11:00", now),
+        ("kyiv", "kyiv", "air_raid_alert", "14:00", now, "https://t.me/kyiv_alert/42"),
+        ("lviv", "lviv_oblast", "air_raid_alert_cancelled", "13:00", now, None),
+        (None, "odesa_oblast", "start", "12:00", now, None),
+        ("nikopol", "dnipropetrovsk_oblast", "threat_of_shelling", "11:00", now,
+         "https://t.me/nikopol_alert/7"),
     ]
 
     pipeline = MagicMock()
@@ -326,9 +387,17 @@ def test_rehydrate_state_from_db(mock_web_pg, mock_web_redis):
     mapping = city_calls[0].kwargs["mapping"]
     assert mapping["status"] == "true"
     assert mapping["time"] == "14:00"
-    assert mapping["source"] == "telegram"
+    assert mapping["source"] == "https://t.me/kyiv_alert/42"
     assert mapping["type"] == "air_raid_alert"
     assert "updated_at" in mapping
+
+    # Запис без збереженого посилання (історія до цієї зміни) лишається з
+    # нейтральним джерелом, тож таблетка просто не стає клікабельною.
+    lviv_calls = [
+        c for c in pipeline.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:city:lviv"
+    ]
+    assert lviv_calls[0].kwargs["mapping"]["source"] == "telegram"
 
     shelling_calls = [
         c for c in pipeline.hset.call_args_list
@@ -336,6 +405,7 @@ def test_rehydrate_state_from_db(mock_web_pg, mock_web_redis):
     ]
     assert len(shelling_calls) == 1
     assert shelling_calls[0].kwargs["mapping"]["status"] == "true"
+    assert shelling_calls[0].kwargs["mapping"]["source"] == "https://t.me/nikopol_alert/7"
     assert "updated_at" in shelling_calls[0].kwargs["mapping"]
 
     pipeline.sadd.assert_any_call("threat:alerts:active:kyiv", "kyiv")

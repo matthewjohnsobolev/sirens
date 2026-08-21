@@ -13,6 +13,7 @@ import re
 import sys
 import time
 from logging.handlers import RotatingFileHandler
+from typing import Optional
 
 import asyncpg
 import redis.asyncio as redis
@@ -49,7 +50,7 @@ from config import (
     api_hash,
     api_id,
 )
-from web.db import ensure_pg_tables, rehydrate_state_from_db
+from web.db import DEFAULT_SOURCE, ensure_pg_tables, rehydrate_state_from_db
 
 os.makedirs(LOGS_PATH, exist_ok=True)
 LOG_FILE = os.path.join(LOGS_PATH, "alerts.log")
@@ -78,6 +79,59 @@ CHANNEL_PHOTO_PATHS = {
     "threat_of_shelling": f"{IMAGES_PATH}/threat-of-shelling.png",
     "threat_of_shelling_cancelled": f"{IMAGES_PATH}/air-raid-alert-cancelled.png",
 }
+
+# @username каналів кешуємо в пам'яті: він змінюється хіба що вручну, а без
+# кешу кожна тривога коштувала б зайвого resolve у Telegram.
+channel_usernames: dict[int, str] = {}
+
+
+def build_message_link(channel_id: int, message_id: int, username: Optional[str] = None) -> str:
+    """Публічне посилання на повідомлення в каналі.
+
+    Для каналу з @username це t.me/<username>/<id> - відкривається будь-ким.
+    Без нього лишається приватна форма t.me/c/<internal_id>/<id>, яку побачить
+    лише підписник каналу.
+    """
+    if username:
+        return f"https://t.me/{username}/{message_id}"
+
+    internal_id = str(channel_id)
+    internal_id = internal_id[4:] if internal_id.startswith("-100") else internal_id.lstrip("-")
+    return f"https://t.me/c/{internal_id}/{message_id}"
+
+
+async def resolve_channel_username(channel_id: int) -> Optional[str]:
+    cached = channel_usernames.get(channel_id)
+    if cached:
+        return cached
+
+    try:
+        entity = await client.get_entity(channel_id)
+    except Exception:
+        log.warning("Failed to resolve username for channel %d", channel_id, exc_info=True)
+        return None
+
+    username = getattr(entity, "username", None)
+    if not isinstance(username, str) or not username:
+        return None
+
+    channel_usernames[channel_id] = username
+    return username
+
+
+async def broadcast_reference(channel_id: int, message) -> tuple[Optional[int], Optional[str]]:
+    """Ідентифікатор і посилання щойно надісланого повідомлення.
+
+    Або обидва значення, або жодного: посилання без id (як і навпаки) в історії
+    лише збивало б з пантелику.
+    """
+    message_id = getattr(message, "id", None)
+    if not isinstance(message_id, int):
+        log.warning("Broadcast to channel %d returned no message id; link not stored", channel_id)
+        return None, None
+
+    username = await resolve_channel_username(channel_id)
+    return message_id, build_message_link(channel_id, message_id, username)
 
 
 def spawn_tracked_task(coro, description: str):
@@ -165,12 +219,19 @@ async def process_channel_photo_update(channel_id, region, alert_type):
     )
 
 
-async def _record_alert_state(channel_id: int, region: str, alert_type: str):
+async def _record_alert_state(
+    channel_id: int,
+    region: str,
+    alert_type: str,
+    message_id: Optional[int] = None,
+    message_link: Optional[str] = None,
+):
     district_key = region
     oblast_key = REGION_CONFIG.get(region, {}).get('oblast', region)
     now = datetime.datetime.now()
     current_time = now.strftime("%H:%M")
     now_epoch = str(int(time.time()))
+    source = message_link or DEFAULT_SOURCE
 
     if redis_client:
         try:
@@ -184,7 +245,7 @@ async def _record_alert_state(channel_id: int, region: str, alert_type: str):
                     mapping={
                         "status": status_str,
                         "time": current_time,
-                        "source": "telegram",
+                        "source": source,
                         "updated_at": now_epoch,
                     }
                 )
@@ -196,7 +257,7 @@ async def _record_alert_state(channel_id: int, region: str, alert_type: str):
                     mapping={
                         "status": status_str,
                         "time": current_time,
-                        "source": "telegram",
+                        "source": source,
                         "type": alert_type,
                         "updated_at": now_epoch,
                     }
@@ -219,7 +280,7 @@ async def _record_alert_state(channel_id: int, region: str, alert_type: str):
                     mapping={
                         "status": "true" if is_oblast_active else "false",
                         "time": current_time,
-                        "source": "telegram",
+                        "source": source,
                         "updated_at": now_epoch,
                     }
                 )
@@ -231,9 +292,11 @@ async def _record_alert_state(channel_id: int, region: str, alert_type: str):
             async with pg_pool.acquire() as conn:
                 await conn.execute(
                     """INSERT INTO alert_history 
-                       (datetime, date, time, district_key, oblast_key, type) 
-                       VALUES ($1, $2, $3, $4, $5, $6)""",
-                    now, now.date(), current_time, district_key, oblast_key, alert_type
+                       (datetime, date, time, district_key, oblast_key, type,
+                        channel_id, message_id, message_link) 
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
+                    now, now.date(), current_time, district_key, oblast_key, alert_type,
+                    channel_id, message_id, message_link
                 )
         except Exception as e:
             log.error("Failed to insert alert history into PG: %s", e)
@@ -263,8 +326,9 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
             )
 
     send_succeeded = False
+    sent_message = None
     try:
-        await client.send_message(channel_id, message_text)
+        sent_message = await client.send_message(channel_id, message_text)
         send_succeeded = True
         if alert_type == "air_raid_alert":
             log.info("Air raid alert sent to %s", display_name)
@@ -281,7 +345,14 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
             log.exception("Failed to send %s to %s", alert_type.replace('_', ' '), display_name)
 
     if send_succeeded:
-        await _record_alert_state(channel_id, region, alert_type)
+        # Посилання на щойно надіслане повідомлення стає джерелом стану: саме
+        # воно відкривається з таблетки міста на карті.
+        message_id, message_link = await broadcast_reference(channel_id, sent_message)
+        await _record_alert_state(
+            channel_id, region, alert_type,
+            message_id=message_id,
+            message_link=message_link,
+        )
 
         if CHANNEL_PHOTO_PATHS.get(alert_type):
             spawn_tracked_task(

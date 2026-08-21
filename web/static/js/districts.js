@@ -53,6 +53,18 @@ function formatDuration(updatedAt) {
     return hours ? `${days} дн ${hours} год` : `${days} дн`;
 }
 
+// Джерело події - це посилання на повідомлення бродкастера в каналі міста
+// (https://t.me/...). Історичні записи натомість несуть маркери на кшталт
+// 'telegram' чи 'None': їх не можна віддавати в href, інакше таблетка веде в
+// нікуди. Тому клікабельна лише таблетка зі справжнім посиланням на t.me.
+const MESSAGE_LINK_RE = /^https:\/\/t\.me\/[\w/+-]+$/;
+
+function messageLink(source) {
+    if (typeof source !== 'string') return null;
+    const trimmed = source.trim();
+    return MESSAGE_LINK_RE.test(trimmed) ? trimmed : null;
+}
+
 // Єдина таблетка на всі попапи - маркера й області: та сама анатомія
 // (іконка, лейбл, тривалість), той самий розмір. Різниця лише в даних.
 function renderPill({ variant, text, updatedAt, source, showTime = true }) {
@@ -65,8 +77,9 @@ function renderPill({ variant, text, updatedAt, source, showTime = true }) {
             <div class="oblast-description-text">${text || v.label}</div>
             ${timeHtml}
         </button>`;
-    const wrapped = (source && source !== 'None')
-        ? `<a href="${source}" class="oblast-button-link">${body}</a>`
+    const href = messageLink(source);
+    const wrapped = href
+        ? `<a href="${href}" class="oblast-button-link" target="_blank" rel="noopener noreferrer">${body}</a>`
         : body;
     return `<div class="info-block">${wrapped}</div>`;
 }
@@ -168,6 +181,7 @@ if (typeof module !== 'undefined' && module.exports) {
         PILL_VARIANTS,
         pickDominant,
         formatDuration,
+        messageLink,
         renderPill,
         districtPillState,
         DISTRICT_MARKERS,

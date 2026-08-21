@@ -2,6 +2,12 @@
     /* Базовий оранжевий тривоги. Від нього походять і суцільна плашка,
        і смуги штриховки часткової тривоги - щоб варіанти не розїхались. */
     --pill-orange: #FFCA9A;
+
+    /* Моношрифт службових написів: тривалості в таблетках і підписів міст.
+       JetBrains Mono тягнеться з Google Fonts разом з Inter; далі - системні
+       моношрифти, усі з кирилицею. */
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
+                 Consolas, 'Liberation Mono', monospace;
 }
 
 .oblast-caption-container {
@@ -166,11 +172,15 @@
     text-overflow: ellipsis;
 }
 
-/* Фіксована колонка: найдовше можливе значення - "23 год 59 хв" (~68px при Inter 12px).
-   72 + 8 padding = 80px, тож лейблу лишається 310 - 40 іконка - 80 = 190px,
-   рівно стільки, скільки він мав до правки. box-sizing тут content-box. */
+/* Тривалість - моношрифтом у всіх попапах: цифри однакової ширини, тож у
+   стовпчику таблеток вони стоять одна під одною й не смикаються, поки час іде.
+   Ширина за вмістом, але не менша за 72px (+8 padding = 80px, як було при
+   Inter): моно ширше, і найдовше значення "23 год 59 хв" - це вже ~87px.
+   Лейбл віддає різницю зі свого боку й за потреби ховається під трикрапку. */
 .oblast-description-time {
-    flex: 0 0 72px;
+    flex: 0 0 auto;
+    min-width: 72px;
+    font-family: var(--font-mono);
     font-weight: 500;
     font-size: 12px;
     display: flex;
@@ -240,37 +250,70 @@
     position: relative;
 }
 
-/* Контейнер с прокруткой */
+/* Підказка "список довший, ніж видно": нижня таблетка розчиняється в білому.
+   Потрібна тому, що Chrome на macOS та в мобільних тримає смугу прокрутки
+   схованою до першого дотику - без градієнта зріз списку виглядає як його
+   кінець. Клас вішає JS і лише коли вміст справді не влазить, тож на коротких
+   списках і на кінці прокрутки підказки немає. */
+.container::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 16px;
+    pointer-events: none;   /* градієнт не має перехоплювати кліки по таблетці */
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #FFF);
+}
+
+.container--more::after {
+    opacity: 1;
+}
+
+/* Список міст із прокруткою. Видно рівно дві групи "місто + таблетка", далі -
+   скрол: 2 x (14 підпис + 6 проміжок + 40 таблетка) + 12 між групами = 132px.
+   Більше двох міст мають лише три області - Черкаська й Дніпропетровська
+   (по чотири) та Київська (три), тож прокрутка вмикається рідко. */
 .scrollable-content {
-    max-height: 90px; /* Увеличиваем высоту для отображения большего количества контента */
+    max-height: 132px;
     overflow-y: auto;
     overflow-x: hidden;   /* горизонтальна смуга тут не потрібна ніколи */
     padding-right: 8px;
     margin-right: -8px; /* Компенсируем padding для выравнивания */
+    scrollbar-width: thin;   /* Firefox: інакше смуга з'їдає 16px ширини таблетки */
+    scrollbar-color: rgba(0, 0, 0, 0.15) rgba(0, 0, 0, 0.05);
 }
 
-/* .oblast-name має margin-bottom 10px, тож і проміжок від таблетки до заголовка
-   "Міста" робимо 10px - його задає padding-top кнопки, а не відступ таблетки. */
-.scrollable-content--oblast > .info-block {
+/* Група "місто + його таблетка". Зовнішній проміжок удвічі більший за
+   внутрішній (12 проти 6), тож підпис читається разом зі своєю таблеткою,
+   а не з попередньою. */
+.popup-city {
+    margin-bottom: 12px;
+}
+
+.popup-city:last-child {
     margin-bottom: 0;
 }
 
-/* Увесь список влазить без скролу: зведення 40 + заголовок 34 + 4 міста
-   (32x4 + 8x3, останній без відступу) = 226px. Чотири - максимум серед реальних
-   областей (Черкаська, Дніпропетровська). Запас до 240px, щоб смуга прокрутки
-   не з'являлась через дрібні розбіжності рендера - вона лишається тільки як
-   запобіжник, якщо список колись стане довшим. */
-.scrollable-content--oblast {
-    max-height: 240px;
+.popup-city .info-block {
+    margin-bottom: 0;
 }
 
-/* Назва міста над його таблеткою */
-.district-name {
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 600;
-    color: #000;
-    margin: 10px 0 6px;
+/* Підпис міста над таблеткою: моно + капс + розрядка. Це службовий рядок,
+   а не другий заголовок, тому дрібний і сірий - назва області зверху
+   лишається єдиним чорним 14px заголовком попапа.
+   #757575 - той самий сірий, що й у хрестика закриття попапа Leaflet. */
+.popup-city-name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 14px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #757575;
+    margin: 0 0 6px;
 }
 
 /* Стили для информационных блоков */
@@ -305,134 +348,4 @@
     fill: url(#alert-hatch);
     fill-opacity: 1;
     stroke: #FF831A;
-}
-
-
-/* ===========================================================================
-   Компактний розмір таблетки та рядок району
-   ---------------------------------------------------------------------------
-   Модифікатор відповідає лише за розмір: анатомія (контейнер іконки, лейбл,
-   колонка часу) і сам файл іконки не змінюються, тож він поєднується з будь-яким
-   кольоровим класом, включно з .hatched-oblast-button.
-   =========================================================================== */
-
-.oblast-button--compact {
-    height: 32px;
-    font-size: 11px;
-    /* 10px на висоті 40px - це 0.25 висоти. На 32px та ж пропорція дає 8px,
-       інакше компактна таблетка читається круглішою за основну. */
-    border-radius: 8px;
-}
-
-.oblast-button--compact .icon-container {
-    width: 28px;
-    height: 32px;
-}
-
-.oblast-button--compact .icon {
-    width: 16px;
-    height: 16px;
-}
-
-/* Колонка часу вужча за основну (72+8), але ширину задає вміст із підлогою 62px:
-   так найдовше значення ("23 год 59 хв", ~65px при Inter 11px) гарантовано
-   лишається в один рядок, а короткі ("59 хв") усе одно тримають вирівнювання. */
-.oblast-button--compact .oblast-description-time {
-    flex: 0 0 auto;
-    min-width: 62px;
-    font-size: 11px;
-    padding-right: 8px;
-}
-
-/* Рядок району: назва у фіксованій лівій колонці, таблетка забирає решту.
-   80px обрізають лише справді довгі назви - 2 з 38: "Івано-Франківськ" (~93px)
-   і "Кропивницький" (~85px). Для порівняння: середня назва це 48.8px, на ній
-   обрізалося б 16 із 38. nowrap + ellipsis гарантують, що рядок не
-   перенесеться нізащо. */
-.district-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-}
-
-.district-row .district-name {
-    flex: 0 0 80px;
-    margin: 0;
-    font-size: 11px;
-    line-height: 32px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.district-row .info-block {
-    flex: 1;
-    min-width: 0;
-    margin-bottom: 0;
-}
-
-/* ===========================================================================
-   Акордеон "Райони"
-   =========================================================================== */
-
-.districts-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    /* Симетрично 10px: стільки ж, скільки між назвою області й таблеткою та між
-       таблеткою і цим заголовком. Праворуч 0 - шеврон стає врівень з правим
-       краєм таблетки, бо таблетка займає всю ширину контейнера.
-       Разом із текстом це 34px зони натискання на всю ширину. */
-    padding: 10px 0;
-    margin: 0;
-    line-height: 14px;
-    border: none;
-    background: none;
-    cursor: pointer;
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 700;
-    color: #000;
-    text-align: left;
-}
-
-
-/* "Показати всі" / "Згорнути" плюс шеврон - однакового розміру й кольору.
-   #757575 і #585858 на ховері - те саме, що в хрестика закриття попапа Leaflet. */
-.districts-toggle-action {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    font-weight: 500;
-    color: #757575;
-}
-
-.districts-toggle:hover .districts-toggle-action {
-    color: #585858;
-}
-
-.districts-chevron {
-    flex: 0 0 auto;
-    transition: transform 0.15s ease;
-}
-
-.districts-toggle[aria-expanded="false"] {
-    margin-bottom: -10px;
-}
-
-/* Останній рядок не додає відступу - інакше знизу знову набігало б зайве поле. */
-.district-row:last-child {
-    margin-bottom: 0;
-}
-
-/* Згорнуто - шеврон дивиться вниз (базове положення), розгорнуто - вгору. */
-.districts-toggle[aria-expanded="true"] .districts-chevron {
-    transform: rotate(180deg);
-}
-
-.districts-list[hidden] {
-    display: none;
 }

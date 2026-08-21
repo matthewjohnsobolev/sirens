@@ -53,15 +53,14 @@ function formatDuration(updatedAt) {
     return hours ? `${days} дн ${hours} год` : `${days} дн`;
 }
 
-// compact - лише модифікатор розміру; він не залежить від кольорового класу
-// і працює з будь-яким, включно зі штриховкою.
-function renderPill({ variant, text, updatedAt, source, showTime = true, compact = false }) {
+// Єдина таблетка на всі попапи - маркера й області: та сама анатомія
+// (іконка, лейбл, тривалість), той самий розмір. Різниця лише в даних.
+function renderPill({ variant, text, updatedAt, source, showTime = true }) {
     const v = PILL_VARIANTS[variant] || PILL_VARIANTS.unknown;
-    const cls = compact ? `${v.cls} oblast-button--compact` : v.cls;
     const duration = (showTime && updatedAt) ? formatDuration(updatedAt) : '';
     const timeHtml = duration ? `<div class="oblast-description-time">${duration}</div>` : '';
     const body = `
-        <button class="${cls}">
+        <button class="${v.cls}">
             <div class="icon-container"><img class="icon" src="static/img/icons/${v.icon}"></div>
             <div class="oblast-description-text">${text || v.label}</div>
             ${timeHtml}
@@ -70,36 +69,6 @@ function renderPill({ variant, text, updatedAt, source, showTime = true, compact
         ? `<a href="${source}" class="oblast-button-link">${body}</a>`
         : body;
     return `<div class="info-block">${wrapped}</div>`;
-}
-
-function districtAlertStamps(oblastData, keys) {
-    return keys
-        .map(key => {
-            const district = oblastData.districts && oblastData.districts[key];
-            return district && district.alert ? district.alert.updated_at || 0 : 0;
-        })
-        .filter(stamp => stamp > 0);
-}
-
-function oblastSummary(oblastData) {
-    const alert = (oblastData && oblastData.alert) || {};
-    const tracked = alert.tracked_districts || [];
-    const active = alert.active_districts || [];
-
-    if (!tracked.length) {
-        return { variant: 'unknown', text: 'Немає даних по районах', updatedAt: 0 };
-    }
-
-    // Головна таблетка показує стан області одним словом, без переліку районів -
-    // деталі по кожному місту нижче, в акордеоні.
-    if (alert.coverage === 'full') {
-        return { variant: 'alert', text: 'Повітряна тривога', updatedAt: 0 };
-    }
-    if (alert.coverage === 'partial') {
-        return { variant: 'partial', text: 'Часткова тривога', updatedAt: 0 };
-    }
-
-    return { variant: 'idle', text: 'Тривог немає', updatedAt: 0 };
 }
 
 function districtPillState(oblastData, key) {
@@ -200,7 +169,6 @@ if (typeof module !== 'undefined' && module.exports) {
         pickDominant,
         formatDuration,
         renderPill,
-        oblastSummary,
         districtPillState,
         DISTRICT_MARKERS,
         getMarkerThreats

@@ -36,88 +36,56 @@ function setOblastStyle(layer, data) {
     layer[state === 'idle' ? 'bringToBack' : 'bringToFront']();
 }
 
-const DISTRICTS_TOGGLE_LABEL = { expanded: 'Згорнути', collapsed: 'Показати всі' };
-
-// Базове положення - вниз (згорнуто); розгорнутий стан повертає його вгору через CSS.
-const CHEVRON_SVG = `
-    <svg class="districts-chevron" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
-        <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"
-              stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>`;
-
-// Контент попапа - функція, тож Leaflet перебудовує його на кожному відкритті.
-// Тримаємо стан акордеона зовні, інакше він скидався б щоразу.
-// За замовчуванням згорнутий: спершу зведення по області, деталі - за запитом.
-let districtsExpanded = false;
-
+// Попап області - той самий список стандартних таблеток, що й у попапах маркерів:
+// над кожною таблеткою стоїть моношрифтом місто, якого вона стосується.
 function getOblastPopupContent(oblastData) {
-    const summary = oblastSummary(oblastData);
     const alert = (oblastData && oblastData.alert) || {};
     const tracked = alert.tracked_districts || [];
 
-    let popupContent = `
+    // Області без жодного відстежуваного міста (Крим, Донеччина, Луганщина,
+    // Севастополь): показуємо єдину таблетку "немає даних" замість порожнього списку.
+    if (!tracked.length) {
+        return `
       <div class="container">
-          <div class="scrollable-content scrollable-content--oblast">`;
-
-    popupContent += renderPill({ ...summary, source: alert.source, showTime: false });
-
-    if (tracked.length) {
-        popupContent += `
-            <button type="button" class="districts-toggle" aria-expanded="${districtsExpanded}">
-                <span class="districts-toggle-text">Міста</span>
-                <span class="districts-toggle-action">
-                    <span class="districts-toggle-label">${districtsExpanded
-                        ? DISTRICTS_TOGGLE_LABEL.expanded
-                        : DISTRICTS_TOGGLE_LABEL.collapsed}</span>
-                    ${CHEVRON_SVG}
-                </span>
-            </button>
-            <div class="districts-list"${districtsExpanded ? '' : ' hidden'}>`;
-
-        for (const key of tracked) {
-            const marker = DISTRICT_MARKERS.find(m => m.district === key);
-            // Назва - фіксована ліва колонка, компактна таблетка забирає решту рядка.
-            popupContent += `
-                <div class="district-row">
-                    <div class="district-name">${marker ? marker.name : key}</div>
-                    ${renderPill({ ...districtPillState(oblastData, key), compact: true })}
-                </div>`;
-        }
-
-        popupContent += `
-            </div>`;
+          ${renderPill({ variant: 'unknown', text: 'Немає даних по районах', showTime: false })}
+      </div>`;
     }
 
-    popupContent += `
+    let rows = '';
+    for (const key of tracked) {
+        const marker = DISTRICT_MARKERS.find(m => m.district === key);
+        rows += `
+              <div class="popup-city">
+                  <div class="popup-city-name">${marker ? marker.name : key}</div>
+                  ${renderPill(districtPillState(oblastData, key))}
+              </div>`;
+    }
+
+    return `
+      <div class="container">
+          <div class="scrollable-content">${rows}
           </div>
       </div>`;
-    return popupContent;
 }
 
-// Акордеон живе всередині попапа, який Leaflet перебудовує на кожному відкритті,
-// тож слухача вішаємо на свіжий DOM у popupopen - накопичення обробників немає.
-function bindDistrictsAccordion(map) {
+// Leaflet перебудовує DOM попапа на кожному відкритті, тож слухачів вішаємо
+// на свіжий вузол у popupopen - накопичення обробників немає.
+// Градієнт унизу списку вмикається лише коли є що прокручувати, і гасне,
+// щойно доскролили до кінця.
+function bindCitiesScrollHint(map) {
     map.on('popupopen', function (e) {
         const root = e.popup.getElement();
-        const toggle = root && root.querySelector('.districts-toggle');
-        const list = root && root.querySelector('.districts-list');
-        if (!toggle || !list) return;
+        const list = root && root.querySelector('.scrollable-content');
+        if (!list) return;
 
-        toggle.addEventListener('click', function () {
-            districtsExpanded = !districtsExpanded;
-            toggle.setAttribute('aria-expanded', String(districtsExpanded));
-            list.hidden = !districtsExpanded;
+        const container = list.parentNode;
+        const sync = function () {
+            const more = list.scrollHeight - list.scrollTop - list.clientHeight > 1;
+            container.classList.toggle('container--more', more);
+        };
 
-            const label = toggle.querySelector('.districts-toggle-label');
-            if (label) {
-                label.textContent = districtsExpanded
-                    ? DISTRICTS_TOGGLE_LABEL.expanded
-                    : DISTRICTS_TOGGLE_LABEL.collapsed;
-            }
-            // popup.update() тут не можна: він перевикликає функцію контенту
-            // й перезаписує innerHTML, миттєво повертаючи список назад.
-            // Контейнер попапа має auto-висоту, тож він стискається сам.
-        });
+        list.addEventListener('scroll', sync);
+        sync();
     });
 }
 
@@ -162,7 +130,7 @@ fetch('/api')
                 }).addTo(map);
 
                 ensureHatchDefs(map);
-                bindDistrictsAccordion(map);
+                bindCitiesScrollHint(map);
 
                 geoLayer.eachLayer(function(layer) {
                     const data = apiData[layer.feature.properties.id];

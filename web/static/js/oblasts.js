@@ -68,27 +68,6 @@ function getOblastPopupContent(oblastData) {
       </div>`;
 }
 
-// Leaflet перебудовує DOM попапа на кожному відкритті, тож слухачів вішаємо
-// на свіжий вузол у popupopen - накопичення обробників немає.
-// Градієнт унизу списку вмикається лише коли є що прокручувати, і гасне,
-// щойно доскролили до кінця.
-function bindCitiesScrollHint(map) {
-    map.on('popupopen', function (e) {
-        const root = e.popup.getElement();
-        const list = root && root.querySelector('.scrollable-content');
-        if (!list) return;
-
-        const container = list.parentNode;
-        const sync = function () {
-            const more = list.scrollHeight - list.scrollTop - list.clientHeight > 1;
-            container.classList.toggle('container--more', more);
-        };
-
-        list.addEventListener('scroll', sync);
-        sync();
-    });
-}
-
 var customOptions = {'maxWidth': '310', 'width': '310'};
 
 fetch('/api')
@@ -130,7 +109,6 @@ fetch('/api')
                 }).addTo(map);
 
                 ensureHatchDefs(map);
-                bindCitiesScrollHint(map);
 
                 geoLayer.eachLayer(function(layer) {
                     const data = apiData[layer.feature.properties.id];

@@ -126,6 +126,7 @@ real_channels = {
     'izmail': -1002062806630,
 }
 
+
 MESSAGES = {
     'air_raid_alert':               '🟠 Повітряна тривога!',
     'air_raid_alert_cancelled':     '🟢 Відбій повітряної тривоги!',
@@ -133,70 +134,256 @@ MESSAGES = {
     'threat_of_shelling_cancelled': '🟢 Відбій загрози артобстрілу!',
 }
 
-REGION_CONFIG = {
+# --- Райони України ---------------------------------------------------------
+#
+# Довідник районів підконтрольних областей живить дві різні речі: перехоплення
+# тривог і карту. Бродкаст - третя, окрема роль: район отримує його лише тоді,
+# коли його ключ є серед real_channels. Тому записи діляться на два типи -
+# "карта + тривога" (є свій канал, є display_name) і "просто карта" (стан
+# пишеться в Redis/PG, а таблетка на карті веде на пост першоджерела).
+#
+# 'name'    - українська назва; вона ж підзаголовок у попапі області.
+# 'aliases' - інші форми, якими джерело може назвати той самий район: назва до
+#             перейменування або місто замість району.
+#
+# Ключі районів із каналом збігаються з ключами real_channels і не змінюються:
+# на них стоїть історія в alert_history і ключі стану в Redis.
+#
+# Крим, Севастополь, Донецька й Луганська область районів тут не мають -
+# їхні попапи лишаються з єдиною плашкою "Немає даних по районах".
+
+APOSTROPHES = ("'", "’")
+
+
+def apostrophe_variants(name):
+    """Обидві форми апострофа: джерело пише то ', то ’."""
+    if not any(mark in name for mark in APOSTROPHES):
+        return [name]
+    straight = name.replace("’", "'")
+    return [straight, straight.replace("'", "’")]
+
+
+DISTRICT_CONFIG = {
+    # --- Київ ---
+    'kyiv':               {'name': 'м. Київ', 'oblast': 'kyiv', 'display_name': 'Kyiv'},
+
+    # --- Київська ---
+    'bilatserkva':        {'name': 'Білоцерківський район', 'oblast': 'kyiv_oblast', 'display_name': 'Bila Tserkva'},
+    'boryspil':           {'name': 'Бориспільський район', 'oblast': 'kyiv_oblast'},
+    'brovary':            {'name': 'Броварський район', 'oblast': 'kyiv_oblast'},
+    'bucha':              {'name': 'Бучанський район', 'oblast': 'kyiv_oblast', 'display_name': 'Bucha'},
+    'vyshhorod':          {'name': 'Вишгородський район', 'oblast': 'kyiv_oblast'},
+    'obukhiv':            {'name': 'Обухівський район', 'oblast': 'kyiv_oblast'},
+    'fastiv':             {'name': 'Фастівський район', 'oblast': 'kyiv_oblast', 'display_name': 'Fastiv'},
+
+    # --- Вінницька ---
+    'vinnytsia':          {'name': 'Вінницький район', 'oblast': 'vinnytsia_oblast', 'display_name': 'Vinnytsia'},
+    'haisyn':             {'name': 'Гайсинський район', 'oblast': 'vinnytsia_oblast'},
+    'zhmerynka':          {'name': 'Жмеринський район', 'oblast': 'vinnytsia_oblast'},
+    'mohylivpodilskyi':   {'name': 'Могилів-Подільський район', 'oblast': 'vinnytsia_oblast'},
+    'tulchyn':            {'name': 'Тульчинський район', 'oblast': 'vinnytsia_oblast'},
+    'khmilnyk':           {'name': 'Хмільницький район', 'oblast': 'vinnytsia_oblast'},
+
+    # --- Волинська ---
+    'lutsk':              {'name': 'Луцький район', 'oblast': 'volyn_oblast', 'display_name': 'Lutsk'},
+    'volodymyr':          {'name': 'Володимирський район', 'oblast': 'volyn_oblast',
+                           'aliases': ['Володимир-Волинський район']},
+    'kaminkashyrskyi':    {'name': 'Камінь-Каширський район', 'oblast': 'volyn_oblast'},
+    'kovel':              {'name': 'Ковельський район', 'oblast': 'volyn_oblast', 'display_name': 'Kovel'},
+
+    # --- Дніпропетровська ---
+    'dnipro':             {'name': 'Дніпровський район', 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Dnipro'},
+    'kamianske':          {'name': "Кам'янський район", 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kamianske'},
+    'kryvyirih':          {'name': 'Криворізький район', 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kryvyi Rih'},
     'nikopol': {
-        'triggers': ["Нікопольський район", "м. Нікополь"],
+        'name': 'Нікопольський район',
+        'aliases': ['м. Нікополь'],
+        'oblast': 'dnipropetrovsk_oblast',
+        'display_name': 'Nikopol',
         'alert_triggers': {
             'threat_of_shelling':           ["артилерійський обстріл"],
             'threat_of_shelling_cancelled': ["Відбій загрози артобстрілу"],
             'air_raid_alert':               ["Повітряна тривога"],
             'air_raid_alert_cancelled':     ["Відбій тривоги"],
         },
-        'oblast': 'dnipropetrovsk_oblast',
-        'display_name': 'Nikopol'
     },
+    'pavlohrad':          {'name': 'Павлоградський район', 'oblast': 'dnipropetrovsk_oblast'},
+    'samar':              {'name': 'Самарівський район', 'oblast': 'dnipropetrovsk_oblast',
+                           'aliases': ['Новомосковський район']},
+    'synelnykove':        {'name': 'Синельниківський район', 'oblast': 'dnipropetrovsk_oblast'},
 
-    # --- Kyiv ---
-    'kyiv':          {'triggers': ["м. Київ"], 'oblast': 'kyiv', 'display_name': 'Kyiv'},
+    # --- Житомирська ---
+    'zhytomyr':           {'name': 'Житомирський район', 'oblast': 'zhytomyr_oblast', 'display_name': 'Zhytomyr'},
+    'berdychiv':          {'name': 'Бердичівський район', 'oblast': 'zhytomyr_oblast'},
+    'zviahel':            {'name': 'Звягельський район', 'oblast': 'zhytomyr_oblast',
+                           'aliases': ['Новоград-Волинський район']},
+    'korosten':           {'name': 'Коростенський район', 'oblast': 'zhytomyr_oblast'},
 
-    # --- Central ---
-    'cherkasy':      {'triggers': ["Черкаська область", "Черкаський район"], 'oblast': 'cherkasy_oblast', 'display_name': 'Cherkasy'},
-    'uman':          {'triggers': ["Черкаська область", "Уманський район"], 'oblast': 'cherkasy_oblast', 'display_name': 'Uman'},
-    'zvenyhorodka':  {'triggers': ["Черкаська область", "Звенигородський район"], 'oblast': 'cherkasy_oblast', 'display_name': 'Zvenyhorodka'},
-    'zolotonosha':   {'triggers': ["Черкаська область", "Золотоніський район"], 'oblast': 'cherkasy_oblast', 'display_name': 'Zolotonosha'},
-    'chernihiv':     {'triggers': ["Чернігівська область", "Чернігівський район"], 'oblast': 'chernihiv_oblast', 'display_name': 'Chernihiv'},
-    'kropyvnytskyi': {'triggers': ["Кіровоградська область", "Кропивницький район"], 'oblast': 'kirovohrad_oblast', 'display_name': 'Kropyvnytskyi'},
-    'poltava':       {'triggers': ["Полтавська область", "Полтавський район"], 'oblast': 'poltava_oblast', 'display_name': 'Poltava'},
-    'kremenchuk':    {'triggers': ["Полтавська область", "Кременчуцький район"], 'oblast': 'poltava_oblast', 'display_name': 'Kremenchuk'},
-    'vinnytsia':     {'triggers': ["Вінницька область", "Вінницький район"], 'oblast': 'vinnytsia_oblast', 'display_name': 'Vinnytsia'},
-    'zhytomyr':      {'triggers': ["Житомирська область", "Житомирський район"], 'oblast': 'zhytomyr_oblast', 'display_name': 'Zhytomyr'},
+    # --- Закарпатська ---
+    'uzhhorod':           {'name': 'Ужгородський район', 'oblast': 'zakarpattia_oblast', 'display_name': 'Uzhhorod'},
+    'berehove':           {'name': 'Берегівський район', 'oblast': 'zakarpattia_oblast'},
+    'mukachevo':          {'name': 'Мукачівський район', 'oblast': 'zakarpattia_oblast'},
+    'rakhiv':             {'name': 'Рахівський район', 'oblast': 'zakarpattia_oblast'},
+    'tiachiv':            {'name': 'Тячівський район', 'oblast': 'zakarpattia_oblast'},
+    'khust':              {'name': 'Хустський район', 'oblast': 'zakarpattia_oblast'},
 
-    # --- Kyiv region ---
-    'bilatserkva':   {'triggers': ["Київська область", "Білоцерківський район"], 'oblast': 'kyiv_oblast', 'display_name': 'Bila Tserkva'},
-    'bucha':         {'triggers': ["Київська область", "Бучанський район"], 'oblast': 'kyiv_oblast', 'display_name': 'Bucha'},
-    'fastiv':        {'triggers': ["Київська область", "Фастівський район"], 'oblast': 'kyiv_oblast', 'display_name': 'Fastiv'},
+    # --- Запорізька ---
+    'zaporizhzhia':       {'name': 'Запорізький район', 'oblast': 'zaporizhzhia_oblast',
+                           'aliases': ['м. Запоріжжя'], 'display_name': 'Zaporizhzhia'},
+    'berdiansk':          {'name': 'Бердянський район', 'oblast': 'zaporizhzhia_oblast'},
+    'vasylivka':          {'name': 'Василівський район', 'oblast': 'zaporizhzhia_oblast'},
+    'melitopol':          {'name': 'Мелітопольський район', 'oblast': 'zaporizhzhia_oblast'},
+    'polohy':             {'name': 'Пологівський район', 'oblast': 'zaporizhzhia_oblast'},
 
-    # --- Northeast ---
-    'kharkiv':       {'triggers': ["Харківська область", "м. Харків"], 'oblast': 'kharkiv_oblast', 'display_name': 'Kharkiv'},
-    'sumy':          {'triggers': ["Сумська область", "Сумський район"], 'oblast': 'sumy_oblast', 'display_name': 'Sumy'},
+    # --- Івано-Франківська ---
+    'ivanofrankivsk':     {'name': 'Івано-Франківський район', 'oblast': 'ivanofrankivsk_oblast', 'display_name': 'Ivano-Frankivsk'},
+    'verkhovyna':         {'name': 'Верховинський район', 'oblast': 'ivanofrankivsk_oblast'},
+    'kalush':             {'name': 'Калуський район', 'oblast': 'ivanofrankivsk_oblast'},
+    'kolomyia':           {'name': 'Коломийський район', 'oblast': 'ivanofrankivsk_oblast'},
+    'kosiv':              {'name': 'Косівський район', 'oblast': 'ivanofrankivsk_oblast'},
+    'nadvirna':           {'name': 'Надвірнянський район', 'oblast': 'ivanofrankivsk_oblast'},
 
-    # --- East ---
-    'zaporizhzhia':  {'triggers': ["Запорізька область", "м. Запоріжжя"], 'oblast': 'zaporizhzhia_oblast', 'display_name': 'Zaporizhzhia'},
-    'dnipro':        {'triggers': ["Дніпропетровська область", "Дніпровський район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Dnipro'},
-    'kryvyirih':     {'triggers': ["Дніпропетровська область", "Криворізький район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kryvyi Rih'},
-    'kamianske':     {'triggers': ["Дніпропетровська область", "Кам’янський район", "Кам'янський район"], 'oblast': 'dnipropetrovsk_oblast', 'display_name': 'Kamianske'},
+    # --- Кіровоградська ---
+    'kropyvnytskyi':      {'name': 'Кропивницький район', 'oblast': 'kirovohrad_oblast', 'display_name': 'Kropyvnytskyi'},
+    'holovanivsk':        {'name': 'Голованівський район', 'oblast': 'kirovohrad_oblast'},
+    'novoukrainka':       {'name': 'Новоукраїнський район', 'oblast': 'kirovohrad_oblast'},
+    'oleksandriia':       {'name': 'Олександрійський район', 'oblast': 'kirovohrad_oblast'},
 
-    # --- South ---
-    'kherson':       {'triggers': ["Херсонська область", "Херсонський район"], 'oblast': 'kherson_oblast', 'display_name': 'Kherson'},
-    'mykolaiv':      {'triggers': ["Миколаївська область", "Миколаївський район"], 'oblast': 'mykolaiv_oblast', 'display_name': 'Mykolaiv'},
-    'pervomaisk':    {'triggers': ["Миколаївська область", "Первомайський район"], 'oblast': 'mykolaiv_oblast', 'display_name': 'Pervomaisk'},
-    'odesa':         {'triggers': ["Одеська область", "Одеський район"], 'oblast': 'odesa_oblast', 'display_name': 'Odesa'},
-    'izmail':        {'triggers': ["Одеська область", "Ізмаїльський район"], 'oblast': 'odesa_oblast', 'display_name': 'Izmail'},
+    # --- Львівська ---
+    'lviv':               {'name': 'Львівський район', 'oblast': 'lviv_oblast', 'display_name': 'Lviv'},
+    'drohobych':          {'name': 'Дрогобицький район', 'oblast': 'lviv_oblast'},
+    'zolochiv':           {'name': 'Золочівський район', 'oblast': 'lviv_oblast'},
+    'sambir':             {'name': 'Самбірський район', 'oblast': 'lviv_oblast'},
+    'stryi':              {'name': 'Стрийський район', 'oblast': 'lviv_oblast'},
+    'chervonohrad':       {'name': 'Червоноградський район', 'oblast': 'lviv_oblast'},
+    'yavoriv':            {'name': 'Яворівський район', 'oblast': 'lviv_oblast'},
 
-    # --- West ---
-    'lviv':          {'triggers': ["Львівська область", "Львівський район"], 'oblast': 'lviv_oblast', 'display_name': 'Lviv'},
-    'lutsk':         {'triggers': ["Волинська область", "Луцький район"], 'oblast': 'volyn_oblast', 'display_name': 'Lutsk'},
-    'kovel':         {'triggers': ["Волинська область", "Ковельський район"], 'oblast': 'volyn_oblast', 'display_name': 'Kovel'},
-    'rivne':         {'triggers': ["Рівненська область", "Рівненський район"], 'oblast': 'rivne_oblast', 'display_name': 'Rivne'},
-    'ternopil':      {'triggers': ["Тернопільська область", "Тернопільський район"], 'oblast': 'ternopil_oblast', 'display_name': 'Ternopil'},
-    'khmelnytskyi':  {'triggers': ["Хмельницька область", "Хмельницький район"], 'oblast': 'khmelnytskyi_oblast', 'display_name': 'Khmelnytskyi'},
-    'ivanofrankivsk': {'triggers': ["Івано-Франківська область", "Івано-Франківський район"], 'oblast': 'ivanofrankivsk_oblast', 'display_name': 'Ivano-Frankivsk'},
-    'uzhhorod':      {'triggers': ["Закарпатська область", "Ужгородський район"], 'oblast': 'zakarpattia_oblast', 'display_name': 'Uzhhorod'},
-    'chernivtsi':    {'triggers': ["Чернівецька область", "Чернівецький район"], 'oblast': 'chernivtsi_oblast', 'display_name': 'Chernivtsi'},
+    # --- Миколаївська ---
+    'mykolaiv':           {'name': 'Миколаївський район', 'oblast': 'mykolaiv_oblast', 'display_name': 'Mykolaiv'},
+    'bashtanka':          {'name': 'Баштанський район', 'oblast': 'mykolaiv_oblast'},
+    'voznesensk':         {'name': 'Вознесенський район', 'oblast': 'mykolaiv_oblast'},
+    'pervomaisk':         {'name': 'Первомайський район', 'oblast': 'mykolaiv_oblast', 'display_name': 'Pervomaisk'},
+
+    # --- Одеська ---
+    'odesa':              {'name': 'Одеський район', 'oblast': 'odesa_oblast', 'display_name': 'Odesa'},
+    'berezivka':          {'name': 'Березівський район', 'oblast': 'odesa_oblast'},
+    'bilhoroddnistrovskyi': {'name': 'Білгород-Дністровський район', 'oblast': 'odesa_oblast'},
+    'bolhrad':            {'name': 'Болградський район', 'oblast': 'odesa_oblast'},
+    'izmail':             {'name': 'Ізмаїльський район', 'oblast': 'odesa_oblast', 'display_name': 'Izmail'},
+    'podilsk':            {'name': 'Подільський район', 'oblast': 'odesa_oblast'},
+    'rozdilna':           {'name': 'Роздільнянський район', 'oblast': 'odesa_oblast'},
+
+    # --- Полтавська ---
+    'poltava':            {'name': 'Полтавський район', 'oblast': 'poltava_oblast', 'display_name': 'Poltava'},
+    'kremenchuk':         {'name': 'Кременчуцький район', 'oblast': 'poltava_oblast', 'display_name': 'Kremenchuk'},
+    'lubny':              {'name': 'Лубенський район', 'oblast': 'poltava_oblast'},
+    'myrhorod':           {'name': 'Миргородський район', 'oblast': 'poltava_oblast'},
+
+    # --- Рівненська ---
+    'rivne':              {'name': 'Рівненський район', 'oblast': 'rivne_oblast', 'display_name': 'Rivne'},
+    'varash':             {'name': 'Вараський район', 'oblast': 'rivne_oblast'},
+    'dubno':              {'name': 'Дубенський район', 'oblast': 'rivne_oblast'},
+    'sarny':              {'name': 'Сарненський район', 'oblast': 'rivne_oblast'},
+
+    # --- Сумська ---
+    'sumy':               {'name': 'Сумський район', 'oblast': 'sumy_oblast', 'display_name': 'Sumy'},
+    'konotop':            {'name': 'Конотопський район', 'oblast': 'sumy_oblast'},
+    'okhtyrka':           {'name': 'Охтирський район', 'oblast': 'sumy_oblast'},
+    'romny':              {'name': 'Роменський район', 'oblast': 'sumy_oblast'},
+    'shostka':            {'name': 'Шосткинський район', 'oblast': 'sumy_oblast'},
+
+    # --- Тернопільська ---
+    'ternopil':           {'name': 'Тернопільський район', 'oblast': 'ternopil_oblast', 'display_name': 'Ternopil'},
+    'kremenets':          {'name': 'Кременецький район', 'oblast': 'ternopil_oblast'},
+    'chortkiv':           {'name': 'Чортківський район', 'oblast': 'ternopil_oblast'},
+
+    # --- Харківська ---
+    'kharkiv':            {'name': 'Харківський район', 'oblast': 'kharkiv_oblast',
+                           'aliases': ['м. Харків'], 'display_name': 'Kharkiv'},
+    'berestyn':           {'name': 'Берестинський район', 'oblast': 'kharkiv_oblast',
+                           'aliases': ['Красноградський район']},
+    'bohodukhiv':         {'name': 'Богодухівський район', 'oblast': 'kharkiv_oblast'},
+    'izium':              {'name': 'Ізюмський район', 'oblast': 'kharkiv_oblast'},
+    'kupiansk':           {'name': "Куп'янський район", 'oblast': 'kharkiv_oblast'},
+    'lozova':             {'name': 'Лозівський район', 'oblast': 'kharkiv_oblast'},
+    'chuhuiv':            {'name': 'Чугуївський район', 'oblast': 'kharkiv_oblast'},
+
+    # --- Херсонська ---
+    'kherson':            {'name': 'Херсонський район', 'oblast': 'kherson_oblast', 'display_name': 'Kherson'},
+    'beryslav':           {'name': 'Бериславський район', 'oblast': 'kherson_oblast'},
+    'henichesk':          {'name': 'Генічеський район', 'oblast': 'kherson_oblast'},
+    'kakhovka':           {'name': 'Каховський район', 'oblast': 'kherson_oblast'},
+    'skadovsk':           {'name': 'Скадовський район', 'oblast': 'kherson_oblast'},
+
+    # --- Хмельницька ---
+    'khmelnytskyi':       {'name': 'Хмельницький район', 'oblast': 'khmelnytskyi_oblast', 'display_name': 'Khmelnytskyi'},
+    'kamianetspodilskyi': {'name': "Кам'янець-Подільський район", 'oblast': 'khmelnytskyi_oblast'},
+    'shepetivka':         {'name': 'Шепетівський район', 'oblast': 'khmelnytskyi_oblast'},
+
+    # --- Черкаська ---
+    'cherkasy':           {'name': 'Черкаський район', 'oblast': 'cherkasy_oblast', 'display_name': 'Cherkasy'},
+    'zvenyhorodka':       {'name': 'Звенигородський район', 'oblast': 'cherkasy_oblast', 'display_name': 'Zvenyhorodka'},
+    'zolotonosha':        {'name': 'Золотоніський район', 'oblast': 'cherkasy_oblast', 'display_name': 'Zolotonosha'},
+    'uman':               {'name': 'Уманський район', 'oblast': 'cherkasy_oblast', 'display_name': 'Uman'},
+
+    # --- Чернівецька ---
+    'chernivtsi':         {'name': 'Чернівецький район', 'oblast': 'chernivtsi_oblast', 'display_name': 'Chernivtsi'},
+    'vyzhnytsia':         {'name': 'Вижницький район', 'oblast': 'chernivtsi_oblast'},
+    'dnistrovskyi':       {'name': 'Дністровський район', 'oblast': 'chernivtsi_oblast'},
+
+    # --- Чернігівська ---
+    'chernihiv':          {'name': 'Чернігівський район', 'oblast': 'chernihiv_oblast', 'display_name': 'Chernihiv'},
+    'koriukivka':         {'name': 'Корюківський район', 'oblast': 'chernihiv_oblast'},
+    'nizhyn':             {'name': 'Ніжинський район', 'oblast': 'chernihiv_oblast'},
+    'novhorodsiverskyi':  {'name': 'Новгород-Сіверський район', 'oblast': 'chernihiv_oblast'},
+    'pryluky':            {'name': 'Прилуцький район', 'oblast': 'chernihiv_oblast'},
 }
 
+for _key, _conf in DISTRICT_CONFIG.items():
+    _forms = [_conf['name'], *_conf.get('aliases', ())]
+    _conf['triggers'] = [form for raw in _forms for form in apostrophe_variants(raw)]
+
+# Згадка області піднімає тривогу в усіх її районах - джерело часто оголошує
+# тривогу саме по області, а не перелічує райони.
+OBLAST_TRIGGERS = {
+    'cherkasy_oblast':       ["Черкаська область"],
+    'chernihiv_oblast':      ["Чернігівська область"],
+    'chernivtsi_oblast':     ["Чернівецька область"],
+    'dnipropetrovsk_oblast': ["Дніпропетровська область"],
+    'ivanofrankivsk_oblast': ["Івано-Франківська область"],
+    'kharkiv_oblast':        ["Харківська область"],
+    'kherson_oblast':        ["Херсонська область"],
+    'khmelnytskyi_oblast':   ["Хмельницька область"],
+    'kirovohrad_oblast':     ["Кіровоградська область"],
+    'kyiv_oblast':           ["Київська область"],
+    'lviv_oblast':           ["Львівська область"],
+    'mykolaiv_oblast':       ["Миколаївська область"],
+    'odesa_oblast':          ["Одеська область"],
+    'poltava_oblast':        ["Полтавська область"],
+    'rivne_oblast':          ["Рівненська область"],
+    'sumy_oblast':           ["Сумська область"],
+    'ternopil_oblast':       ["Тернопільська область"],
+    'vinnytsia_oblast':      ["Вінницька область"],
+    'volyn_oblast':          ["Волинська область"],
+    'zakarpattia_oblast':    ["Закарпатська область"],
+    'zaporizhzhia_oblast':   ["Запорізька область"],
+    'zhytomyr_oblast':       ["Житомирська область"],
+}
+
+# Райони, у яких є свій канал: саме вони - і тільки вони - отримують бродкаст.
+BROADCAST_DISTRICTS = frozenset(real_channels) - {'source'}
+
+# REGION_CONFIG лишається тим, чим був: районами з каналом. Формат теж старий -
+# 'triggers' містять і назву району, і назву області.
+REGION_CONFIG = {
+    key: {**conf, 'triggers': conf['triggers'] + OBLAST_TRIGGERS.get(conf['oblast'], [])}
+    for key, conf in DISTRICT_CONFIG.items()
+    if key in BROADCAST_DISTRICTS
+}
+
+# Карта показує всі райони, а не лише ті, куди я мовлю.
 DISTRICTS_BY_OBLAST = {}
-for district_key, conf in REGION_CONFIG.items():
+for district_key, conf in DISTRICT_CONFIG.items():
     DISTRICTS_BY_OBLAST.setdefault(conf['oblast'], []).append(district_key)
 
 CITIES_LIST = [(key, data['display_name']) for key, data in REGION_CONFIG.items()]

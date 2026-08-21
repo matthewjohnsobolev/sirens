@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import logging
 import re
+from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,18 +29,33 @@ from alerts.main import (
     build_message_link,
     delete_photo_update_service_message,
     log_alert_received,
+    log_unrecognised_districts,
     main,
+    match_districts,
     process_channel_photo_update,
+    record_map_only_alert,
     resolve_channel_username,
     send_alert,
+    source_reference,
     strip_ongoing_notice,
     update_channel_photo,
 )
-from config import DATABASE_URL, MESSAGES, REDIS_URL, REGION_CONFIG, VERSION
+from config import (
+    DATABASE_URL,
+    DISTRICT_CONFIG,
+    DISTRICTS_BY_OBLAST,
+    MESSAGES,
+    REDIS_URL,
+    REGION_CONFIG,
+    VERSION,
+    real_channels,
+)
 from tests.samples.source_messages import (
     ALL_SAMPLES,
+    MAP_ONLY_SAMPLES,
     MESSAGES_SAMPLES,
     PARTIAL_CANCELLATION_SAMPLES,
+    oblast_message,
 )
 
 TIME_RE = re.compile(r"\d{2}:\d{2}")
@@ -525,18 +541,38 @@ async def test_send_alert_skips_photo_update_without_mapping(
 
 ALL_REGION_CHANNELS = {region: 9000 + i for i, region in enumerate(REGION_CONFIG)}
 
+SOURCE_CHANNEL = real_channels['source']
+SOURCE_USERNAME = "air_alert_ua"
+SOURCE_MESSAGE_ID = 500
+SOURCE_LINK = f"https://t.me/{SOURCE_USERNAME}/{SOURCE_MESSAGE_ID}"
+
+
+class Dispatched(NamedTuple):
+    """Дві гілки парсера: що пішло в канали і що лише на карту."""
+
+    broadcast: list
+    recorded: list
+
 
 async def _dispatch(message_text, region_channels=ALL_REGION_CHANNELS):
     handler = build_message_handler(region_channels)
     event = MagicMock()
     event.message.message = message_text
+    event.message.id = SOURCE_MESSAGE_ID
+    event.chat_id = SOURCE_CHANNEL
 
-    with patch('alerts.main.send_alert', new_callable=AsyncMock) as mock_send_alert:
+    with patch('alerts.main.send_alert', new_callable=AsyncMock) as mock_send_alert, \
+         patch('alerts.main.record_map_only_alert', new_callable=AsyncMock) as mock_record, \
+         patch('alerts.main.resolve_channel_username', new_callable=AsyncMock) as mock_username:
+        mock_username.return_value = SOURCE_USERNAME
         await handler(event)
         await _drain_background_tasks()
 
     assert alerts_main.running_tasks == set()
-    return [call.args for call in mock_send_alert.await_args_list]
+    return Dispatched(
+        [call.args for call in mock_send_alert.await_args_list],
+        [call.args for call in mock_record.await_args_list],
+    )
 
 
 def _expected_calls(regions, alert_type):
@@ -544,6 +580,14 @@ def _expected_calls(regions, alert_type):
         (ALL_REGION_CHANNELS[region], region, alert_type)
         for region in REGION_CONFIG
         if region in regions
+    ]
+
+
+def _expected_records(districts, alert_type):
+    return [
+        (district, alert_type, SOURCE_MESSAGE_ID, SOURCE_LINK)
+        for district in DISTRICT_CONFIG
+        if district in districts
     ]
 
 
@@ -573,21 +617,25 @@ def _expected_calls(regions, alert_type):
     pytest.param("м. Київ погода сьогодні гарна", [], id="region-without-alert-keyword"),
 ])
 async def test_build_message_handler_dispatches_correct_alert(message_text, expected_calls):
-    assert await _dispatch(message_text, {"kyiv": 1111, "nikopol": 2222}) == expected_calls
+    assert (await _dispatch(message_text, {"kyiv": 1111, "nikopol": 2222})).broadcast == expected_calls
 
 
 @pytest.mark.asyncio
-async def test_build_message_handler_ignores_regions_without_channel():
-    assert await _dispatch("м. Київ Повітряна тривога", {"nikopol": 2222}) == []
+async def test_build_message_handler_maps_a_region_without_a_channel():
+    """Без каналу тривога не мовиться, але карта про неї все одно дізнається."""
+    dispatched = await _dispatch("м. Київ Повітряна тривога", {"nikopol": 2222})
+
+    assert dispatched.broadcast == []
+    assert dispatched.recorded == _expected_records(("kyiv",), "air_raid_alert")
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sample", ALL_SAMPLES, ids=lambda sample: sample.id)
 async def test_build_message_handler_on_real_channel_messages(sample):
-    assert await _dispatch(sample.alert_message) == _expected_calls(
+    assert (await _dispatch(sample.alert_message)).broadcast == _expected_calls(
         sample.regions, "air_raid_alert"
     )
-    assert await _dispatch(sample.cancellation_message) == _expected_calls(
+    assert (await _dispatch(sample.cancellation_message)).broadcast == _expected_calls(
         sample.regions, "air_raid_alert_cancelled"
     )
 
@@ -602,7 +650,7 @@ def test_every_configured_region_has_a_message_sample():
     "sample", PARTIAL_CANCELLATION_SAMPLES, ids=lambda sample: sample.id
 )
 async def test_build_message_handler_ignores_still_ongoing_places(sample):
-    assert await _dispatch(sample.message) == _expected_calls(
+    assert (await _dispatch(sample.message)).broadcast == _expected_calls(
         sample.regions, "air_raid_alert_cancelled"
     )
 
@@ -628,7 +676,7 @@ async def test_build_message_handler_reads_alert_type_from_the_announcement():
         "- Нікопольський район"
     )
 
-    assert await _dispatch(message, {"nikopol": 2222}) == [
+    assert (await _dispatch(message, {"nikopol": 2222})).broadcast == [
         (2222, "nikopol", "air_raid_alert_cancelled")
     ]
 
@@ -910,3 +958,264 @@ async def test_healthcheck_loop_skips_ping_when_disconnected(monkeypatch):
         await asyncio.gather(task, return_exceptions=True)
 
     mock_ping.assert_not_called()
+
+
+# --- Districts without a channel: map state only -----------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sample", MAP_ONLY_SAMPLES, ids=lambda sample: sample.id)
+async def test_build_message_handler_records_districts_without_a_channel(sample):
+    alert = await _dispatch(sample.alert_message)
+    assert alert.recorded == _expected_records(sample.recorded, "air_raid_alert")
+    assert alert.broadcast == _expected_calls(sample.broadcast, "air_raid_alert")
+
+    cancellation = await _dispatch(sample.cancellation_message)
+    assert cancellation.recorded == _expected_records(
+        sample.recorded, "air_raid_alert_cancelled"
+    )
+    assert cancellation.broadcast == _expected_calls(
+        sample.broadcast, "air_raid_alert_cancelled"
+    )
+
+
+@pytest.mark.asyncio
+async def test_build_message_handler_points_map_only_districts_at_the_source_post():
+    """Свого повідомлення в такого району немає, тож джерелом стає пост першоджерела."""
+    dispatched = await _dispatch("Вишгородський район Повітряна тривога")
+
+    assert dispatched.recorded == [
+        ("vyshhorod", "air_raid_alert", SOURCE_MESSAGE_ID, SOURCE_LINK)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_build_message_handler_skips_the_source_lookup_when_all_districts_broadcast():
+    """У районів із каналом джерело своє, тож зайвий resolve їм ні до чого."""
+    handler = build_message_handler(ALL_REGION_CHANNELS)
+    event = MagicMock()
+    event.message.message = "Бучанський район Повітряна тривога"
+    event.message.id = SOURCE_MESSAGE_ID
+    event.chat_id = SOURCE_CHANNEL
+
+    with patch('alerts.main.send_alert', new_callable=AsyncMock), \
+         patch('alerts.main.resolve_channel_username', new_callable=AsyncMock) as mock_username:
+        await handler(event)
+        await _drain_background_tasks()
+
+    mock_username.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("oblast_key, oblast_name", [
+    ("poltava_oblast", "Полтавська область"),
+    ("kyiv_oblast", "Київська область"),
+])
+async def test_build_message_handler_raises_the_whole_oblast_from_its_name(
+    oblast_key, oblast_name
+):
+    """Тривога по області - це тривога в усіх її районах, а не лише в моїх каналах."""
+    dispatched = await _dispatch(oblast_message(oblast_name))
+
+    touched = (
+        {call[1] for call in dispatched.broadcast}
+        | {call[0] for call in dispatched.recorded}
+    )
+    assert touched == set(DISTRICTS_BY_OBLAST[oblast_key])
+
+
+@pytest.mark.asyncio
+async def test_source_reference_builds_a_public_link(mock_telegram_client):
+    mock_telegram_client.get_entity.return_value = MagicMock(username=SOURCE_USERNAME)
+    event = MagicMock(chat_id=SOURCE_CHANNEL)
+    event.message.id = SOURCE_MESSAGE_ID
+
+    assert await source_reference(event) == (SOURCE_MESSAGE_ID, SOURCE_LINK)
+
+
+@pytest.mark.asyncio
+async def test_source_reference_without_an_id(caplog, mock_telegram_client):
+    caplog.set_level(logging.WARNING)
+
+    assert await source_reference(MagicMock(chat_id=None)) == (None, None)
+    assert "Source message has no id" in caplog.text
+    mock_telegram_client.get_entity.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_record_map_only_alert_writes_state_without_broadcasting(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    _, mock_conn = mock_pg_pool
+
+    await record_map_only_alert("vyshhorod", "air_raid_alert", SOURCE_MESSAGE_ID, SOURCE_LINK)
+    await _drain_background_tasks()
+
+    mock_telegram_client.send_message.assert_not_awaited()
+    mock_redis.set.assert_awaited_once_with("district_state:vyshhorod", "air_raid_alert")
+
+    city = [
+        call for call in mock_redis.hset.call_args_list
+        if call.args and call.args[0] == "threat:alerts:city:vyshhorod"
+    ]
+    assert city[0].kwargs["mapping"]["status"] == "true"
+    assert city[0].kwargs["mapping"]["source"] == SOURCE_LINK
+    mock_redis.sadd.assert_awaited_once_with("threat:alerts:active:kyiv_oblast", "vyshhorod")
+
+    _, *params = mock_conn.execute.call_args.args
+    assert params[3:6] == ["vyshhorod", "kyiv_oblast", "air_raid_alert"]
+    assert params[6] is None          # каналу немає - нема й channel_id
+    assert params[7] == SOURCE_MESSAGE_ID
+    assert params[8] == SOURCE_LINK
+
+    assert alerts_main.running_tasks == set()
+
+
+@pytest.mark.asyncio
+async def test_record_map_only_alert_skips_duplicates(
+    mock_redis, mock_pg_pool, mock_telegram_client, caplog
+):
+    caplog.set_level(logging.INFO)
+    mock_redis.get.return_value = "air_raid_alert"
+
+    await record_map_only_alert("vyshhorod", "air_raid_alert")
+
+    mock_redis.get.assert_awaited_once_with("district_state:vyshhorod")
+    mock_redis.set.assert_not_awaited()
+    mock_redis.hset.assert_not_awaited()
+    assert "Duplicate air_raid_alert ignored for Вишгородський район" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_record_map_only_alert_records_after_duplicate_suppression(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    mock_redis.get.return_value = "air_raid_alert"
+
+    await record_map_only_alert("vyshhorod", "air_raid_alert_cancelled")
+
+    mock_redis.set.assert_awaited_once_with(
+        "district_state:vyshhorod", "air_raid_alert_cancelled"
+    )
+    mock_redis.srem.assert_awaited_once_with("threat:alerts:active:kyiv_oblast", "vyshhorod")
+
+
+@pytest.mark.asyncio
+async def test_record_map_only_alert_unknown_type_does_nothing(
+    mock_redis, mock_pg_pool, caplog
+):
+    caplog.set_level(logging.ERROR)
+
+    await record_map_only_alert("vyshhorod", "unknown_type")
+
+    assert "Unknown alert type: unknown_type" in caplog.text
+    mock_redis.get.assert_not_awaited()
+    mock_redis.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_record_map_only_alert_survives_a_redis_outage(
+    mock_redis, mock_pg_pool, caplog
+):
+    caplog.set_level(logging.ERROR)
+    mock_redis.get.side_effect = ConnectionError("Redis is down")
+    _, mock_conn = mock_pg_pool
+
+    await record_map_only_alert("vyshhorod", "air_raid_alert")
+
+    assert "Redis unavailable for Вишгородський район" in caplog.text
+    mock_conn.execute.assert_awaited_once()
+
+
+# --- match_districts ---------------------------------------------------------
+
+
+@pytest.mark.parametrize("message_text, expected", [
+    pytest.param(
+        "Повітряна тривога в Бучанський район",
+        {"bucha": "air_raid_alert"},
+        id="single-district",
+    ),
+    pytest.param(
+        "Відбій тривоги в Бучанський район",
+        {"bucha": "air_raid_alert_cancelled"},
+        id="cancellation",
+    ),
+    pytest.param(
+        "Повітряна тривога в\n• Бучанський район\n• Вишгородський район",
+        {"bucha": "air_raid_alert", "vyshhorod": "air_raid_alert"},
+        id="two-districts",
+    ),
+    pytest.param("Бучанський район", {}, id="no-alert-keyword"),
+    pytest.param("Повітряна тривога в Атлантида", {}, id="unknown-place"),
+])
+def test_match_districts(message_text, expected):
+    assert match_districts(message_text) == expected
+
+
+@pytest.mark.parametrize("name, expected_key", [
+    pytest.param("Кам'янський район", "kamianske", id="straight-apostrophe"),
+    pytest.param("Кам’янський район", "kamianske", id="curly-apostrophe"),
+    pytest.param("Новоград-Волинський район", "zviahel", id="former-name"),
+    pytest.param("Звягельський район", "zviahel", id="current-name"),
+    pytest.param("Новомосковський район", "samar", id="former-name-samar"),
+])
+def test_match_districts_accepts_every_spelling(name, expected_key):
+    assert match_districts(f"Повітряна тривога в {name}") == {
+        expected_key: "air_raid_alert"
+    }
+
+
+@pytest.mark.parametrize("name, expected_key", [
+    pytest.param("Кам'янець-Подільський район", "kamianetspodilskyi", id="kamianets-not-podilsk"),
+    pytest.param("Могилів-Подільський район", "mohylivpodilskyi", id="mohyliv-not-podilsk"),
+    pytest.param("Подільський район", "podilsk", id="podilsk-itself"),
+    pytest.param("Білгород-Дністровський район", "bilhoroddnistrovskyi", id="bilhorod-not-dnistrovskyi"),
+    pytest.param("Дністровський район", "dnistrovskyi", id="dnistrovskyi-itself"),
+])
+def test_match_districts_does_not_match_inside_a_longer_name(name, expected_key):
+    """Назва одного району буває підрядком іншої - збіг має бути по межах слова."""
+    assert match_districts(f"Повітряна тривога в {name}") == {
+        expected_key: "air_raid_alert"
+    }
+
+
+def test_match_districts_from_the_oblast_name():
+    assert match_districts(oblast_message("Полтавська область")) == {
+        key: "air_raid_alert" for key in DISTRICTS_BY_OBLAST['poltava_oblast']
+    }
+
+
+@pytest.fixture(autouse=True)
+def _forget_reported_districts():
+    alerts_main.reported_unknown_districts.clear()
+    yield
+    alerts_main.reported_unknown_districts.clear()
+
+
+def test_log_unrecognised_districts_names_the_stranger(caplog):
+    caplog.set_level(logging.WARNING)
+
+    log_unrecognised_districts("Повітряна тривога в Бучанський район, Вигаданий район")
+
+    assert "Вигаданий район" in caplog.text
+    assert "Бучанський район" not in caplog.text
+
+
+def test_log_unrecognised_districts_reports_each_name_once(caplog):
+    """Джерело регулярно пише про райони поза конфігом - Sentry не має тонути."""
+    caplog.set_level(logging.WARNING)
+    log_unrecognised_districts("Повітряна тривога в Бахчисарайський район")
+    caplog.clear()
+
+    log_unrecognised_districts("Відбій тривоги в Бахчисарайський район")
+
+    assert caplog.text == ""
+
+
+def test_log_unrecognised_districts_stays_quiet_on_a_known_post(caplog):
+    caplog.set_level(logging.WARNING)
+
+    log_unrecognised_districts("Повітряна тривога в Кам'янець-Подільський район")
+
+    assert caplog.text == ""

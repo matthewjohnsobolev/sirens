@@ -9,7 +9,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import DATABASE_URL, REGION_CONFIG, real_channels, test_channels
+from config import (
+    DATABASE_URL,
+    DISTRICT_CONFIG,
+    DISTRICTS_BY_OBLAST,
+    REGION_CONFIG,
+    real_channels,
+    test_channels,
+)
 from web.db import (
     SCHEMA_LOCK_KEY,
     THREAT_TABLES,
@@ -538,16 +545,17 @@ def test_get_all_threats_data_coverage_partial(mock_web_redis):
     assert kyiv_obl['alert']['status'] is True
     assert kyiv_obl['alert']['coverage'] == 'partial'
     assert kyiv_obl['alert']['active_districts'] == ['bucha']
-    assert set(kyiv_obl['alert']['tracked_districts']) == {'bilatserkva', 'bucha', 'fastiv'}
+    assert set(kyiv_obl['alert']['tracked_districts']) == set(DISTRICTS_BY_OBLAST['kyiv_oblast'])
     assert 'bucha' in kyiv_obl['districts']
     assert kyiv_obl['districts']['bucha']['alert']['status'] is True
 
 
 def test_get_all_threats_data_coverage_full(mock_web_redis):
     store = {}
+    # 'full' тепер означає саме всю область, а не всі мої канали в ній.
     sets = {
-        'threat:alerts:active:volyn_oblast': {'lutsk', 'kovel'},
-        'threat:alerts:active:lviv_oblast': {'lviv'},
+        'threat:alerts:active:volyn_oblast': set(DISTRICTS_BY_OBLAST['volyn_oblast']),
+        'threat:alerts:active:lviv_oblast': set(DISTRICTS_BY_OBLAST['lviv_oblast']),
     }
     mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
     result = get_all_threats_data()
@@ -557,6 +565,30 @@ def test_get_all_threats_data_coverage_full(mock_web_redis):
     assert result['crimea']['alert']['coverage'] == 'none'
     assert result['crimea']['alert']['active_districts'] == []
     assert result['crimea']['alert']['tracked_districts'] == []
+
+
+def test_get_all_threats_data_carries_district_names(mock_web_redis):
+    """Попап області підписує таблетки назвами з /api, тож вони мають там бути."""
+    mock_web_redis.pipeline.return_value = _FakePipeline({}, {})
+    result = get_all_threats_data()
+
+    districts = result['kyiv_oblast']['districts']
+    assert districts['bucha']['name'] == 'Бучанський район'
+    assert districts['vyshhorod']['name'] == 'Вишгородський район'
+    assert all(
+        entry['name'] == DISTRICT_CONFIG[key]['name']
+        for key, entry in districts.items()
+    )
+
+
+def test_get_all_threats_data_covers_every_district(mock_web_redis):
+    """Карта відстежує всі райони, а не лише ті, у яких є канал."""
+    mock_web_redis.pipeline.return_value = _FakePipeline({}, {})
+    result = get_all_threats_data()
+
+    tracked = {key for oblast in DISTRICTS_BY_OBLAST for key in result[oblast]['districts']}
+    assert tracked == set(DISTRICT_CONFIG)
+    assert set(REGION_CONFIG) < tracked
 
 
 def test_get_all_threats_data_filters_untracked_from_active_districts(mock_web_redis):

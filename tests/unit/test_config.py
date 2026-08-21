@@ -49,11 +49,66 @@ def test_config_github_repo_normalization(monkeypatch):
     assert config.GITHUB_REPO == "matthewjohnsobolev/sirens"
 
 
-def test_config_districts_by_oblast():
-    assert 'cherkasy_oblast' in config.DISTRICTS_BY_OBLAST
-    assert set(config.DISTRICTS_BY_OBLAST['cherkasy_oblast']) == {'cherkasy', 'uman', 'zvenyhorodka', 'zolotonosha'}
-    assert set(config.DISTRICTS_BY_OBLAST['kyiv_oblast']) == {'bilatserkva', 'bucha', 'fastiv'}
-    assert config.DISTRICTS_BY_OBLAST['lviv_oblast'] == ['lviv']
-    assert sum(len(d) for d in config.DISTRICTS_BY_OBLAST.values()) == len(config.REGION_CONFIG)
+def test_config_districts_by_oblast_covers_every_district():
+    assert set(config.DISTRICTS_BY_OBLAST['cherkasy_oblast']) == {
+        'cherkasy', 'zvenyhorodka', 'zolotonosha', 'uman'
+    }
+    assert set(config.DISTRICTS_BY_OBLAST['kyiv_oblast']) == {
+        'bilatserkva', 'boryspil', 'brovary', 'bucha', 'vyshhorod', 'obukhiv', 'fastiv'
+    }
+    assert set(config.DISTRICTS_BY_OBLAST['lviv_oblast']) == {
+        'lviv', 'drohobych', 'zolochiv', 'sambir', 'stryi', 'chervonohrad', 'yavoriv'
+    }
+    assert config.DISTRICTS_BY_OBLAST['kyiv'] == ['kyiv']
+    assert sum(len(d) for d in config.DISTRICTS_BY_OBLAST.values()) == len(config.DISTRICT_CONFIG)
 
 
+def test_config_occupied_regions_have_no_districts():
+    """Крим, Севастополь, Донеччина й Луганщина лишаються поза довідником."""
+    for region in ('crimea', 'sevastopol', 'donetsk_oblast', 'luhansk_oblast'):
+        assert region not in config.DISTRICTS_BY_OBLAST
+
+
+def test_config_region_config_is_the_broadcast_subset():
+    """REGION_CONFIG - рівно ті райони, у яких є канал."""
+    assert set(config.REGION_CONFIG) == config.BROADCAST_DISTRICTS
+    assert config.BROADCAST_DISTRICTS <= set(config.DISTRICT_CONFIG)
+    assert set(config.real_channels) == set(config.test_channels)
+    assert all('display_name' in conf for conf in config.REGION_CONFIG.values())
+
+
+def test_config_broadcast_triggers_keep_the_oblast_name():
+    """Формат REGION_CONFIG незмінний: назва району плюс назва області."""
+    assert config.REGION_CONFIG['bucha']['triggers'] == [
+        'Бучанський район', 'Київська область'
+    ]
+    assert config.DISTRICT_CONFIG['bucha']['triggers'] == ['Бучанський район']
+
+
+def test_config_triggers_cover_both_apostrophes():
+    assert config.DISTRICT_CONFIG['kamianske']['triggers'] == [
+        "Кам'янський район", "Кам\u2019янський район"
+    ]
+    assert config.DISTRICT_CONFIG['kupiansk']['triggers'] == [
+        "Куп'янський район", "Куп\u2019янський район"
+    ]
+
+
+def test_config_renamed_districts_keep_their_former_name():
+    for key, former in [
+        ('zviahel', 'Новоград-Волинський район'),
+        ('volodymyr', 'Володимир-Волинський район'),
+        ('samar', 'Новомосковський район'),
+        ('berestyn', 'Красноградський район'),
+    ]:
+        assert former in config.DISTRICT_CONFIG[key]['triggers']
+
+
+def test_config_no_trigger_belongs_to_two_districts():
+    """Однакова назва в двох областях зробила б зіставлення неоднозначним."""
+    owners = {}
+    for key, conf in config.DISTRICT_CONFIG.items():
+        for trigger in conf['triggers']:
+            owners.setdefault(trigger, []).append(key)
+
+    assert {t: keys for t, keys in owners.items() if len(keys) > 1} == {}

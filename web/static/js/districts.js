@@ -133,10 +133,11 @@ const DISTRICT_MARKERS = [
     { district: 'izmail', oblast: 'odesa_oblast', name: 'Ізмаїл', lat: 45.3502, lng: 28.8502, channel: 'izmail_sirens' },
     { district: 'zolotonosha', oblast: 'cherkasy_oblast', name: 'Золотоноша', lat: 49.6618, lng: 32.0477, channel: 'zolotonosha_sirens' },
     { district: 'zvenyhorodka', oblast: 'cherkasy_oblast', name: 'Звенигородка', lat: 49.0762, lng: 30.9700, channel: 'zvenyhorodka_sirens' },
-    // Немає каналу в config.py -> немає даних по району; красимо від агрегату області
-    { district: null, oblast: 'zhytomyr_oblast', name: 'Звягель', lat: 50.5860, lng: 27.6364, channel: 'zviahel_sirens' },
-    { district: null, oblast: 'zhytomyr_oblast', name: 'Коростень', lat: 50.9481, lng: 28.6412, channel: 'korosten_sirens' },
-    { district: null, oblast: 'zhytomyr_oblast', name: 'Бердичів', lat: 49.9107, lng: 28.5900, channel: 'berdychiv_sirens' }
+    // Свого каналу в цих міст немає, але район тепер відстежується, тож маркер
+    // фарбується від нього, а не від агрегату області.
+    { district: 'zviahel', oblast: 'zhytomyr_oblast', name: 'Звягель', lat: 50.5860, lng: 27.6364, channel: 'zviahel_sirens' },
+    { district: 'korosten', oblast: 'zhytomyr_oblast', name: 'Коростень', lat: 50.9481, lng: 28.6412, channel: 'korosten_sirens' },
+    { district: 'berdychiv', oblast: 'zhytomyr_oblast', name: 'Бердичів', lat: 49.9107, lng: 28.5900, channel: 'berdychiv_sirens' }
 ];
 
 function getMarkerThreats(apiData, marker) {

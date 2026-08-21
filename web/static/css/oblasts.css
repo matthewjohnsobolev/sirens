@@ -307,8 +307,11 @@
    #757575 - той самий сірий, що й у хрестика закриття попапа Leaflet. */
 .popup-city-name {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
+    /* Рядок лишається 14px при 10px кеглі: інтерліньяж тримає підпис на відстані
+       від таблетки, а висота групи (14 + 6 + 40 = 60px) не пливе - на ній
+       стоїть висота скрол-контейнера. */
     line-height: 14px;
     letter-spacing: 0.1em;
     text-transform: uppercase;

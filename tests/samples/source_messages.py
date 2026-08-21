@@ -37,6 +37,19 @@ def _districts_block(districts: tuple[str, ...], end: str = "") -> str:
     return "\n" + "\n".join(f"• {place}" for place in districts)
 
 
+def _render(template: str, time: str, districts: tuple[str, ...], end: str = "") -> str:
+    return template.format(
+        time=time,
+        districts=_districts_block(districts, end),
+        hashtags=" ".join(_hashtag(place) for place in districts),
+    )
+
+
+def oblast_message(oblast_name: str, time: str = "12:00") -> str:
+    """A post naming the oblast instead of listing its districts."""
+    return _render(ALERT_TEMPLATE, time, (oblast_name,))
+
+
 @dataclass(frozen=True)
 class AlertSample:
 
@@ -61,11 +74,37 @@ class AlertSample:
         return self._render(ALERT_CANCELLATION_TEMPLATE, self.cancellation_time, end=".")
 
     def _render(self, template: str, time: str, end: str = "") -> str:
-        return template.format(
-            time=time,
-            districts=_districts_block(self.districts, end),
-            hashtags=" ".join(_hashtag(place) for place in self.districts),
-        )
+        return _render(template, time, self.districts, end)
+
+
+@dataclass(frozen=True)
+class MapOnlySample:
+    """A post naming districts I do not broadcast to.
+
+    `districts` are the place names in the post. `recorded` are the district
+    keys whose map state must change, and none of them may reach a channel;
+    `broadcast` names the keys in the same post that must still be aired, so a
+    mixed post proves the two halves of the parser do not shadow each other.
+    """
+
+    id: str
+
+    districts: tuple[str, ...]
+
+    recorded: tuple[str, ...]
+
+    broadcast: tuple[str, ...] = ()
+
+    alert_time: str = "12:00"
+    cancellation_time: str = "13:00"
+
+    @property
+    def alert_message(self) -> str:
+        return _render(ALERT_TEMPLATE, self.alert_time, self.districts)
+
+    @property
+    def cancellation_message(self) -> str:
+        return _render(ALERT_CANCELLATION_TEMPLATE, self.cancellation_time, self.districts, ".")
 
 
 @dataclass(frozen=True)
@@ -226,5 +265,85 @@ PARTIAL_CANCELLATION_SAMPLES = (
         regions=("bucha", "fastiv"),
         silenced=("bilatserkva",),
         time="21:37",
+    ),
+)
+
+
+# Райони без мого каналу: карта про них знає, канали - ні.
+MAP_ONLY_SAMPLES = (
+    MapOnlySample(
+        id="vyshhorod",
+        districts=("Вишгородський район",),
+        recorded=("vyshhorod",),
+        alert_time="03:12",
+        cancellation_time="04:40",
+    ),
+    MapOnlySample(
+        id="synelnykove",
+        districts=("Синельниківський район",),
+        recorded=("synelnykove",),
+        alert_time="22:05",
+        cancellation_time="23:31",
+    ),
+    MapOnlySample(
+        id="lubny",
+        districts=("Лубенський район",),
+        recorded=("lubny",),
+        alert_time="07:48",
+        cancellation_time="08:22",
+    ),
+
+    # Джерело може називати район і по-старому - для карти це той самий район.
+    MapOnlySample(
+        id="zviahel-under-its-former-name",
+        districts=("Новоград-Волинський район",),
+        recorded=("zviahel",),
+        alert_time="13:03",
+        cancellation_time="14:17",
+    ),
+
+    # Апостроф у джерелі буває і прямий, і машинописний.
+    MapOnlySample(
+        id="kupiansk-with-a-curly-apostrophe",
+        districts=("Куп\u2019янський район",),
+        recorded=("kupiansk",),
+        alert_time="05:26",
+        cancellation_time="06:09",
+    ),
+    MapOnlySample(
+        id="kupiansk-with-a-straight-apostrophe",
+        districts=("Куп'янський район",),
+        recorded=("kupiansk",),
+        alert_time="05:26",
+        cancellation_time="06:09",
+    ),
+
+    # Назва одного району лежить усередині назви іншого: "Подільський район" -
+    # частина "Кам'янець-Подільського", а "Дністровський" - частина
+    # "Білгород-Дністровського". Жоден із постів не має чіпати сусіда.
+    MapOnlySample(
+        id="kamianets-podilskyi-does-not-raise-podilsk",
+        districts=("Кам'янець-Подільський район",),
+        recorded=("kamianetspodilskyi",),
+        alert_time="16:41",
+        cancellation_time="17:55",
+    ),
+    MapOnlySample(
+        id="bilhorod-dnistrovskyi-does-not-raise-dnistrovskyi",
+        districts=("Білгород-Дністровський район",),
+        recorded=("bilhoroddnistrovskyi",),
+        alert_time="01:14",
+        cancellation_time="02:38",
+    ),
+
+    # Один пост - обидві гілки парсера: Бучанський іде в канал, Вишгородський
+    # лише на карту.
+    MapOnlySample(
+        id="mixed-broadcast-and-map-only",
+        districts=("Бучанський район", "Вишгородський район"),
+        recorded=("vyshhorod",),
+        broadcast=("bucha",),
+        alert_time="19:53",
+        cancellation_time="20:59",
     ),
 )

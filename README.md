@@ -8,7 +8,7 @@ The system ingests real-time data from official Telegram channels, stores it in 
 
 ## Key Features
 
-* **Real-time Event Tracking:** Continuously monitors air raid alerts, artillery shelling threats, and local emergency events across all Ukrainian regions.
+* **Real-time Event Tracking:** Continuously monitors air raid alerts, artillery shelling threats, and local emergency events across every district of the government-controlled Ukrainian regions. Districts with their own channel are broadcast to; the rest are tracked for the map alone.
 * **Telegram Integration:** Utilizes `Telethon` to parse official emergency notification channels with minimal latency.
 * **RESTful API:** Provides structured JSON endpoints for consuming data regarding active threats across regions.
 * **Live Threat Map:** A Flask-powered, dynamic GIS-based web interface built with **Leaflet** and **OpenStreetMap**, highlighting regions and cities under active air raid alerts or shelling threats in real-time.
@@ -106,21 +106,36 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
       "source": "None"
     }
   },
-  "kherson": {
+  "kyiv_oblast": {
     "alert": {
-      "status": 0,
-      "time": "None",
-      "source": "None"
-    },
-    "explosion": {
       "status": 1,
-      "time": "12:10",
-      "source": "https://t.me/channel/456"
+      "time": "14:23",
+      "source": "https://t.me/bucha_alert/77",
+      "coverage": "partial",
+      "active_districts": ["bucha"],
+      "tracked_districts": ["bilatserkva", "boryspil", "brovary", "bucha",
+                            "vyshhorod", "obukhiv", "fastiv"]
     },
-    "shelling": {
-      "status": 1,
-      "time": "12:05",
-      "source": "https://t.me/channel/455"
+    "explosion": { "status": 0, "time": "None", "source": "None" },
+    "districts": {
+      "bucha": {
+        "name": "Бучанський район",
+        "alert": {
+          "status": 1,
+          "time": "14:23",
+          "source": "https://t.me/bucha_alert/77"
+        },
+        "shelling": { "status": 0, "time": "None", "source": "None" }
+      },
+      "vyshhorod": {
+        "name": "Вишгородський район",
+        "alert": {
+          "status": 0,
+          "time": "09:40",
+          "source": "https://t.me/air_alert_ua/500"
+        },
+        "shelling": { "status": 0, "time": "None", "source": "None" }
+      }
     }
   }
 }
@@ -131,7 +146,9 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 * The `shelling` (artillery shelling threat) object is present only for cities near the front line where shelling monitoring is enabled
 * `status`: `1` (Active) or `0` (Inactive)
 * `time`: Time of the event formatted as `HH:MM` in the **Kyiv timezone (`Europe/Kyiv`)**, or `"None"` if not applicable.
-* `source`: URL of the broadcast message in that city's Telegram channel (e.g. `https://t.me/kyiv_alert/512`), so the map can link a pill straight to it. Falls back to `"telegram"` for events recorded before message links were stored or whose link could not be resolved, and `"None"` when there is no event at all.
+* `source`: URL of the message the event came from, so the map can link a pill straight to it. For a district with its own channel that is the broadcast (e.g. `https://t.me/kyiv_alert/512`); for a district tracked on the map only, it is the source channel's post. Falls back to `"telegram"` for events recorded before message links were stored or whose link could not be resolved, and `"None"` when there is no event at all.
+* `districts`: every district of the region, keyed by district id, each with its Ukrainian `name` and its own `alert` and `shelling` state. Alerts are tracked for all districts of the government-controlled regions; Crimea, Sevastopol, Donetsk and Luhansk regions carry an empty map.
+* `coverage`: `"full"` when every district of the region is under alert, `"partial"` when only some are, `"none"` when none are. `active_districts` and `tracked_districts` list the district ids behind that verdict.
 
 ## Channel Statistics
 

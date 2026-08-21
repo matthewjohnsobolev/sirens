@@ -254,18 +254,28 @@
     position: relative;
 }
 
-/* Список міст із прокруткою. Видно рівно дві групи "місто + таблетка", далі -
+/* Список районів із прокруткою. Видно рівно дві групи "район + таблетка", далі -
    скрол: 2 x (14 підпис + 6 проміжок + 40 таблетка) + 12 між групами = 132px.
-   Більше двох міст мають лише три області - Черкаська й Дніпропетровська
-   (по чотири) та Київська (три), тож прокрутка вмикається рідко. */
+   Тепер в області від трьох до семи районів, тож прокрутка є майже завжди - і
+   смуга з декоративної стала робочою.
+
+   Від'ємний margin рівно на ширину смуги виносить її у правий відступ попапа:
+   смуга з'їдає ці 10px, а таблеткам лишаються всі 310px - ті самі, що й у
+   попапі маркера. Тому margin мусить дорівнювати ширині смуги нижче: більший
+   винесе повзунок за межі бульбашки, менший - відкусить у таблеток. */
 .scrollable-content {
     max-height: 132px;
     overflow-y: auto;
     overflow-x: hidden;   /* горизонтальна смуга тут не потрібна ніколи */
-    padding-right: 8px;
-    margin-right: -8px; /* Компенсируем padding для выравнивания */
-    /* scrollbar-width тут не ставимо: Chrome від 121 через нього ігнорує
-       правила ::-webkit-scrollbar нижче й малює власну смугу на 10px. */
+    margin-right: -10px;
+    /* Вертикальний жест усередині списку гортає список, а не тягне карту;
+       overscroll-behavior не дає прокрутці "протекти" на карту в кінці списку. */
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    /* scrollbar-width тут не ставимо: Chrome від 121 через нього ігнорує всі
+       ::-webkit-scrollbar нижче. Для Firefox він є, але під @supports - там,
+       де Chrome його не побачить. */
 }
 
 /* Група "місто + його таблетка". Зовнішній проміжок удвічі більший за
@@ -310,23 +320,43 @@
     margin-bottom: 0;
 }
 
-/* Стилизация скроллбара */
+/* Скролбар. Смуга - 10px, щоб у повзунок можна було влучити мишею й пальцем,
+   але сам повзунок лишається візуально вузьким: прозора рамка з
+   background-clip: padding-box малює 4px, а хапається всі 10px.
+   min-height не дає повзунку зіщулитись до нерухомої крапки в областях
+   із сімома районами. */
 .scrollable-content::-webkit-scrollbar {
-    width: 4px;
+    width: 10px;
 }
 
 .scrollable-content::-webkit-scrollbar-track {
     background: rgba(0, 0, 0, 0.05);
-    border-radius: 2px;
+    background-clip: padding-box;
+    border: 3px solid transparent;
+    border-radius: 5px;
 }
 
 .scrollable-content::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.15);
-    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.25);
+    background-clip: padding-box;
+    border: 3px solid transparent;
+    border-radius: 5px;
+    min-height: 24px;
 }
 
 .scrollable-content::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.25);
+    background: rgba(0, 0, 0, 0.4);
+    background-clip: padding-box;
+}
+
+/* Firefox не знає ::-webkit-scrollbar і без цього лишився б із типовою широкою
+   смугою. Умова потрібна, щоб Chrome від 121 не побачив scrollbar-width: там
+   він через нього ігнорує всі правила вище. */
+@supports not selector(::-webkit-scrollbar) {
+    .scrollable-content {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0, 0, 0, 0.25) rgba(0, 0, 0, 0.05);
+    }
 }
 
 .oblast-partial {

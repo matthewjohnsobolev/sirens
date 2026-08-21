@@ -77,12 +77,14 @@ function setOblastStyle(layer, data) {
 }
 
 // Попап області - той самий список стандартних таблеток, що й у попапах маркерів:
-// над кожною таблеткою стоїть моношрифтом місто, якого вона стосується.
+// над кожною таблеткою стоїть моношрифтом район, якого вона стосується. Районів
+// в області більше, ніж моїх каналів, тож назва їде з /api, а не з маркерів:
+// маркери лишаються містами й покривають не кожен район.
 function getOblastPopupContent(oblastData) {
     const alert = (oblastData && oblastData.alert) || {};
     const tracked = alert.tracked_districts || [];
 
-    // Області без жодного відстежуваного міста (Крим, Донеччина, Луганщина,
+    // Області без жодного відстежуваного району (Крим, Донеччина, Луганщина,
     // Севастополь): показуємо єдину таблетку "немає даних" замість порожнього списку.
     if (!tracked.length) {
         return `
@@ -93,10 +95,10 @@ function getOblastPopupContent(oblastData) {
 
     let rows = '';
     for (const key of tracked) {
-        const marker = DISTRICT_MARKERS.find(m => m.district === key);
+        const district = (oblastData.districts && oblastData.districts[key]) || {};
         rows += `
               <div class="popup-city">
-                  <div class="popup-city-name">${marker ? marker.name : key}</div>
+                  <div class="popup-city-name">${district.name || key}</div>
                   ${renderPill(districtPillState(oblastData, key))}
               </div>`;
     }
@@ -109,6 +111,18 @@ function getOblastPopupContent(oblastData) {
 }
 
 var customOptions = {'maxWidth': '310', 'width': '310'};
+
+// Leaflet глушить події на обгортці попапа, але список районів - власний
+// скрол-контейнер: без цього mousedown по повзунку й вертикальний свайп по
+// списку стартують драг карти замість прокрутки.
+function isolateScrollFromMap(popup) {
+    const list = popup.getElement() && popup.getElement().querySelector('.scrollable-content');
+    if (!list) return;
+    L.DomEvent.disableClickPropagation(list);
+    L.DomEvent.disableScrollPropagation(list);
+}
+
+map.on('popupopen', event => isolateScrollFromMap(event.popup));
 
 fetch('/api')
     .then(response => response.json())

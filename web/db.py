@@ -14,9 +14,9 @@ import redis
 
 from config import (
     DATABASE_URL,
+    DISTRICT_CONFIG,
     DISTRICTS_BY_OBLAST,
     REDIS_URL,
-    REGION_CONFIG,
     real_channels,
     test_channels,
 )
@@ -343,8 +343,8 @@ def update_shelling_source(target: str, link: str) -> None:
 
 def update_alert_source(channel_id: int, link: str) -> None:
     district_key = get_region_by_channel_id(channel_id)
-    if district_key and district_key in REGION_CONFIG:
-        oblast_key = REGION_CONFIG[district_key]['oblast']
+    if district_key and district_key in DISTRICT_CONFIG:
+        oblast_key = DISTRICT_CONFIG[district_key]['oblast']
         redis_client.hset(f"threat:alerts:{oblast_key}", "source", link)
         redis_client.hset(f"threat:alerts:city:{district_key}", "source", link)
 
@@ -356,10 +356,10 @@ async def update_alert_status(
     message_link: Optional[str] = None,
 ) -> None:
     district_key = get_region_by_channel_id(channel_id)
-    if not district_key or district_key not in REGION_CONFIG:
+    if not district_key or district_key not in DISTRICT_CONFIG:
         return
         
-    oblast_key = REGION_CONFIG[district_key]['oblast']
+    oblast_key = DISTRICT_CONFIG[district_key]['oblast']
         
     now = datetime.datetime.now()
     current_time = now.strftime("%H:%M")
@@ -467,7 +467,7 @@ def rehydrate_state_from_db() -> None:
         log.exception("Failed to query alert_history for rehydration")
         raise
 
-    for d_name, conf in REGION_CONFIG.items():
+    for d_name, conf in DISTRICT_CONFIG.items():
         o_name = conf['oblast']
         redis_client.delete(f"threat:alerts:active:{o_name}")
 
@@ -477,8 +477,8 @@ def rehydrate_state_from_db() -> None:
         source = message_link or DEFAULT_SOURCE
         if not d_key and o_key:
             d_key = o_key
-        if not o_key and d_key in REGION_CONFIG:
-            o_key = REGION_CONFIG[d_key]['oblast']
+        if not o_key and d_key in DISTRICT_CONFIG:
+            o_key = DISTRICT_CONFIG[d_key]['oblast']
 
         if "shelling" in str(alert_type).lower():
             is_active = str(alert_type).lower() in ("threat_of_shelling", "1", "true")
@@ -550,7 +550,7 @@ def get_all_threats_data() -> Dict[str, Any]:
         'zaporizhzhia_oblast', 'zhytomyr_oblast',
     ]
     
-    districts = list(REGION_CONFIG.keys())
+    districts = list(DISTRICT_CONFIG.keys())
     
     keys_order = []
 
@@ -634,8 +634,11 @@ def get_all_threats_data() -> Dict[str, Any]:
         else:
             oblast_alert['coverage'] = 'none'
 
+        # Українська назва їде разом зі станом: попап області підписує нею
+        # кожну таблетку, і дублювати цей довідник у JS немає сенсу.
         districts_map = {
             d: {
+                'name': DISTRICT_CONFIG[d]['name'],
                 'alert': raw_data['city_alerts'].get(d, DEFAULT_THREAT),
                 'shelling': raw_data['city_shellings'].get(d, DEFAULT_THREAT),
             }

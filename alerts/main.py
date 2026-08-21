@@ -38,12 +38,13 @@ from telethon.tl.types import (
 from alerts import cli
 from config import (
     DATABASE_URL,
+    DISTRICT_CONFIG,
     HEALTHCHECKS_PING_URL_ALERTS,
     IMAGES_PATH,
     LOGS_PATH,
     MESSAGES,
+    OBLAST_TRIGGERS,
     REDIS_URL,
-    REGION_CONFIG,
     SENTRY_DSN,
     SESSION_PATH,
     VERSION,
@@ -134,6 +135,22 @@ async def broadcast_reference(channel_id: int, message) -> tuple[Optional[int], 
     return message_id, build_message_link(channel_id, message_id, username)
 
 
+async def source_reference(event) -> tuple[Optional[int], Optional[str]]:
+    """Ідентифікатор і посилання на пост першоджерела.
+
+    Для районів без власного каналу саме він стає джерелом стану: таблетка
+    такого району на карті веде на пост, з якого тривогу й дізналися.
+    """
+    message_id = getattr(event.message, "id", None)
+    chat_id = getattr(event, "chat_id", None)
+    if not isinstance(message_id, int) or not isinstance(chat_id, int):
+        log.warning("Source message has no id; map-only districts recorded without a link")
+        return None, None
+
+    username = await resolve_channel_username(chat_id)
+    return message_id, build_message_link(chat_id, message_id, username)
+
+
 def spawn_tracked_task(coro, description: str):
     task = asyncio.create_task(coro)
     running_tasks.add(task)
@@ -146,8 +163,16 @@ def spawn_tracked_task(coro, description: str):
     task.add_done_callback(_on_done)
 
 
+def district_label(district_key: str) -> str:
+    """Як район звати в логах: латиниця для каналів, українська - для решти."""
+    conf = DISTRICT_CONFIG.get(district_key)
+    if not conf:
+        return district_key.capitalize()
+    return conf.get('display_name') or conf['name']
+
+
 def log_alert_received(region: str, alert_type: str):
-    display_name = REGION_CONFIG.get(region, {}).get('display_name', region.capitalize())
+    display_name = district_label(region)
     
     if alert_type == "air_raid_alert":
         log.info("Air raid alert received for %s", display_name)
@@ -184,7 +209,7 @@ async def process_channel_photo_update(channel_id, region, alert_type):
     if not file_path:
         return
 
-    display_name = REGION_CONFIG.get(region, {}).get('display_name', region.capitalize())
+    display_name = district_label(region)
 
     for attempt in range(1, PHOTO_UPDATE_MAX_ATTEMPTS + 1):
         current_state = await redis_client.get(f"channel_state:{channel_id}") if redis_client else None
@@ -220,14 +245,14 @@ async def process_channel_photo_update(channel_id, region, alert_type):
 
 
 async def _record_alert_state(
-    channel_id: int,
+    channel_id: Optional[int],
     region: str,
     alert_type: str,
     message_id: Optional[int] = None,
     message_link: Optional[str] = None,
 ):
     district_key = region
-    oblast_key = REGION_CONFIG.get(region, {}).get('oblast', region)
+    oblast_key = DISTRICT_CONFIG.get(region, {}).get('oblast', region)
     now = datetime.datetime.now()
     current_time = now.strftime("%H:%M")
     now_epoch = str(int(time.time()))
@@ -235,7 +260,13 @@ async def _record_alert_state(
 
     if redis_client:
         try:
-            await redis_client.set(f"channel_state:{channel_id}", alert_type)
+            # Район без каналу тримає свій стан під власним ключем: дедуп
+            # мусить працювати й там, де фото каналу міняти нічому.
+            state_key = (
+                f"channel_state:{channel_id}" if channel_id is not None
+                else f"district_state:{district_key}"
+            )
+            await redis_client.set(state_key, alert_type)
 
             if "shelling" in alert_type:
                 is_shelling_active = (alert_type == "threat_of_shelling")
@@ -308,7 +339,7 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
         log.error("Unknown alert type: %s", alert_type)
         return
 
-    display_name = REGION_CONFIG.get(region, {}).get('display_name', region.capitalize())
+    display_name = district_label(region)
 
     if redis_client:
         try:
@@ -363,6 +394,47 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
             log.debug("No photo mapping for '%s', skipping photo update", alert_type)
 
 
+async def record_map_only_alert(
+    district_key: str,
+    alert_type: str,
+    message_id: Optional[int] = None,
+    message_link: Optional[str] = None,
+):
+    """Район без каналу: стан лише для карти, без бродкасту.
+
+    Дзеркалить send_alert - той самий дедуп і той самий запис стану, - але
+    нікуди не пише й не чіпає фото каналу. Джерелом події стає пост
+    першоджерела, бо власного повідомлення в такого району немає.
+    """
+    if alert_type not in MESSAGES:
+        log.error("Unknown alert type: %s", alert_type)
+        return
+
+    label = district_label(district_key)
+
+    if redis_client:
+        try:
+            previous_alert_type = await redis_client.get(f"district_state:{district_key}")
+            if previous_alert_type == alert_type:
+                log.info(
+                    "Duplicate %s ignored for %s: already in this state",
+                    alert_type, label
+                )
+                return
+        except Exception:
+            log.exception(
+                "Redis unavailable for %s; recording %s without dedup check",
+                label, alert_type
+            )
+
+    await _record_alert_state(
+        None, district_key, alert_type,
+        message_id=message_id,
+        message_link=message_link,
+    )
+    log.info("%s recorded for %s (map only)", alert_type.replace('_', ' ').capitalize(), label)
+
+
 ONGOING_NOTICE_RE = re.compile(r"^[^\n]*ще трива[^\n]*$", re.MULTILINE)
 
 
@@ -373,40 +445,131 @@ def strip_ongoing_notice(message_text: str) -> str:
     return message_text[:notice.start()] if notice else message_text
 
 
+def _trigger_pattern(trigger: str) -> re.Pattern:
+    """Збіг по межах слова.
+
+    Межі виписані руками, бо \b не бачить апострофа й дефіса: без них
+    "Подільський район" знаходився б усередині "Кам'янець-Подільського",
+    а "Дністровський" - усередині "Білгород-Дністровського".
+    """
+    return re.compile(rf"(?<![\w'\u2019-]){re.escape(trigger)}(?![\w'\u2019])")
+
+
+DISTRICT_PATTERNS = {
+    key: [_trigger_pattern(trigger) for trigger in conf['triggers']]
+    for key, conf in DISTRICT_CONFIG.items()
+}
+
+OBLAST_PATTERNS = {
+    oblast: [_trigger_pattern(trigger) for trigger in triggers]
+    for oblast, triggers in OBLAST_TRIGGERS.items()
+}
+
+DISTRICT_MENTION_RE = re.compile(r"[А-ЯІЇЄҐ][\w'\u2019-]*\s+район")
+
+
+def _alert_type_for(district_key: str, message_text: str) -> Optional[str]:
+    conf = DISTRICT_CONFIG.get(district_key, {})
+
+    for alert_type, keywords in conf.get('alert_triggers', {}).items():
+        if any(keyword in message_text for keyword in keywords):
+            return alert_type
+
+    if "Повітряна тривога" in message_text:
+        return "air_raid_alert"
+    if "Відбій тривоги" in message_text:
+        return "air_raid_alert_cancelled"
+    return None
+
+
+def match_districts(message_text: str) -> dict[str, str]:
+    """Райони, згадані в пості -> тип події для кожного.
+
+    Район спрацьовує від власної назви або від назви своєї області: джерело
+    часто оголошує тривогу по області, не перелічуючи райони, - і тоді її
+    отримує вся область, а не лише ті райони, у яких у мене є канал.
+    """
+    oblast_hit = {
+        oblast: any(pattern.search(message_text) for pattern in patterns)
+        for oblast, patterns in OBLAST_PATTERNS.items()
+    }
+
+    matched: dict[str, str] = {}
+    for district_key, conf in DISTRICT_CONFIG.items():
+        if not oblast_hit.get(conf['oblast']) and not any(
+            pattern.search(message_text) for pattern in DISTRICT_PATTERNS[district_key]
+        ):
+            continue
+
+        alert_type = _alert_type_for(district_key, message_text)
+        if alert_type:
+            matched[district_key] = alert_type
+
+    return matched
+
+
+KNOWN_DISTRICT_TRIGGERS = frozenset(
+    trigger for conf in DISTRICT_CONFIG.values() for trigger in conf['triggers']
+)
+
+
+# Кожну незнайому назву повідомляємо один раз за життя процесу. Джерело регулярно
+# пише про райони, яких тут свідомо немає (Крим, Донеччина, Луганщина), тож без
+# цього кожна така тривога йшла б окремою подією в Sentry - і сигнал про справжнє
+# перейменування потонув би в цьому потоці.
+reported_unknown_districts: set[str] = set()
+
+
+def log_unrecognised_districts(message_text: str) -> None:
+    """Назви районів із поста, яких немає в конфізі.
+
+    Без цього чергове перейменування району виглядає як тиша: карта просто не
+    оновлюється, і дізнаємось ми про це від того, хто на неї дивився.
+    """
+    unknown = {
+        " ".join(mention.split())
+        for mention in DISTRICT_MENTION_RE.findall(message_text)
+    } - KNOWN_DISTRICT_TRIGGERS - reported_unknown_districts
+
+    if unknown:
+        reported_unknown_districts.update(unknown)
+        log.warning(
+            "Districts named in the source message but missing from config: %s",
+            ", ".join(sorted(unknown))
+        )
+
+
 def build_message_handler(region_channels: dict):
     async def handle_incoming_message(event):
         if not event.message or not getattr(event.message, 'message', None):
             return
 
         message_text = strip_ongoing_notice(event.message.message)
+        matched = match_districts(message_text)
+        log_unrecognised_districts(message_text)
 
-        for region_key, region_config in REGION_CONFIG.items():
-            channel_id = region_channels.get(region_key)
-            if not channel_id:
-                continue
+        if not matched:
+            return
 
-            if not any(trigger in message_text for trigger in region_config['triggers']):
-                continue
+        # Пост джерела резолвимо лише за потреби: у районів із каналом джерелом
+        # стає власне повідомлення, і зайвий get_entity їм ні до чого.
+        source_ref: tuple[Optional[int], Optional[str]] = (None, None)
+        if any(not region_channels.get(district_key) for district_key in matched):
+            source_ref = await source_reference(event)
 
-            alert_type = None
+        for district_key, alert_type in matched.items():
+            log_alert_received(district_key, alert_type)
+            channel_id = region_channels.get(district_key)
 
-            if 'alert_triggers' in region_config:
-                for a_type, keywords in region_config['alert_triggers'].items():
-                    if any(keyword in message_text for keyword in keywords):
-                        alert_type = a_type
-                        break
-            
-            if not alert_type:
-                if "Повітряна тривога" in message_text:
-                    alert_type = "air_raid_alert"
-                elif "Відбій тривоги" in message_text:
-                    alert_type = "air_raid_alert_cancelled"
-
-            if alert_type:
-                log_alert_received(region_key, alert_type)
+            if channel_id:
                 spawn_tracked_task(
-                    send_alert(channel_id, region_key, alert_type),
-                    f"Alert broadcast of {alert_type} to {region_key}"
+                    send_alert(channel_id, district_key, alert_type),
+                    f"Alert broadcast of {alert_type} to {district_key}"
+                )
+            else:
+                spawn_tracked_task(
+                    record_map_only_alert(district_key, alert_type, *source_ref),
+                    f"Map-only record of {alert_type} for {district_key}"
                 )
 
     return handle_incoming_message

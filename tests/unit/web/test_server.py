@@ -1,4 +1,5 @@
 import logging
+import re
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -37,6 +38,54 @@ def test_static_caching_header(client):
 
 def test_stats_csv_route_not_found(client):
     assert client.get('/bi/stats.csv').status_code == 404
+
+
+# --------------------------------------------------------------------------
+# cache busting
+# --------------------------------------------------------------------------
+
+
+def test_index_versions_every_stylesheet_and_script(client):
+    """Статика віддається як immutable, тож без версії в URL зміни JS не доїдуть."""
+    html = client.get('/').get_data(as_text=True)
+
+    assets = re.findall(r'(?:href|src)="(/static/(?:css|js)/[^"]+)"', html)
+    assert assets, "у сторінці не знайшлось жодного css/js"
+    unversioned = [a for a in assets if '?v=' not in a]
+    assert unversioned == [], f"без версії: {unversioned}"
+
+
+def test_static_url_fingerprint_follows_the_file_contents(app, tmp_path):
+    from web.server import _static_fingerprint, static_url
+
+    _static_fingerprint.cache_clear()
+    asset = tmp_path / 'probe.css'
+    asset.write_text('a{}')
+
+    with app.test_request_context():
+        first = static_url('css/main.css')
+        assert first == static_url('css/main.css')   # стабільний, поки файл не змінився
+
+    assert _static_fingerprint(str(tmp_path), 'probe.css') != _static_fingerprint(
+        str(tmp_path), 'missing.css'
+    )
+
+    before = _static_fingerprint(str(tmp_path), 'probe.css')
+    asset.write_text('a{color:red}')
+    _static_fingerprint.cache_clear()
+    assert _static_fingerprint(str(tmp_path), 'probe.css') != before
+
+
+def test_static_url_falls_back_to_the_release_when_the_file_is_gone(app, caplog):
+    from web.server import _static_fingerprint, static_url
+
+    _static_fingerprint.cache_clear()
+    caplog.set_level(logging.WARNING)
+
+    with app.test_request_context():
+        assert f'v={VERSION}' in static_url('css/does-not-exist.css')
+
+    assert 'does-not-exist.css' in caplog.text
 
 
 

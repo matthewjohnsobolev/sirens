@@ -1,7 +1,9 @@
+import hashlib
 import logging
 import os
 import threading
 import time
+from functools import lru_cache
 from logging.handlers import RotatingFileHandler
 from typing import Any
 
@@ -11,7 +13,7 @@ import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from psycopg2.extras import RealDictCursor
-from flask import Flask, render_template, jsonify, g, request, Response
+from flask import Flask, current_app, render_template, jsonify, g, request, url_for, Response
 
 from config import (
     DATABASE_URL, LOGS_PATH, SENTRY_DSN, HEALTHCHECKS_PING_URL_WEB, VERSION
@@ -92,6 +94,29 @@ def api() -> Any:
     return jsonify(get_all_threats_data())
 
 
+@lru_cache(maxsize=None)
+def _static_fingerprint(static_folder: str, filename: str) -> str:
+    """Відбиток вмісту файлу статики; рахується раз на процес."""
+    try:
+        with open(os.path.join(static_folder, filename), 'rb') as handle:
+            return hashlib.md5(handle.read()).hexdigest()[:8]
+    except OSError:
+        log.warning("Static file %s is missing; falling back to the release stamp", filename)
+        return VERSION
+
+
+def static_url(filename: str) -> str:
+    """Посилання на статику з відбитком вмісту в запиті.
+
+    /static/ віддається як immutable на 30 днів (див. add_caching_headers), тож
+    без відбитка браузер, який уже відкривав карту, місяць тримав би старий JS
+    поруч зі свіжим /api. Саме через це попап області показував ключі районів
+    замість назв: стара розмітка не знала про поле, що з'явилось у відповіді.
+    """
+    return url_for('static', filename=filename,
+                   v=_static_fingerprint(current_app.static_folder, filename))
+
+
 def add_caching_headers(response: Response) -> Response:
     if request.path == '/api':
         response.headers['Cache-Control'] = 'public, max-age=2, s-maxage=2'
@@ -132,6 +157,7 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
 
     app.teardown_appcontext(close_db)
     app.after_request(add_caching_headers)
+    app.jinja_env.globals['static_url'] = static_url
 
     app.add_url_rule('/', view_func=index)
     app.add_url_rule('/api', view_func=api, methods=['GET'])

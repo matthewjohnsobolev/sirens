@@ -112,18 +112,13 @@ function getOblastPopupContent(oblastData) {
 
 var customOptions = {'maxWidth': '310', 'width': '310'};
 
-// Leaflet глушить події на обгортці попапа, але список районів - власний
-// скрол-контейнер: без цього mousedown по повзунку й вертикальний свайп по
-// списку стартують драг карти замість прокрутки.
-function isolateScrollFromMap(popup) {
-    const list = popup.getElement() && popup.getElement().querySelector('.scrollable-content');
-    if (!list) return;
-    L.DomEvent.disableClickPropagation(list);
-    L.DomEvent.disableScrollPropagation(list);
-}
-
-map.on('popupopen', event => isolateScrollFromMap(event.popup));
-
+// Прокрутку списку районів від карти ізолює сам Leaflet: Popup._initLayout
+// глушить mousedown/touchstart на .leaflet-popup і wheel на вмісті попапа, а
+// .scrollable-content лежить усередині обох. Своїх обробників тут не треба.
+//
+// Увага: цей файл підключений у <head>, а карта створюється нижче, в <body>.
+// Тому на верхньому рівні звертатись до `map` не можна - тільки з колбеків,
+// які виконуються вже після того, як тіло сторінки відпрацювало.
 fetch('/api')
     .then(response => response.json())
     .then(apiData => {

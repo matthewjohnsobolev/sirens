@@ -11,20 +11,48 @@ const OBLAST_FILL_OPACITY = {
 // Штриховка часткової тривоги: смуга - той самий помаранчевий, що й обведення,
 // на повну насиченість; проміжок - сірий спокійної області. Смуги не
 // перекриваються, тож кожен колір лишається чистим.
-const HATCH = { size: 14, stripe: 7 };
+//
+// Крок паттерна заданий в екранних пікселях, тож на оглядовому зумі, де вся
+// країна вміщається в кілька сотень пікселів, фіксовані 7px читалися як пара
+// товстих балок замість штриховки. Тому смуга росте разом із зумом.
+const HATCH = { minStripe: 3, maxStripe: 7 };
+
+function hatchStripe(zoom) {
+    return Math.min(HATCH.maxStripe, Math.max(HATCH.minStripe, Math.round(zoom) - 3));
+}
+
+function resizeHatch(pattern, zoom) {
+    const stripe = hatchStripe(zoom);
+    const size = stripe * 2;
+    if (pattern.getAttribute('width') === String(size)) return;
+
+    pattern.setAttribute('width', size);
+    pattern.setAttribute('height', size);
+    const [bar, gap] = pattern.children;
+    bar.setAttribute('width', stripe);
+    bar.setAttribute('height', size);
+    gap.setAttribute('x', stripe);
+    gap.setAttribute('width', stripe);
+    gap.setAttribute('height', size);
+}
 
 function ensureHatchDefs(map) {
     const svg = map.getPane('overlayPane').querySelector('svg');
-    if (!svg || svg.querySelector('#alert-hatch')) return;
-    const defs = L.SVG.create('defs');   // createElementNS in SVG namespace
-    defs.innerHTML = `
-      <pattern id="alert-hatch" patternUnits="userSpaceOnUse"
-               width="${HATCH.size}" height="${HATCH.size}" patternTransform="rotate(45)">
-        <rect x="0" width="${HATCH.stripe}" height="${HATCH.size}" fill="${ALERT_COLORS.ALERT}"/>
-        <rect x="${HATCH.stripe}" width="${HATCH.size - HATCH.stripe}" height="${HATCH.size}"
-              fill="${ALERT_COLORS.IDLE}" fill-opacity="${OBLAST_FILL_OPACITY.idle}"/>
+    if (!svg) return;
+
+    let pattern = svg.querySelector('#alert-hatch');
+    if (!pattern) {
+        const defs = L.SVG.create('defs');   // createElementNS in SVG namespace
+        defs.innerHTML = `
+      <pattern id="alert-hatch" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect x="0" fill="${ALERT_COLORS.ALERT}"/>
+        <rect fill="${ALERT_COLORS.IDLE}" fill-opacity="${OBLAST_FILL_OPACITY.idle}"/>
       </pattern>`;
-    svg.insertBefore(defs, svg.firstChild);
+        svg.insertBefore(defs, svg.firstChild);
+        pattern = svg.querySelector('#alert-hatch');
+        map.on('zoomend', () => resizeHatch(pattern, map.getZoom()));
+    }
+    resizeHatch(pattern, map.getZoom());
 }
 
 const OBLAST_STYLES = {

@@ -31,6 +31,7 @@ from web.db import (
     get_threat_time,
     rehydrate_state_from_db,
     reset_threat_status,
+    save_error_report,
     update_alert_source,
     update_alert_status,
     update_explosion_source,
@@ -90,6 +91,45 @@ def test_ensure_pg_tables_creates_subscribers(mock_web_pg):
     assert "UNIQUE (channel_key, time)" in sql
     assert "CREATE INDEX IF NOT EXISTS subscribers_date_idx" in sql
     assert "CREATE INDEX IF NOT EXISTS subscribers_time_idx" in sql
+
+
+def test_ensure_pg_tables_creates_error_reports(mock_web_pg):
+    _, mock_cursor = mock_web_pg
+
+    ensure_pg_tables()
+
+    sql = "\n".join(call.args[0] for call in mock_cursor.execute.call_args_list)
+    assert "CREATE TABLE IF NOT EXISTS error_reports" in sql
+    for column in ("created_at", "category", "sub_option", "city", "message", "contact"):
+        assert column in sql
+    assert "CREATE INDEX IF NOT EXISTS error_reports_created_at_idx" in sql
+
+
+def test_save_error_report_writes_through_the_callers_connection():
+    """The web request already holds a request-scoped connection; opening a
+    second one here would leak it."""
+    mock_conn = MagicMock()
+    mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
+
+    save_error_report(
+        mock_conn,
+        category='Мапа тривог',
+        sub_option='Неправильний статус регіону',
+        city='Львів',
+        message='Область червона, хоча відбій був',
+        contact='@reporter',
+    )
+
+    sql, params = mock_cursor.execute.call_args.args
+    assert "INSERT INTO error_reports" in sql
+    assert params == (
+        'Мапа тривог',
+        'Неправильний статус регіону',
+        'Львів',
+        'Область червона, хоча відбій був',
+        '@reporter',
+    )
+    mock_conn.commit.assert_called_once()
 
 
 def test_ensure_pg_tables_raises_and_logs_when_pg_is_unreachable(caplog):

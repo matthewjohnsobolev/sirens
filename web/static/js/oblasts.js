@@ -8,15 +8,21 @@ const OBLAST_FILL_OPACITY = {
     alert: 0.2
 };
 
+// Штриховка часткової тривоги: смуга - той самий помаранчевий, що й обведення,
+// на повну насиченість; проміжок - сірий спокійної області. Смуги не
+// перекриваються, тож кожен колір лишається чистим.
+const HATCH = { size: 14, stripe: 7 };
+
 function ensureHatchDefs(map) {
     const svg = map.getPane('overlayPane').querySelector('svg');
     if (!svg || svg.querySelector('#alert-hatch')) return;
     const defs = L.SVG.create('defs');   // createElementNS in SVG namespace
     defs.innerHTML = `
       <pattern id="alert-hatch" patternUnits="userSpaceOnUse"
-               width="10" height="10" patternTransform="rotate(45)">
-        <rect x="0" width="5" height="10" fill="${ALERT_COLORS.ALERT}" fill-opacity="${OBLAST_FILL_OPACITY.alert}"/>
-        <rect x="5" width="5" height="10" fill="${ALERT_COLORS.IDLE}"  fill-opacity="${OBLAST_FILL_OPACITY.idle}"/>
+               width="${HATCH.size}" height="${HATCH.size}" patternTransform="rotate(45)">
+        <rect x="0" width="${HATCH.stripe}" height="${HATCH.size}" fill="${ALERT_COLORS.ALERT}"/>
+        <rect x="${HATCH.stripe}" width="${HATCH.size - HATCH.stripe}" height="${HATCH.size}"
+              fill="${ALERT_COLORS.IDLE}" fill-opacity="${OBLAST_FILL_OPACITY.idle}"/>
       </pattern>`;
     svg.insertBefore(defs, svg.firstChild);
 }

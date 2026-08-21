@@ -53,9 +53,6 @@ mkdir -p data/sessions
 step "Building the $SERVICE image"
 docker compose build "$SERVICE"
 
-# The instructions go here, after the build, not before it: printed earlier they
-# invite typing into a terminal that nothing is reading yet, and compose's
-# progress renderer then scrambles the echoed characters.
 step "Logging in to Telegram ($SESSION_NAME)"
 cat <<'EOF'
 

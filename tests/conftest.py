@@ -30,6 +30,8 @@ def _neutralize_external_secrets(monkeypatch):
     monkeypatch.setattr(bi_main, "GITHUB_PAT", "", raising=False)
     monkeypatch.setattr(web_server, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(web_server, "HEALTHCHECKS_PING_URL_WEB", "", raising=False)
+    monkeypatch.setattr(web_server, "TELEGRAM_BOT_TOKEN", "", raising=False)
+    monkeypatch.setattr(web_server, "ADMIN_CHAT_ID", "", raising=False)
 
 
 

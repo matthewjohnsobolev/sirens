@@ -99,6 +99,19 @@
         });
 
 
+        // Report-an-error button init; sits under the markers toggle
+        const reportErrorButton = document.createElement("a");
+        reportErrorButton.classList.add("contact-button");
+        reportErrorButton.href = "/report-error";
+        reportErrorButton.setAttribute("title", "Повідомити про помилку");
+        mapSize.appendChild(reportErrorButton);
+
+        const reportErrorIcon = document.createElement("img");
+        reportErrorIcon.src = "{{ url_for('static', filename='img/icons/contact-us-button-icon.svg') }}";
+        reportErrorIcon.classList.add("contact-icon");
+        reportErrorButton.appendChild(reportErrorIcon);
+
+
         function closeBanner() {
             document.getElementById('banner').classList.add('closed');
             document.getElementById('map').classList.add('full-height');

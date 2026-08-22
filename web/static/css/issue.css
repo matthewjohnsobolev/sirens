@@ -1,5 +1,5 @@
 /* ===========================================================================
-   report-error.css - сторінка «Повідомити про помилку».
+   issue.css - сторінка «Повідомити про збій».
 
    Кольори, шрифти й рух - із tokens.css; тут лише те, чим повна сторінка
    відрізняється від попапа на мапі, та власне форма.
@@ -41,10 +41,9 @@
   /* --- Чого немає в попапі -------------------------------------------------
      Підказки в порожньому полі й помаранчевого напису на мапі не буває. */
   --placeholder:#9A9A9A;
-  /* Той самий тон, що й --alert, затемнений до 4.8:1 на білому: сам #FF831A
-     у тексті дає 2.5:1 і не читається. Колір лишається впізнаваним,
-     напис - робочим. */
-  --alert-ink:#B85700;
+  /* Той самий тон, що й --explosion, затемнений до 5.6:1 на білому: сам #FF1A1A
+     у тексті дає 3.9:1. Колір лишається впізнаваним, напис - робочим. */
+  --error-ink:#D00000;
 
   /* Рух розділів. Решта сторінки міняє колір за --motion (0.15s) - як мапа;
      тут же їде предмет, а не відтінок, тож довше й з гальмуванням у кінці:
@@ -56,7 +55,12 @@
   --motion-fade:.14s ease-out;
 }
 
-*{box-sizing:border-box}
+/* Мобільні браузери малюють поверх натиснутого елемента власний прямокутник:
+   на Android Chrome це синій квадрат, який спалахує на вкладці розділу, не
+   тримається її скруглень і не має жодного стосунку до палітри продукту.
+   Натиснуте тут показує сам елемент - плитка розділів їде, у варіанта
+   темнішає контур, - тож системній підсвітці нема чого додати. */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0}
 body{
   background:var(--page);
@@ -90,14 +94,19 @@ body{
 #report-form{display:flex;flex-direction:column}
 .seg{order:0}
 #block-issue{order:1}
-#block-city{order:2}
-#block-comment{order:3}
-#block-tg{order:4}
-.submit{order:5}
+#block-delay{order:2;display:none}
+#block-city{order:3}
+#block-comment{order:4}
+#block-tg{order:5}
+.submit{order:6}
 body.tab-other #block-issue{display:none}
+body.tab-other #block-delay{display:none !important}
 body.tab-other #block-comment{order:1}
-/* У «Іншому» коментар - єдине джерело подробиць, тож він обов'язковий */
+/* У «Іншому» коментар - єдине джерело подробиць, тож він обов'язковий, а місто стає необов'язковим */
 body.tab-other #block-comment .opt-mark{display:none}
+#block-city .opt-mark{display:none}
+body.tab-other #block-city .opt-mark{display:inline}
+body.has-delay #block-delay{display:block}
 
 /* Розділи */
 .seg{
@@ -132,6 +141,7 @@ body.tab-other #block-comment .opt-mark{display:none}
   position:relative;z-index:2;
   font-family:var(--font);font-size:var(--text-ui);font-weight:500;
   color:var(--ink-muted);
+  -webkit-appearance:none;appearance:none;
   background:transparent !important;border:0;border-radius:var(--radius-nested);
   padding:12px 6px;cursor:pointer;
   transition:color var(--motion-slide);
@@ -173,8 +183,17 @@ body.tab-other #block-comment .opt-mark{display:none}
 .opt input:checked + span{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 .opt input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
 
-/* Поля */
+/* Варіанти тривалості запізнення моноширинним шрифтом */
+.opts--mono .opt span{
+  font-family:var(--font-mono);
+  font-size:14px;
+  letter-spacing:.01em;
+}
+
+/* Поля. -webkit-appearance:none - для iOS: без нього Safari домальовує полю
+   власну рамку з внутрішньою тінню і своє скруглення поверх наших. */
 .input,.textarea{
+  -webkit-appearance:none;appearance:none;
   width:100%;font-family:var(--font);
   font-size:var(--text-body);   /* нижче 16px iOS зумить поле при фокусі */
   color:var(--ink);
@@ -183,7 +202,19 @@ body.tab-other #block-comment .opt-mark{display:none}
   padding:12px 16px;min-height:var(--control-h);
   transition:border-color var(--motion),box-shadow var(--motion);
 }
-.textarea{min-height:104px;resize:vertical;line-height:1.6}
+.textarea{
+  display:block;
+  height:140px;
+  min-height:140px;
+  resize:none;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overflow-wrap:break-word;
+  line-height:1.5;
+  scrollbar-width:none;
+  -ms-overflow-style:none;
+}
+.textarea::-webkit-scrollbar{display:none}
 /* Нік - ідентифікатор: посимвольна точність важливіша за читабельність
    речення. Єдине поле форми з моношрифтом. */
 .input-id{font-family:var(--font-mono);letter-spacing:.01em}
@@ -196,21 +227,21 @@ body.tab-other #block-comment .opt-mark{display:none}
 .input:focus,.textarea:focus{outline:0;border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 
 /* Рядок під блоком - одне місце для двох станів: спокійне пояснення сірим
-   і повідомлення про незаповнене поле оранжевим. Однакові кегль, відступ
+   і повідомлення про незаповнене поле червоним. Однакові кегль, відступ
    і позиція, тож поява помилки не рухає верстку. */
 .hint,.err{
   margin:var(--gap-tight) 0 0;
   font-size:var(--text-ui);font-weight:400;line-height:1.4;
 }
 .hint{color:var(--ink-muted)}
-.err{display:none;color:var(--alert-ink)}
+.err{display:none;color:var(--error-ink)}
 .block.invalid .err{display:block}
 .block.invalid .hint{display:none}
-/* Незаповнене поле бере брендовий контур. Обводка подвійна (рамка + внутрішнє
-   кільце), бо в один волосок оранжевий на білому надто тихий. */
+/* Незаповнене поле бере червоний контур помилки. Обводка подвійна (рамка + внутрішнє
+   кільце). */
 .block.invalid .input,
 .block.invalid .textarea,
-.block.invalid .opt span{border-color:var(--alert);box-shadow:inset 0 0 0 1px var(--alert)}
+.block.invalid .opt span{border-color:var(--explosion);box-shadow:inset 0 0 0 1px var(--explosion)}
 
 /* Автодоповнення міста. Нативний <datalist> малює системний список, який не
    підпорядковується жодному токену продукту, тож список власний.
@@ -228,17 +259,19 @@ body.tab-other #block-comment .opt-mark{display:none}
 }
 .combo.open .combo-list{display:block}
 /* Прокрутка - на внутрішньому елементі, як .scrollable-content у попапі.
-   Від'ємний margin рівно на відступ коробки виносить смугу в цей відступ:
-   інакше вона з'їдала б ширину рядків. Видно чотири рядки й половину
-   п'ятого - тоді одразу зрозуміло, що список гортається. */
+   Від'ємний margin виносить список у 4px жолоб коробки, куди лягає смуга, а
+   padding праворуч рівно на її ширину повертає рядкам їхній край: смуга
+   нікого не тіснить, і рядок однаковий, гортається список чи ні. Видно
+   чотири рядки й половину п'ятого - тоді одразу зрозуміло, що він гортається.
+   -webkit-overflow-scrolling тут не потрібен: з iOS 13 це порожній рядок, а
+   до того він віддавав інерцію системі й повзунок відставав би від списку. */
 .combo-scroll{
-  margin:0 -4px 0 0;padding:0;list-style:none;
+  margin:0 -4px 0 0;padding:0 10px 0 0;list-style:none;
   max-height:180px;
   overflow-y:auto;
   overflow-x:hidden;
   touch-action:pan-y;
   overscroll-behavior:contain;
-  -webkit-overflow-scrolling:touch;
 }
 .combo-option{
   display:flex;align-items:center;min-height:40px;
@@ -251,39 +284,67 @@ body.tab-other #block-comment .opt-mark{display:none}
 /* Збіг виділяється вагою, а не кольором: колір зайнятий станом. */
 .combo-option b{font-weight:600}
 
-/* Смуга прокрутки - та сама, що в списку районів у попапі: доріжка 10px,
-   щоб у повзунок можна було влучити мишею й пальцем, але сам повзунок
-   лишається візуально вузьким - прозора рамка з background-clip: padding-box
-   малює 4px, а хапається всі 10px. min-height не дає повзунку зіщулитись
-   у нерухому крапку, коли в списку всі тридцять п'ять міст. */
-.combo-scroll::-webkit-scrollbar{width:10px}
-.combo-scroll::-webkit-scrollbar-track{
+/* --- Смуга прокрутки ------------------------------------------------------
+   ::-webkit-scrollbar малює смугу скрізь, крім iOS: там Safari його просто не
+   слухає, а власний індикатор показує поверх вмісту на пів секунди й гасить.
+   Тобто на айфоні ні коментар, ні список міст жодним знаком не показували, що
+   під краєм є ще текст. Тому смуга тут не системна, а своя: доріжка з
+   повзунком лежать поверх контейнера, а issue.js рухає повзунок за scrollTop.
+   Вигляд лишився той самий, що в списку районів на мапі, - лінійка 10px, з
+   якої видно 4: у повзунок легко влучити мишею й пальцем, але виглядає він
+   тонким. Прозора рамка з background-clip: padding-box і робить цю різницю
+   між тим, що видно, і тим, за що хапаються.
+
+   Системну ховаємо тільки тоді, коли своя вже стоїть: клас .is-live ставить
+   той самий скрипт, що її й малює. */
+.scroller{position:relative}
+.scroller.is-live .scroller-view{scrollbar-width:none}
+.scroller.is-live .scroller-view::-webkit-scrollbar{display:none}
+
+/* У коментарі смуга стоїть усередині рамки поля, у списку міст - у його
+   жолобі, рівно там, де досі малювалась системна. */
+.scroller-bar{
+  position:absolute;top:5px;right:5px;bottom:5px;
+  width:10px;padding:0 3px;
+  pointer-events:none;
   background:rgba(0,0,0,0.05);
-  background-clip:padding-box;
-  border:3px solid transparent;
+  background-clip:content-box;
   border-radius:5px;
+  opacity:0;
+  transition:opacity var(--motion-fade);
 }
-.combo-scroll::-webkit-scrollbar-thumb{
+.combo-list .scroller-bar{top:4px;right:0;bottom:4px}
+/* Смуги немає, доки нема чого гортати - як у нативної. */
+.scroller.is-scrollable .scroller-bar{opacity:1}
+/* Повзунок: height і transform ставить скрипт. min-height не дає йому
+   зіщулитись у нерухому крапку, коли в списку всі тридцять п'ять міст. */
+.scroller-thumb{
+  position:absolute;top:0;left:0;width:10px;min-height:24px;
+  border:3px solid transparent;
   background:rgba(0,0,0,0.25);
   background-clip:padding-box;
-  border:3px solid transparent;
   border-radius:5px;
-  min-height:24px;
+  pointer-events:none;
+  /* Вертикальний жест на повзунку тягне повзунок, а не сторінку. */
+  touch-action:none;
 }
-.combo-scroll::-webkit-scrollbar-thumb:hover{
+.scroller-thumb:hover,
+.scroller.is-dragging .scroller-thumb{
   background:rgba(0,0,0,0.4);
   background-clip:padding-box;
 }
-/* Firefox не знає ::-webkit-scrollbar. Умова потрібна, щоб Chrome від 121
-   не побачив scrollbar-width: там він через нього ігнорує всі правила вище. */
-@supports not selector(::-webkit-scrollbar){
-  .combo-scroll{
-    scrollbar-width:thin;
-    scrollbar-color:rgba(0,0,0,0.25) rgba(0,0,0,0.05);
-  }
+/* Смуга хапається тільки мишею; пальцю вона лишається знаком, а не органом
+   керування. У 10px лінійку пальцем цілять хіба випадково, зате тап по
+   правому краю поля мусить ставити курсор, а гортають на дотику сам вміст.
+   Умова .is-scrollable тут не про вигляд, а про те саме: невидима смуга не
+   має ловити натискання, призначені полю під нею. */
+@media (hover:hover) and (pointer:fine){
+  .scroller.is-scrollable .scroller-bar,
+  .scroller.is-scrollable .scroller-thumb{pointer-events:auto}
 }
 
 .submit{
+  -webkit-appearance:none;appearance:none;
   width:100%;font-family:var(--font);font-size:var(--text-ui);font-weight:600;color:#fff;
   background:var(--ink);border:0;border-radius:var(--radius-control);
   min-height:var(--control-h);padding:14px;cursor:pointer;
@@ -336,10 +397,9 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
   border-radius:var(--radius-control);
   font-size:var(--text-ui);font-weight:500;color:var(--ink);
 }
-/* Збій відправки - та сама таблетка в оранжевому: колір несе стан, напис на
-   ньому чорний. Насичений #FF831A лишається контуром незаповненого поля,
-   як на мапі він лишається межею області. */
-.notice--error .notice-pill{background:var(--status-orange)}
+/* Збій відправки - та сама таблетка в червоному: колір несе стан, напис на
+   ньому чорний. */
+.notice--error .notice-pill{background:var(--status-red)}
 /* Квадрат завширшки з таблетку - як .icon-container у попапі, тільки за її
    висотою: 48 замість 40. Він же й задає висоту однорядковій таблетці. */
 .notice-icon{
@@ -396,11 +456,12 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
   .opt input:checked + span{border-color:var(--ink)}
   .input:hover,.textarea:hover{border-color:var(--hairline)}
   .combo-option:hover{background:transparent}
+  .scroller-thumb:hover{background:rgba(0,0,0,0.25);background-clip:padding-box}
   .combo-option[aria-selected="true"]{background:var(--page)}
   .submit:hover{background:var(--ink)}
   .block.invalid .input,
   .block.invalid .textarea,
-  .block.invalid .opt span{border-color:var(--alert)}
+  .block.invalid .opt span{border-color:var(--explosion)}
 }
 
 /* Перевага стосується руху, а не будь-якої зміни стану: згасанням і зміною

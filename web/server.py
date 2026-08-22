@@ -22,6 +22,9 @@ from config import (
 from web.db import (
     get_all_threats_data, ensure_pg_tables, redis_client, save_error_report
 )
+from web.report_form import (
+    CATEGORIES as REPORT_CATEGORIES, CATEGORY_ALIASES, OPTIONS_BY_CATEGORY, page_config
+)
 
 
 os.makedirs(LOGS_PATH, exist_ok=True)
@@ -45,15 +48,9 @@ HEALTHCHECK_LOCK_TTL = 50  # seconds; must stay below the interval so each cycle
 
 TELEGRAM_API_TIMEOUT = 10  # seconds
 
-# Mirrors the client-side rules in report_error.html: every category owns the
-# radio group whose answer is worth storing, and "Інше" has none.
-REPORT_SUB_OPTION_FIELDS = {
-    'Сповіщення': 'sub_option_notification',
-    'Мапа тривог': 'sub_option_map',
-    'Інше': '',
-}
-# The one answer that makes the city field irrelevant: nothing renders at all.
-REPORT_OPTION_WITHOUT_CITY = 'Зовсім не відображається'
+# What the page asks, and which answers count as answers, lives in
+# web/report_form.py. The limits below belong to the table, not the form: they
+# are the widths of the error_reports columns.
 REPORT_FIELD_LIMITS = {'city': 100, 'message': 2000, 'contact': 100}
 REPORT_RATE_LIMIT = 5  # accepted reports per window, per client IP
 REPORT_RATE_WINDOW = 3600  # seconds
@@ -143,19 +140,15 @@ def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
     Returns the fields to store plus an empty string, or an empty dict plus the
     message to show the reporter.
     """
+    # Without JavaScript the field carries the tab label ("Мапа") instead of the
+    # name the report lives under from here on ("Мапа тривог").
     category = (form.get('category') or '').strip()
-    if category == 'Мапа':
-        category = 'Мапа тривог'
-    if category not in REPORT_SUB_OPTION_FIELDS:
+    category = CATEGORY_ALIASES.get(category, category)
+    if category not in OPTIONS_BY_CATEGORY:
         return {}, 'Оберіть категорію помилки.'
 
-    sub_field = REPORT_SUB_OPTION_FIELDS[category]
-    sub_option = (
-        (form.get(sub_field) if sub_field else None)
-        or form.get('sub_option')
-        or form.get('issue')
-        or ''
-    ).strip()
+    options = OPTIONS_BY_CATEGORY[category]
+    sub_option = (form.get('sub_option') or '').strip()
 
     def field(name: str, *aliases: str) -> str:
         val = form.get(name)
@@ -167,17 +160,23 @@ def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
         return (val or '').strip()[:REPORT_FIELD_LIMITS[name]]
 
     city = field('city')
+    # The page sends message/contact through fetch; a plain POST sends the field
+    # names themselves. Both spellings are accepted.
     message = field('message', 'comment')
     contact = field('contact', 'tg')
 
-    city_matters = not (
-        category == 'Мапа тривог' and sub_option == REPORT_OPTION_WITHOUT_CITY
-    )
-    if city_matters and not city:
+    # An answer has to belong to the category it arrived with. Otherwise the
+    # table collects wording the form never offered, and a breakdown by failure
+    # type stops meaning anything.
+    if options and sub_option not in options:
+        return {}, 'Оберіть, будь ласка, що саме сталося.'
+    if not options:
+        sub_option = ''
+    if not city:
         return {}, 'Будь ласка, вкажіть місто.'
-    if not city_matters:
-        city = ''
-    if category == 'Інше' and not message and not sub_option:
+    # A category with no options ("Інше") exists for what we did not foresee, so
+    # the whole report is the comment - without it there is nothing to act on.
+    if not options and not message:
         return {}, 'Опис помилки обовʼязковий для цієї категорії.'
 
     return {
@@ -217,9 +216,19 @@ def _notify_admin(report: dict[str, str]) -> None:
         log.warning("Failed to forward an error report to Telegram", exc_info=True)
 
 
+def _render_report_form(**context: Any) -> str:
+    """The page together with the taxonomy it draws itself from."""
+    return render_template(
+        'report_error.html',
+        categories=REPORT_CATEGORIES,
+        page_config=page_config(),
+        **context,
+    )
+
+
 def report_error() -> Any:
     if request.method == 'GET':
-        return render_template('report_error.html')
+        return _render_report_form()
 
     if not _claim_report_slot():
         return render_template(
@@ -238,13 +247,13 @@ def report_error() -> Any:
         # re-serves it. This path is reached only by submissions that bypassed
         # the JavaScript checks, hence the log line instead of on-page feedback.
         log.info("Rejected error report: %s", error)
-        return render_template('report_error.html'), 400
+        return _render_report_form(), 400
 
     save_error_report(get_db(), **report)
     log.info("Error report received: category=%s city=%s", report['category'], report['city'])
     _notify_admin(report)
 
-    return render_template('report_error.html', success=True)
+    return _render_report_form(success=True)
 
 
 def handle_not_found(error: Exception) -> tuple[str, int]:

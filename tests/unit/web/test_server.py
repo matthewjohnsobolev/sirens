@@ -1,5 +1,7 @@
+import json
 import logging
 import re
+from pathlib import Path
 
 import pytest
 from flask import request
@@ -7,7 +9,8 @@ from unittest.mock import MagicMock, patch
 from psycopg2.extras import RealDictCursor
 from sentry_sdk.integrations.flask import FlaskIntegration
 
-from config import DATABASE_URL, VERSION
+from config import BROADCAST_CITIES, BROADCAST_DISTRICTS, DATABASE_URL, VERSION
+from web import report_form
 from web import server as web_server
 from web.server import create_app, get_db
 
@@ -338,8 +341,7 @@ def test_unhandled_exception_renders_the_500_page():
 
 VALID_REPORT = {
     'category': 'Сповіщення',
-    'sub_option_notification': 'Опіздало',
-    'sub_option_map': 'Зовсім не відображається',
+    'sub_option': 'Сповіщення прийшло із запізненням',
     'city': 'Київ',
     'message': 'Сирена о 3:00 прийшла на 10 хвилин пізніше',
     'contact': '@reporter',
@@ -363,6 +365,76 @@ def test_report_form_is_served(client):
     assert 'Повідомити про помилку' in response.get_data(as_text=True)
 
 
+def test_report_form_carries_the_taxonomy_the_server_checks_against(client):
+    """Сторінка малюється з того ж переліку, яким сервер перевіряє відповідь:
+    розійшовшись, вони почали б відкидати власні ж варіанти."""
+    html = client.get('/report-error').get_data(as_text=True)
+    config = json.loads(re.search(
+        r'<script type="application/json" id="report-config">(.*?)</script>', html, re.S
+    ).group(1))
+
+    assert config['categories'] == {c['id']: c['name'] for c in report_form.CATEGORIES}
+    assert config['sets'] == {c['id']: list(c['options']) for c in report_form.CATEGORIES}
+    assert config['cities'] == list(report_form.CITIES)
+
+
+def test_report_form_suggests_every_city_with_a_channel(client):
+    """Підказка міста - це рівно ті міста, куди йде сповіщення."""
+    html = client.get('/report-error').get_data(as_text=True)
+    config = json.loads(re.search(
+        r'<script type="application/json" id="report-config">(.*?)</script>', html, re.S
+    ).group(1))
+
+    assert set(config['cities']) == set(BROADCAST_CITIES.values())
+    assert len(config['cities']) == len(BROADCAST_DISTRICTS)
+    assert 'Харків' in config['cities'] and 'Звенигородка' in config['cities']
+
+
+def test_report_form_keeps_three_tabs(client):
+    """Перемикач розділів зверстаний на три колонки (repeat(3,1fr) у
+    report-error.css), і на 320px четверта вкладка вже не вміститься."""
+    html = client.get('/report-error').get_data(as_text=True)
+
+    assert len(re.findall(r'role="radio"', html)) == 3
+
+
+def test_report_notice_shows_one_icon_at_a_time(app):
+    """`.notice-icon img` не має ставити display: клас+тег переважає клас, тож
+    таке правило перебило б .notice-icon-error{display:none} і на таблетці
+    світились би обидві іконки - зелена й оранжева заразом."""
+    css = (Path(app.static_folder) / 'css' / 'report-error.css').read_text(encoding='utf-8')
+    icon_rule = re.search(r'\.notice-icon img\{([^}]*)\}', css).group(1)
+
+    assert 'display' not in icon_rule
+    assert '.notice-icon-error{display:none}' in css
+    assert '.notice--error .notice-icon-error{display:block}' in css
+
+
+def test_report_notice_icon_keeps_the_popup_proportion(app):
+    """Іконка - половина висоти таблетки, як 20 із 40 у попапі. Тут таблетка
+    48px, отже 24px, і розмітка мусить оголосити той самий розмір, щоб місце
+    під іконку було зайняте ще до її завантаження."""
+    css = (Path(app.static_folder) / 'css' / 'report-error.css').read_text(encoding='utf-8')
+    popup = (Path(app.static_folder) / 'css' / 'oblasts.css').read_text(encoding='utf-8')
+
+    pill = int(re.search(r'--control-h:(\d+)px', css).group(1))
+    popup_pill = int(re.search(r'\.green-oblast-button\s*\{[^}]*?height:\s*(\d+)px', popup, re.S).group(1))
+    popup_icon = int(re.search(r'\.icon\s*\{[^}]*?height:\s*(\d+)px', popup, re.S).group(1))
+
+    assert f'.notice-icon img{{width:{pill * popup_icon // popup_pill}px' in css
+    html = app.test_client().get('/report-error').get_data(as_text=True)
+    assert html.count('width="24" height="24"') == 2
+
+
+def test_report_form_versions_every_stylesheet_and_script(client):
+    """Статика immutable на 30 днів: без відбітка правка форми не доїде."""
+    html = client.get('/report-error').get_data(as_text=True)
+
+    assets = re.findall(r'(?:href|src)="(/static/(?:css|js)/[^"]+)"', html)
+    assert assets, "у сторінці не знайшлось жодного css/js"
+    assert [a for a in assets if '?v=' not in a] == []
+
+
 def test_valid_report_is_stored_and_confirmed(client, report_deps):
     mock_get_db, mock_save, mock_notify = report_deps
 
@@ -373,7 +445,7 @@ def test_valid_report_is_stored_and_confirmed(client, report_deps):
     mock_save.assert_called_once_with(
         mock_get_db.return_value,
         category='Сповіщення',
-        sub_option='Опіздало',
+        sub_option='Сповіщення прийшло із запізненням',
         city='Київ',
         message='Сирена о 3:00 прийшла на 10 хвилин пізніше',
         contact='@reporter',
@@ -386,7 +458,7 @@ def test_valid_report_with_new_form_fields(client, report_deps):
 
     response = client.post('/report-error', data={
         'category': 'Мапа',
-        'sub_option': 'Тривога не зникає з мапи',
+        'sub_option': 'Тривога не зникає після відбою',
         'city': 'Харків',
         'comment': 'Зависла сирена',
         'tg': '@user',
@@ -397,7 +469,7 @@ def test_valid_report_with_new_form_fields(client, report_deps):
     mock_save.assert_called_once_with(
         mock_get_db.return_value,
         category='Мапа тривог',
-        sub_option='Тривога не зникає з мапи',
+        sub_option='Тривога не зникає після відбою',
         city='Харків',
         message='Зависла сирена',
         contact='@user',
@@ -405,30 +477,30 @@ def test_valid_report_with_new_form_fields(client, report_deps):
     mock_notify.assert_called_once()
 
 
-def test_report_keeps_only_the_sub_option_of_the_chosen_category(client, report_deps):
-    """Both radio groups are always submitted; the hidden one is noise."""
-    _, mock_save, _ = report_deps
-
-    client.post('/report-error', data={**VALID_REPORT, 'category': 'Мапа тривог',
-                                       'sub_option_map': 'Неправильний статус регіону'})
-
-    assert mock_save.call_args.kwargs['sub_option'] == 'Неправильний статус регіону'
-
-
-def test_report_drops_the_city_when_the_map_does_not_render_at_all(client, report_deps):
-    """The form hides and clears the city field for this answer, so a city that
-    arrives anyway is stale."""
+def test_report_keeps_only_the_options_its_own_form_offers(client, report_deps):
+    """Варіант із чужого розділу - це або підробка, або сторінка з-перед деплою."""
     _, mock_save, _ = report_deps
 
     response = client.post('/report-error', data={
         **VALID_REPORT,
-        'category': 'Мапа тривог',
-        'sub_option_map': 'Зовсім не відображається',
-        'city': '',
+        'sub_option': 'Область не підсвічена, хоча тривога є',   # це розділ мапи
     })
 
-    assert response.status_code == 200
-    assert mock_save.call_args.kwargs['city'] == ''
+    assert response.status_code == 400
+    mock_save.assert_not_called()
+
+
+def test_report_ignores_the_sub_option_of_a_category_without_options(client, report_deps):
+    """У «Іншому» переліку немає, тож будь-який варіант звідти - сміття."""
+    _, mock_save, _ = report_deps
+
+    client.post('/report-error', data={
+        **VALID_REPORT,
+        'category': 'Інше',
+        'sub_option': 'Сповіщення не прийшло взагалі',
+    })
+
+    assert mock_save.call_args.kwargs['sub_option'] == ''
 
 
 def test_report_without_a_city_is_rejected(client, report_deps):
@@ -462,6 +534,7 @@ def test_unknown_category_is_rejected(client, report_deps):
     ({'city': ''}, 'Будь ласка, вкажіть місто.'),
     ({'category': 'Інше', 'message': ''}, 'Опис помилки обовʼязковий для цієї категорії.'),
     ({'category': 'Хакер'}, 'Оберіть категорію помилки.'),
+    ({'sub_option': 'Щось своє'}, 'Оберіть, будь ласка, що саме сталося.'),
 ])
 def test_rejection_messages(app, overrides, expected):
     """The wording lives in the validator, not the page: the form renders only

@@ -112,3 +112,11 @@ def test_config_no_trigger_belongs_to_two_districts():
             owners.setdefault(trigger, []).append(key)
 
     assert {t: keys for t, keys in owners.items() if len(keys) > 1} == {}
+
+
+def test_config_every_broadcast_district_has_a_city_name():
+    """Новий канал без назви міста потрапив би в розсилку, але не в підказку
+    на сторінці помилки."""
+    assert set(config.BROADCAST_CITIES) == config.BROADCAST_DISTRICTS
+    assert all(name.strip() for name in config.BROADCAST_CITIES.values())
+    assert len(set(config.BROADCAST_CITIES.values())) == len(config.BROADCAST_CITIES)

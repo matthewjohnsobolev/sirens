@@ -6,13 +6,12 @@ from pathlib import Path
 import pytest
 from flask import request
 from unittest.mock import MagicMock, patch
-from psycopg2.extras import RealDictCursor
 from sentry_sdk.integrations.flask import FlaskIntegration
 
-from config import BROADCAST_CITIES, BROADCAST_DISTRICTS, DATABASE_URL, VERSION
-from web import report_form
+from config import BROADCAST_CITIES, BROADCAST_DISTRICTS, VERSION
+from web import issue
 from web import server as web_server
-from web.server import create_app, get_db
+from web.server import create_app
 
 SUCCESS_MARKER = 'Повідомлення надіслано'
 
@@ -91,35 +90,6 @@ def test_static_url_falls_back_to_the_release_when_the_file_is_gone(app, caplog)
 
     assert 'does-not-exist.css' in caplog.text
 
-
-
-# --------------------------------------------------------------------------
-# request-scoped database connection
-# --------------------------------------------------------------------------
-
-def test_get_db_reuses_one_connection_per_request(app):
-    with patch('web.server.psycopg2.connect') as mock_connect:
-        with app.test_request_context('/'):
-            first = get_db()
-            second = get_db()
-
-        assert first is second is mock_connect.return_value
-        mock_connect.assert_called_once_with(DATABASE_URL, cursor_factory=RealDictCursor)
-
-
-def test_close_db_closes_connection_on_teardown(app):
-    with patch('web.server.psycopg2.connect') as mock_connect:
-        with app.test_request_context('/'):
-            get_db()
-        mock_connect.return_value.close.assert_called_once()
-
-
-def test_teardown_without_db_is_a_noop(app):
-    with patch('web.server.psycopg2.connect') as mock_connect:
-        with app.test_request_context('/'):
-            pass
-
-    mock_connect.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -336,7 +306,7 @@ def test_unhandled_exception_renders_the_500_page():
 
 
 # --------------------------------------------------------------------------
-# /report-error
+# /issue
 # --------------------------------------------------------------------------
 
 VALID_REPORT = {
@@ -350,37 +320,55 @@ VALID_REPORT = {
 
 @pytest.fixture
 def report_deps():
-    """Everything a submission touches: the rate limiter, the write and the ping."""
+    """Both things a submission touches: the rate limiter and the only sink."""
     with patch('web.server._claim_report_slot', return_value=True), \
-         patch('web.server.get_db') as mock_get_db, \
-         patch('web.server.save_error_report') as mock_save, \
-         patch('web.server._notify_admin') as mock_notify:
-        yield mock_get_db, mock_save, mock_notify
+         patch('web.server._report_to_sentry', return_value=True) as mock_report:
+        yield mock_report
+
+
+def sent_report(mock_report):
+    """Те, що пішло в Sentry: єдине, що лишається від звернення."""
+    return mock_report.call_args.args[0]
 
 
 def test_report_form_is_served(client):
-    response = client.get('/report-error')
+    response = client.get('/issue')
 
     assert response.status_code == 200
-    assert 'Повідомити про помилку' in response.get_data(as_text=True)
+    assert 'Повідомити про збій' in response.get_data(as_text=True)
 
 
 def test_report_form_carries_the_taxonomy_the_server_checks_against(client):
     """Сторінка малюється з того ж переліку, яким сервер перевіряє відповідь:
     розійшовшись, вони почали б відкидати власні ж варіанти."""
-    html = client.get('/report-error').get_data(as_text=True)
+    html = client.get('/issue').get_data(as_text=True)
     config = json.loads(re.search(
         r'<script type="application/json" id="report-config">(.*?)</script>', html, re.S
     ).group(1))
 
-    assert config['categories'] == {c['id']: c['name'] for c in report_form.CATEGORIES}
-    assert config['sets'] == {c['id']: list(c['options']) for c in report_form.CATEGORIES}
-    assert config['cities'] == list(report_form.CITIES)
+    assert config['categories'] == {c['id']: c['name'] for c in issue.CATEGORIES}
+    assert config['sets'] == {
+        c['id']: [o['name'] for o in c['options']] for c in issue.CATEGORIES
+    }
+    assert config['cities'] == list(issue.CITIES)
+
+
+def test_report_form_keeps_the_sentry_vocabulary_off_the_page(client):
+    """Ключі й англійські підписи існують для Sentry. На сторінці вони були б
+    зайвою вагою в кожному завантаженні."""
+    html = client.get('/issue').get_data(as_text=True)
+    config = json.loads(re.search(
+        r'<script type="application/json" id="report-config">(.*?)</script>', html, re.S
+    ).group(1))
+
+    dumped = json.dumps(config, ensure_ascii=False)
+    assert 'Notification arrived late' not in dumped
+    assert 'never_arrived' not in dumped
 
 
 def test_report_form_suggests_every_city_with_a_channel(client):
     """Підказка міста - це рівно ті міста, куди йде сповіщення."""
-    html = client.get('/report-error').get_data(as_text=True)
+    html = client.get('/issue').get_data(as_text=True)
     config = json.loads(re.search(
         r'<script type="application/json" id="report-config">(.*?)</script>', html, re.S
     ).group(1))
@@ -392,17 +380,41 @@ def test_report_form_suggests_every_city_with_a_channel(client):
 
 def test_report_form_keeps_three_tabs(client):
     """Перемикач розділів зверстаний на три колонки (repeat(3,1fr) у
-    report-error.css), і на 320px четверта вкладка вже не вміститься."""
-    html = client.get('/report-error').get_data(as_text=True)
+    issue.css), і на 320px четверта вкладка вже не вміститься."""
+    html = client.get('/issue').get_data(as_text=True)
 
     assert len(re.findall(r'role="radio"', html)) == 3
+
+
+def test_form_fields_are_named_the_way_the_server_reads_them(client, app):
+    """Сторінка й fetch говорять одним словником. Поки імена розходились,
+    сервер мусив тримати запасні - і мовчки згубив би поле, щойно перелік
+    запасних відстав би від розмітки."""
+    html = client.get('/issue').get_data(as_text=True)
+
+    assert 'name="message"' in html and 'name="contact"' in html
+    assert 'name="comment"' not in html and 'name="tg"' not in html
+    assert 'maxlength="250"' in html
+
+    js = (Path(app.static_folder) / 'js' / 'issue.js').read_text(encoding='utf-8')
+    assert "formData.append('message'" in js
+    assert "formData.append('contact'" in js
+
+
+def test_the_page_does_not_glue_the_delay_onto_the_option(app):
+    """Сервер тримає варіант і запізнення двома полями; склеївши їх на
+    сторінці, форма почала б відкидати сама себе."""
+    js = (Path(app.static_folder) / 'js' / 'issue.js').read_text(encoding='utf-8')
+
+    assert '(${delayChoice})' not in js
+    assert "formData.append('delay', delayChoice)" in js
 
 
 def test_report_notice_shows_one_icon_at_a_time(app):
     """`.notice-icon img` не має ставити display: клас+тег переважає клас, тож
     таке правило перебило б .notice-icon-error{display:none} і на таблетці
-    світились би обидві іконки - зелена й оранжева заразом."""
-    css = (Path(app.static_folder) / 'css' / 'report-error.css').read_text(encoding='utf-8')
+    світились би обидві іконки - зелена й червона заразом."""
+    css = (Path(app.static_folder) / 'css' / 'issue.css').read_text(encoding='utf-8')
     icon_rule = re.search(r'\.notice-icon img\{([^}]*)\}', css).group(1)
 
     assert 'display' not in icon_rule
@@ -414,7 +426,7 @@ def test_report_notice_icon_keeps_the_popup_proportion(app):
     """Іконка - половина висоти таблетки, як 20 із 40 у попапі. Тут таблетка
     48px, отже 24px, і розмітка мусить оголосити той самий розмір, щоб місце
     під іконку було зайняте ще до її завантаження."""
-    css = (Path(app.static_folder) / 'css' / 'report-error.css').read_text(encoding='utf-8')
+    css = (Path(app.static_folder) / 'css' / 'issue.css').read_text(encoding='utf-8')
     popup = (Path(app.static_folder) / 'css' / 'oblasts.css').read_text(encoding='utf-8')
 
     pill = int(re.search(r'--control-h:(\d+)px', css).group(1))
@@ -422,112 +434,154 @@ def test_report_notice_icon_keeps_the_popup_proportion(app):
     popup_icon = int(re.search(r'\.icon\s*\{[^}]*?height:\s*(\d+)px', popup, re.S).group(1))
 
     assert f'.notice-icon img{{width:{pill * popup_icon // popup_pill}px' in css
-    html = app.test_client().get('/report-error').get_data(as_text=True)
+    html = app.test_client().get('/issue').get_data(as_text=True)
     assert html.count('width="24" height="24"') == 2
 
 
 def test_report_form_versions_every_stylesheet_and_script(client):
     """Статика immutable на 30 днів: без відбітка правка форми не доїде."""
-    html = client.get('/report-error').get_data(as_text=True)
+    html = client.get('/issue').get_data(as_text=True)
 
     assets = re.findall(r'(?:href|src)="(/static/(?:css|js)/[^"]+)"', html)
     assert assets, "у сторінці не знайшлось жодного css/js"
     assert [a for a in assets if '?v=' not in a] == []
 
 
-def test_valid_report_is_stored_and_confirmed(client, report_deps):
-    mock_get_db, mock_save, mock_notify = report_deps
-
-    response = client.post('/report-error', data=VALID_REPORT)
+def test_valid_report_reaches_sentry_and_is_confirmed(client, report_deps):
+    response = client.post('/issue', data=VALID_REPORT)
 
     assert response.status_code == 200
-    assert SUCCESS_MARKER in response.get_data(as_text=True)
-    mock_save.assert_called_once_with(
-        mock_get_db.return_value,
-        category='Сповіщення',
-        sub_option='Сповіщення прийшло із запізненням',
-        city='Київ',
-        message='Сирена о 3:00 прийшла на 10 хвилин пізніше',
-        contact='@reporter',
-    )
-    mock_notify.assert_called_once()
+    assert 'class="sent"' in response.get_data(as_text=True)
+    assert sent_report(report_deps) == {
+        'category': 'Сповіщення',
+        'sub_option': 'Сповіщення прийшло із запізненням',
+        'delay': '',
+        'city': 'Київ',
+        'message': 'Сирена о 3:00 прийшла на 10 хвилин пізніше',
+        'contact': '@reporter',
+    }
 
 
-def test_valid_report_with_new_form_fields(client, report_deps):
-    mock_get_db, mock_save, mock_notify = report_deps
+def test_only_a_sent_report_gets_the_sent_class(client):
+    """Напис про успіх сидить у розмітці завжди - показує його клас на <body>.
+    Без цієї різниці перевірка успіху проходила б і на порожньому GET."""
+    page = client.get('/issue').get_data(as_text=True)
 
-    response = client.post('/report-error', data={
+    assert SUCCESS_MARKER in page
+    assert 'class="sent"' not in page
+
+
+def test_report_normalizes_the_short_tab_label(client, report_deps):
+    """Без JavaScript у полі category опиняється напис вкладки."""
+    response = client.post('/issue', data={
         'category': 'Мапа',
         'sub_option': 'Тривога не зникає після відбою',
         'city': 'Харків',
-        'comment': 'Зависла сирена',
-        'tg': '@user',
+        'message': 'Зависла сирена',
+        'contact': '@user',
     })
 
     assert response.status_code == 200
-    assert SUCCESS_MARKER in response.get_data(as_text=True)
-    mock_save.assert_called_once_with(
-        mock_get_db.return_value,
-        category='Мапа тривог',
-        sub_option='Тривога не зникає після відбою',
-        city='Харків',
-        message='Зависла сирена',
-        contact='@user',
-    )
-    mock_notify.assert_called_once()
+    assert sent_report(report_deps)['category'] == 'Мапа тривог'
 
 
 def test_report_keeps_only_the_options_its_own_form_offers(client, report_deps):
     """Варіант із чужого розділу - це або підробка, або сторінка з-перед деплою."""
-    _, mock_save, _ = report_deps
-
-    response = client.post('/report-error', data={
+    response = client.post('/issue', data={
         **VALID_REPORT,
         'sub_option': 'Область не підсвічена, хоча тривога є',   # це розділ мапи
     })
 
     assert response.status_code == 400
-    mock_save.assert_not_called()
+    report_deps.assert_not_called()
 
 
 def test_report_ignores_the_sub_option_of_a_category_without_options(client, report_deps):
     """У «Іншому» переліку немає, тож будь-який варіант звідти - сміття."""
-    _, mock_save, _ = report_deps
-
-    client.post('/report-error', data={
+    client.post('/issue', data={
         **VALID_REPORT,
         'category': 'Інше',
         'sub_option': 'Сповіщення не прийшло взагалі',
     })
 
-    assert mock_save.call_args.kwargs['sub_option'] == ''
+    assert sent_report(report_deps)['sub_option'] == ''
 
 
 def test_report_without_a_city_is_rejected(client, report_deps):
-    _, mock_save, _ = report_deps
-
-    response = client.post('/report-error', data={**VALID_REPORT, 'city': ''})
+    response = client.post('/issue', data={**VALID_REPORT, 'city': ''})
 
     assert response.status_code == 400
-    mock_save.assert_not_called()
+    report_deps.assert_not_called()
 
 
 def test_other_category_needs_a_description(client, report_deps):
-    _, mock_save, _ = report_deps
-
-    response = client.post('/report-error', data={**VALID_REPORT, 'category': 'Інше', 'message': ''})
+    response = client.post('/issue', data={**VALID_REPORT, 'category': 'Інше', 'message': ''})
 
     assert response.status_code == 400
-    mock_save.assert_not_called()
+    report_deps.assert_not_called()
+
+
+def test_other_category_without_city_is_accepted(client, report_deps):
+    response = client.post('/issue', data={
+        'category': 'Інше',
+        'city': '',
+        'message': 'Щось сталося на сайті',
+        'contact': '@tester',
+    })
+
+    assert response.status_code == 200
+    assert sent_report(report_deps) == {
+        'category': 'Інше',
+        'sub_option': '',
+        'delay': '',
+        'city': '',
+        'message': 'Щось сталося на сайті',
+        'contact': '@tester',
+    }
+
+
+def test_delay_travels_as_its_own_field(client, report_deps):
+    """Склеєне «...із запізненням (5 - 10 хв)» перестало б збігатися з
+    довідником, і розбивка за типом збою втратила б сенс."""
+    response = client.post('/issue', data={
+        'category': 'Сповіщення',
+        'sub_option': 'Сповіщення прийшло із запізненням',
+        'delay': '5 - 10 хв',
+        'city': 'Київ',
+        'message': '',
+        'contact': '',
+    })
+
+    assert response.status_code == 200
+    report = sent_report(report_deps)
+    assert report['sub_option'] == 'Сповіщення прийшло із запізненням'
+    assert report['delay'] == '5 - 10 хв'
+
+
+def test_delay_is_dropped_under_an_option_it_does_not_belong_to(client, report_deps):
+    """Підпитання показують лише під запізненням; відповідь на нього під
+    «не прийшло взагалі» не означає нічого."""
+    client.post('/issue', data={
+        **VALID_REPORT,
+        'sub_option': 'Сповіщення не прийшло взагалі',
+        'delay': '5 - 10 хв',
+    })
+
+    assert sent_report(report_deps)['delay'] == ''
+
+
+def test_delay_outside_the_vocabulary_is_rejected(client, report_deps):
+    response = client.post('/issue', data={**VALID_REPORT, 'delay': '3 доби'})
+
+    assert response.status_code == 400
+    report_deps.assert_not_called()
 
 
 def test_unknown_category_is_rejected(client, report_deps):
-    _, mock_save, _ = report_deps
-
-    response = client.post('/report-error', data={**VALID_REPORT, 'category': 'Хакер'})
+    response = client.post('/issue', data={**VALID_REPORT, 'category': 'Хакер'})
 
     assert response.status_code == 400
-    mock_save.assert_not_called()
+    report_deps.assert_not_called()
 
 
 @pytest.mark.parametrize("overrides, expected", [
@@ -535,11 +589,13 @@ def test_unknown_category_is_rejected(client, report_deps):
     ({'category': 'Інше', 'message': ''}, 'Опис помилки обовʼязковий для цієї категорії.'),
     ({'category': 'Хакер'}, 'Оберіть категорію помилки.'),
     ({'sub_option': 'Щось своє'}, 'Оберіть, будь ласка, що саме сталося.'),
+    ({'delay': '3 доби'}, 'Оберіть, будь ласка, на скільки запізнилося сповіщення.'),
+    ({'message': 'я' * 251}, 'Коментар не може бути довшим за 250 символів.'),
 ])
 def test_rejection_messages(app, overrides, expected):
     """The wording lives in the validator, not the page: the form renders only
     its own client-side errors."""
-    with app.test_request_context('/report-error', method='POST',
+    with app.test_request_context('/issue', method='POST',
                                   data={**VALID_REPORT, **overrides}):
         report, error = web_server._clean_report_form(request.form)
 
@@ -547,22 +603,47 @@ def test_rejection_messages(app, overrides, expected):
     assert error == expected
 
 
-def test_overlong_fields_are_truncated_to_the_column_budget(client, report_deps):
-    _, mock_save, _ = report_deps
+def test_overlong_fields_are_truncated_to_the_event_budget(client, report_deps):
+    client.post('/issue', data={**VALID_REPORT, 'contact': '@' + 'я' * 500, 'city': 'Київ' + 'я' * 500})
 
-    client.post('/report-error', data={**VALID_REPORT, 'message': 'я' * 5000})
-
-    assert len(mock_save.call_args.kwargs['message']) == web_server.REPORT_FIELD_LIMITS['message']
+    report = sent_report(report_deps)
+    assert len(report['contact']) == web_server.REPORT_FIELD_LIMITS['contact']
+    assert len(report['city']) == web_server.REPORT_FIELD_LIMITS['city']
 
 
 def test_report_is_refused_once_the_client_runs_out_of_slots(client):
     with patch('web.server._claim_report_slot', return_value=False), \
-         patch('web.server.save_error_report') as mock_save:
-        response = client.post('/report-error', data=VALID_REPORT)
+         patch('web.server._report_to_sentry') as mock_report:
+        response = client.post('/issue', data=VALID_REPORT)
 
     assert response.status_code == 429
     assert 'Забагато повідомлень' in response.get_data(as_text=True)
-    mock_save.assert_not_called()
+    mock_report.assert_not_called()
+
+
+def test_a_report_that_did_not_get_through_is_not_called_sent(client):
+    """Sentry тримає звернення один - проковтнувши збій відправки, сторінка
+    сказала б «надіслано» про те, чого більше ніде немає. 503 лишає набране
+    в формі й дає спробувати ще раз."""
+    with patch('web.server._claim_report_slot', return_value=True), \
+         patch('web.server._report_to_sentry', return_value=False):
+        response = client.post('/issue', data=VALID_REPORT)
+
+    assert response.status_code == 503
+    assert 'class="sent"' not in response.get_data(as_text=True)
+
+
+def test_the_log_line_keeps_the_choices_and_not_the_free_text(client, report_deps, caplog):
+    """web.log крутиться на диску: вибір там доречний, а текст, який людина
+    написала про себе, - ні."""
+    caplog.set_level(logging.INFO)
+
+    client.post('/issue', data=VALID_REPORT)
+
+    assert 'Сповіщення прийшло із запізненням' in caplog.text
+    assert 'Київ' in caplog.text
+    assert VALID_REPORT['message'] not in caplog.text
+    assert '@reporter' not in caplog.text
 
 
 # --------------------------------------------------------------------------
@@ -573,7 +654,7 @@ def test_rate_limit_window_is_set_on_the_first_report_only(app):
     with patch('web.server.redis_client') as mock_redis:
         mock_redis.incr.side_effect = [1, 2]
 
-        with app.test_request_context('/report-error', method='POST'):
+        with app.test_request_context('/issue', method='POST'):
             assert web_server._claim_report_slot() is True
             assert web_server._claim_report_slot() is True
 
@@ -586,7 +667,7 @@ def test_rate_limit_rejects_past_the_allowance(app):
     with patch('web.server.redis_client') as mock_redis:
         mock_redis.incr.return_value = web_server.REPORT_RATE_LIMIT + 1
 
-        with app.test_request_context('/report-error', method='POST'):
+        with app.test_request_context('/issue', method='POST'):
             assert web_server._claim_report_slot() is False
 
 
@@ -597,7 +678,7 @@ def test_rate_limit_lets_reports_through_when_redis_is_down(app, caplog):
     with patch('web.server.redis_client') as mock_redis:
         mock_redis.incr.side_effect = ConnectionError('redis down')
 
-        with app.test_request_context('/report-error', method='POST'):
+        with app.test_request_context('/issue', method='POST'):
             assert web_server._claim_report_slot() is True
 
     assert "skipping report rate limit" in caplog.text
@@ -607,7 +688,7 @@ def test_rate_limit_keys_on_the_cloudflare_client_ip(app):
     with patch('web.server.redis_client') as mock_redis:
         mock_redis.incr.return_value = 1
 
-        with app.test_request_context('/report-error', method='POST',
+        with app.test_request_context('/issue', method='POST',
                                       headers={'CF-Connecting-IP': '203.0.113.7'}):
             web_server._claim_report_slot()
 
@@ -615,50 +696,194 @@ def test_rate_limit_keys_on_the_cloudflare_client_ip(app):
 
 
 # --------------------------------------------------------------------------
-# admin notification
+# the report forwarded to Sentry
 # --------------------------------------------------------------------------
+
+DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0'
 
 REPORT = {
     'category': 'Сповіщення',
-    'sub_option': 'Опіздало',
+    'sub_option': 'Сповіщення прийшло із запізненням',
+    'delay': '5 - 10 хв',
     'city': 'Київ',
-    'message': '',
+    'message': 'Запізнилось',
     'contact': '@reporter',
 }
 
 
-def test_admin_notification_is_skipped_when_unconfigured(monkeypatch):
-    monkeypatch.setattr(web_server, 'TELEGRAM_BOT_TOKEN', '')
-    monkeypatch.setattr(web_server, 'ADMIN_CHAT_ID', '123')
+@pytest.fixture
+def sentry(monkeypatch):
+    """Sentry configured, with its scope and transport stubbed out."""
+    monkeypatch.setattr(web_server, 'SENTRY_DSN', DSN)
 
-    with patch('web.server.requests.post') as mock_post:
-        web_server._notify_admin(REPORT)
-
-    mock_post.assert_not_called()
-
-
-def test_admin_notification_lists_only_the_filled_in_fields(monkeypatch):
-    monkeypatch.setattr(web_server, 'TELEGRAM_BOT_TOKEN', 'bot-token')
-    monkeypatch.setattr(web_server, 'ADMIN_CHAT_ID', '123')
-
-    with patch('web.server.requests.post') as mock_post:
-        web_server._notify_admin(REPORT)
-
-    _, kwargs = mock_post.call_args
-    text = kwargs['json']['text']
-    assert kwargs['json']['chat_id'] == '123'
-    assert 'Місто: Київ' in text
-    assert 'Контакт: @reporter' in text
-    assert 'Коментар' not in text
+    with patch('web.server.sentry_sdk.new_scope') as mock_new_scope, \
+         patch('web.server.sentry_sdk.capture_message') as mock_capture, \
+         patch('web.server.sentry_sdk.flush') as mock_flush:
+        mock_scope = MagicMock()
+        mock_new_scope.return_value.__enter__.return_value = mock_scope
+        mock_capture.return_value = 'deadbeef'
+        yield mock_scope, mock_capture, mock_flush
 
 
-def test_admin_notification_failure_does_not_break_the_submission(monkeypatch, caplog):
-    """The report is already in PostgreSQL by then; Telegram is a convenience."""
+def test_sentry_forward_is_skipped_when_unconfigured(monkeypatch):
+    """Без DSN звернення нікуди не йде - але й помилкою це не є: у dev його
+    тримає лише web.log, і сторінка не має через це лякати людину."""
+    monkeypatch.setattr(web_server, 'SENTRY_DSN', '')
+
+    with patch('web.server.sentry_sdk.capture_message') as mock_capture:
+        assert web_server._report_to_sentry(REPORT) is True
+
+    mock_capture.assert_not_called()
+
+
+def test_sentry_title_is_english(sentry):
+    _, mock_capture, _ = sentry
+
+    assert web_server._report_to_sentry(REPORT) is True
+    mock_capture.assert_called_once_with(
+        'Issue report: Alerts — Notification arrived late', level='info'
+    )
+
+
+def test_sentry_tags_are_stable_ascii_keys(sentry):
+    """Тег тримається за ключ довідника: перепишеш формулювання - історія
+    групи лишиться. Місто - виняток: це не підпис, а те, що ввела людина."""
+    mock_scope, _, _ = sentry
+
+    web_server._report_to_sentry(REPORT)
+
+    tags = dict(call.args for call in mock_scope.set_tag.call_args_list)
+    assert tags == {
+        'report.category': 'alerts',
+        'report.option': 'late',
+        'report.delay': '5_10min',
+        'report.city': 'Київ',
+    }
+
+
+def test_sentry_context_spells_the_choices_out_in_english(sentry):
+    mock_scope, _, _ = sentry
+
+    web_server._report_to_sentry(REPORT)
+
+    name, context = mock_scope.set_context.call_args.args
+    assert name == 'Issue report'
+    assert context == {
+        'Category': 'Alerts',
+        'Problem': 'Notification arrived late',
+        'Delay': '5-10 min',
+        'City': 'Київ',
+        'Comment': 'Запізнилось',
+        'Contact': '@reporter',
+    }
+
+
+def test_sentry_carries_the_handle_the_reporter_offered(sentry):
+    """send_default_pii=False стосується того, що SDK збирає сам. Нік тут
+    тому, що людина вписала його саме для відповіді."""
+    mock_scope, _, _ = sentry
+
+    web_server._report_to_sentry(REPORT)
+
+    mock_scope.set_user.assert_called_once_with({'username': '@reporter'})
+
+
+def test_sentry_does_not_invent_a_user_when_no_handle_was_left(sentry):
+    mock_scope, _, _ = sentry
+
+    web_server._report_to_sentry({**REPORT, 'contact': ''})
+
+    mock_scope.set_user.assert_not_called()
+
+
+def test_sentry_marks_the_choices_a_report_did_not_make(sentry):
+    """«Інше» не має ні варіанта, ні запізнення, ні обовʼязкового міста -
+    тег мусить лишитись, інакше фільтр за ним губить саме ці звернення."""
+    mock_scope, mock_capture, _ = sentry
+
+    web_server._report_to_sentry({
+        'category': 'Інше', 'sub_option': '', 'delay': '',
+        'city': '', 'message': 'Щось зламалось', 'contact': '',
+    })
+
+    tags = dict(call.args for call in mock_scope.set_tag.call_args_list)
+    assert tags == {
+        'report.category': 'other',
+        'report.option': 'unspecified',
+        'report.delay': 'unspecified',
+        'report.city': 'unspecified',
+    }
+    mock_capture.assert_called_once_with('Issue report: Other', level='info')
+
+
+def test_sentry_groups_one_failure_regardless_of_city_or_delay(sentry):
+    """Місто й запізнення в заголовку розсипали б один збій на групу за
+    містом. Вони теги - саме ними й фільтрують."""
+    _, mock_capture, _ = sentry
+
+    web_server._report_to_sentry({**REPORT, 'city': 'Львів', 'delay': 'Менше 5 хв'})
+    web_server._report_to_sentry({**REPORT, 'city': 'Харків', 'delay': '10 хв і більше'})
+
+    titles = {call.args[0] for call in mock_capture.call_args_list}
+    assert titles == {'Issue report: Alerts — Notification arrived late'}
+
+
+def test_sentry_send_is_flushed_before_the_response(sentry):
+    """Воркер може піти на перезапуск одразу після відповіді, а подія до того
+    моменту ще лежить у черзі транспорту."""
+    _, _, mock_flush = sentry
+
+    web_server._report_to_sentry(REPORT)
+
+    mock_flush.assert_called_once_with(timeout=web_server.SENTRY_FLUSH_TIMEOUT)
+
+
+def test_the_event_id_is_logged_so_a_report_can_be_found_again(sentry, caplog):
+    """Без id «чи дійшло звернення?» лишається здогадкою: у логу є рядок про
+    відправку, а в Sentry - подія, і зв'язати їх нічим."""
+    caplog.set_level(logging.INFO)
+
+    web_server._report_to_sentry(REPORT)
+
+    assert 'event_id=deadbeef' in caplog.text
+
+
+def test_a_declined_event_is_logged_as_such(sentry, caplog):
     caplog.set_level(logging.WARNING)
-    monkeypatch.setattr(web_server, 'TELEGRAM_BOT_TOKEN', 'bot-token')
-    monkeypatch.setattr(web_server, 'ADMIN_CHAT_ID', '123')
+    _, mock_capture, _ = sentry
+    mock_capture.return_value = None
 
-    with patch('web.server.requests.post', side_effect=Exception('telegram down')):
-        web_server._notify_admin(REPORT)
+    web_server._report_to_sentry(REPORT)
 
-    assert "Failed to forward an error report to Telegram" in caplog.text
+    assert "Sentry declined an issue report" in caplog.text
+
+
+def test_sentry_reports_a_dropped_event_as_failure(sentry):
+    """capture_message повертає None, коли подію не взяли - для звернення це
+    те саме, що не надіслати його зовсім."""
+    _, mock_capture, _ = sentry
+    mock_capture.return_value = None
+
+    assert web_server._report_to_sentry(REPORT) is False
+
+
+def test_sentry_failure_is_reported_not_swallowed(monkeypatch, caplog):
+    """Поки звернення лягало ще й у базу, проковтнути збій Sentry було можна.
+    Тепер це була б єдина його копія."""
+    caplog.set_level(logging.ERROR)
+    monkeypatch.setattr(web_server, 'SENTRY_DSN', DSN)
+
+    with patch('web.server.sentry_sdk.new_scope', side_effect=Exception('sentry down')):
+        assert web_server._report_to_sentry(REPORT) is False
+
+    assert "Failed to forward an issue report to Sentry" in caplog.text
+
+
+def test_missing_dsn_is_announced_at_startup(caplog):
+    """Деплой без DSN тихо викидав би кожне звернення, поки сторінка казала б
+    «надіслано»."""
+    caplog.set_level(logging.WARNING)
+
+    create_app(init_db=False, start_healthcheck=False)
+
+    assert "issue reports will not be delivered anywhere" in caplog.text

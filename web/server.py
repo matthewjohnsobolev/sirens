@@ -7,23 +7,19 @@ from functools import lru_cache
 from logging.handlers import RotatingFileHandler
 from typing import Any
 
-import psycopg2
 import requests
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
-from psycopg2.extras import RealDictCursor
-from flask import Flask, current_app, render_template, jsonify, g, request, url_for, Response
+from flask import Flask, current_app, render_template, jsonify, request, url_for, Response
 
 from config import (
-    ADMIN_CHAT_ID, DATABASE_URL, LOGS_PATH, SENTRY_DSN, TELEGRAM_BOT_TOKEN,
-    HEALTHCHECKS_PING_URL_WEB, VERSION
+    LOGS_PATH, SENTRY_DSN, HEALTHCHECKS_PING_URL_WEB, VERSION
 )
-from web.db import (
-    get_all_threats_data, ensure_pg_tables, redis_client, save_error_report
-)
-from web.report_form import (
-    CATEGORIES as REPORT_CATEGORIES, CATEGORY_ALIASES, OPTIONS_BY_CATEGORY, page_config
+from web.db import get_all_threats_data, ensure_pg_tables, redis_client
+from web.issue import (
+    CATEGORIES as ISSUE_CATEGORIES, CATEGORY_ALIASES, CATEGORY_INFO, DELAY_APPLIES_TO,
+    DELAY_INFO, DELAY_NAMES, OPTION_INFO, OPTIONS_BY_CATEGORY, page_config
 )
 
 
@@ -46,14 +42,19 @@ HEALTHCHECK_PING_TIMEOUT = 10  # seconds
 HEALTHCHECK_LOCK_KEY = "healthcheck:web:ping-leader"
 HEALTHCHECK_LOCK_TTL = 50  # seconds; must stay below the interval so each cycle can re-elect
 
-TELEGRAM_API_TIMEOUT = 10  # seconds
-
 # What the page asks, and which answers count as answers, lives in
-# web/report_form.py. The limits below belong to the table, not the form: they
-# are the widths of the error_reports columns.
-REPORT_FIELD_LIMITS = {'city': 100, 'message': 2000, 'contact': 100}
-REPORT_RATE_LIMIT = 5  # accepted reports per window, per client IP
+# web/issue.py. The limits below cap what one submission may put into a Sentry
+# event; the comment cap matches COMMENT_MAX in web/static/js/issue.js.
+REPORT_FIELD_LIMITS = {'city': 100, 'message': 250, 'contact': 100}
+# Submissions per window, per client IP - not accepted reports: the slot is
+# claimed before the form is checked, so a flood of malformed posts runs a
+# client out of slots just as a flood of valid ones would.
+REPORT_RATE_LIMIT = 5
 REPORT_RATE_WINDOW = 3600  # seconds
+
+# A report lives nowhere else, so the send has to finish before the worker can
+# be recycled out from under the queued event.
+SENTRY_FLUSH_TIMEOUT = 2  # seconds
 
 
 def _ping_healthcheck(suffix: str = "") -> None:
@@ -65,10 +66,13 @@ def _ping_healthcheck(suffix: str = "") -> None:
         log.warning("Failed to ping healthchecks.io", exc_info=True)
 
 
+def _claim_slot(key: str, ttl: int) -> bool:
+    """Виграти цикл для цього воркера: SET NX атомарний, тож переможець один."""
+    return bool(redis_client.set(key, os.getpid(), nx=True, ex=ttl))
+
+
 def _claim_ping_slot() -> bool:
-    return bool(
-        redis_client.set(HEALTHCHECK_LOCK_KEY, os.getpid(), nx=True, ex=HEALTHCHECK_LOCK_TTL)
-    )
+    return _claim_slot(HEALTHCHECK_LOCK_KEY, HEALTHCHECK_LOCK_TTL)
 
 
 def _healthcheck_loop() -> None:
@@ -87,18 +91,6 @@ def _start_healthcheck_thread() -> None:
         return
 
     threading.Thread(target=_healthcheck_loop, daemon=True, name="healthcheck-ping").start()
-
-
-def get_db() -> psycopg2.extensions.connection:
-    if 'db' not in g:
-        g.db = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    return g.db
-
-
-def close_db(exception: BaseException | None = None) -> None:
-    db = g.pop('db', None)
-    if db is not None:
-        db.close()
 
 
 def index() -> str:
@@ -121,8 +113,8 @@ def _client_ip() -> str:
 
 
 def _claim_report_slot() -> bool:
-    """Throttle the public form so one client cannot flood the reports table."""
-    key = f"report-error:rate:{_client_ip()}"
+    """Throttle the public form so one client cannot flood the issue tracker."""
+    key = f"issue:rate:{_client_ip()}"
     try:
         count = redis_client.incr(key)
         if count == 1:
@@ -137,8 +129,8 @@ def _claim_report_slot() -> bool:
 def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
     """Re-check the form the way its JavaScript does, for submissions that skipped it.
 
-    Returns the fields to store plus an empty string, or an empty dict plus the
-    message to show the reporter.
+    Returns the fields to forward plus an empty string, or an empty dict plus
+    the message to show the reporter.
     """
     # Without JavaScript the field carries the tab label ("Мапа") instead of the
     # name the report lives under from here on ("Мапа тривог").
@@ -150,29 +142,36 @@ def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
     options = OPTIONS_BY_CATEGORY[category]
     sub_option = (form.get('sub_option') or '').strip()
 
-    def field(name: str, *aliases: str) -> str:
-        val = form.get(name)
-        if not val:
-            for alias in aliases:
-                val = form.get(alias)
-                if val:
-                    break
-        return (val or '').strip()[:REPORT_FIELD_LIMITS[name]]
+    def field(name: str) -> str:
+        return (form.get(name) or '').strip()[:REPORT_FIELD_LIMITS[name]]
 
     city = field('city')
-    # The page sends message/contact through fetch; a plain POST sends the field
-    # names themselves. Both spellings are accepted.
-    message = field('message', 'comment')
-    contact = field('contact', 'tg')
+    contact = field('contact')
 
-    # An answer has to belong to the category it arrived with. Otherwise the
-    # table collects wording the form never offered, and a breakdown by failure
-    # type stops meaning anything.
-    if options and sub_option not in options:
-        return {}, 'Оберіть, будь ласка, що саме сталося.'
-    if not options:
+    message = (form.get('message') or '').strip()
+    if len(message) > REPORT_FIELD_LIMITS['message']:
+        return {}, 'Коментар не може бути довшим за 250 символів.'
+
+    # An answer has to belong to the category it arrived with. Otherwise Sentry
+    # collects wording the form never offered, and a breakdown by failure type
+    # stops meaning anything.
+    if options:
+        if sub_option not in options:
+            return {}, 'Оберіть, будь ласка, що саме сталося.'
+    else:
         sub_option = ''
-    if not city:
+
+    delay = (form.get('delay') or '').strip()
+    if delay and delay not in DELAY_NAMES:
+        return {}, 'Оберіть, будь ласка, на скільки запізнилося сповіщення.'
+    # Підпитання існує рівно під одним варіантом; під рештою відповідь на нього
+    # нічого не означає, і тягти її далі нема сенсу.
+    if sub_option != DELAY_APPLIES_TO:
+        delay = ''
+
+    # Місто обов'язкове для розділів з варіантами («Сповіщення», «Мапа»),
+    # але необов'язкове для розділу «Інше»
+    if options and not city:
         return {}, 'Будь ласка, вкажіть місто.'
     # A category with no options ("Інше") exists for what we did not foresee, so
     # the whole report is the comment - without it there is nothing to act on.
@@ -182,53 +181,92 @@ def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
     return {
         'category': category,
         'sub_option': sub_option,
+        'delay': delay,
         'city': city,
         'message': message,
         'contact': contact,
     }, ''
 
 
-def _notify_admin(report: dict[str, str]) -> None:
-    """Best-effort ping to the admin chat; a failure must not lose the report."""
-    if not TELEGRAM_BOT_TOKEN or not ADMIN_CHAT_ID:
-        return
+def _report_to_sentry(report: dict[str, str]) -> bool:
+    """The only place a report is kept. False means it did not get through.
 
-    lines = ['🐞 Нове повідомлення про помилку', f"Категорія: {report['category']}"]
-    labels = {
-        'sub_option': 'Деталі',
-        'city': 'Місто',
-        'message': 'Коментар',
-        'contact': 'Контакт',
-    }
-    lines += [f"{label}: {report[key]}" for key, label in labels.items() if report[key]]
+    English throughout, because these events are read alongside the rest of the
+    project's Sentry issues. The tags carry stable keys rather than the wording
+    they came from: rephrasing an option in web/issue.py must not scatter its
+    history across two groups.
+    """
+    if not SENTRY_DSN:
+        # Dev, or a deploy that forgot the DSN - create_app warns about the
+        # latter. The log line in issue() is the only record either way.
+        return True
 
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-            json={
-                'chat_id': ADMIN_CHAT_ID,
-                'text': '\n'.join(lines),
-                'disable_web_page_preview': True,
-            },
-            timeout=TELEGRAM_API_TIMEOUT,
-        )
+        category = CATEGORY_INFO[report['category']]
+        option = OPTION_INFO.get(report['sub_option'])
+        delay = DELAY_INFO.get(report['delay'])
+
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag('report.category', category['key'])
+            scope.set_tag('report.option', option['key'] if option else 'unspecified')
+            scope.set_tag('report.delay', delay['key'] if delay else 'unspecified')
+            # Місто - не підпис, а те, що ввела людина: перекладати нема чого.
+            scope.set_tag('report.city', report['city'] or 'unspecified')
+
+            # send_default_pii=False governs what the SDK picks up on its own;
+            # the handle is here because the reporter typed it in so we could
+            # come back to them.
+            if report['contact']:
+                scope.set_user({'username': report['contact']})
+
+            scope.set_context('Issue report', {
+                'Category': category['en'],
+                'Problem': option['en'] if option else '—',
+                'Delay': delay['en'] if delay else '—',
+                'City': report['city'] or '—',
+                'Comment': report['message'] or '—',
+                'Contact': report['contact'] or '—',
+            })
+
+            # Neither city nor delay belongs in the title: they would split one
+            # failure into a group per city. Both are tags, which is what you
+            # filter on anyway.
+            title = f"Issue report: {category['en']}"
+            if option:
+                title += f" — {option['en']}"
+
+            event_id = sentry_sdk.capture_message(title, level='info')
+
+        sentry_sdk.flush(timeout=SENTRY_FLUSH_TIMEOUT)
+        if event_id is None:
+            log.warning("Sentry declined an issue report; it is not stored anywhere")
+            return False
+
+        # The id is the only thread back to the event: it makes "did this
+        # report arrive?" a search in Sentry rather than a guess. Note that
+        # events carry environment=APP_MODE, so a dev submission is invisible
+        # while the Sentry UI is filtered to production.
+        log.info("Issue report forwarded to Sentry: event_id=%s environment=%s",
+                 event_id, os.environ.get('APP_MODE', 'dev'))
+        return True
     except Exception:
-        log.warning("Failed to forward an error report to Telegram", exc_info=True)
+        log.exception("Failed to forward an issue report to Sentry")
+        return False
 
 
-def _render_report_form(**context: Any) -> str:
+def _render_issue_form(**context: Any) -> str:
     """The page together with the taxonomy it draws itself from."""
     return render_template(
-        'report_error.html',
-        categories=REPORT_CATEGORIES,
+        'issue.html',
+        categories=ISSUE_CATEGORIES,
         page_config=page_config(),
         **context,
     )
 
 
-def report_error() -> Any:
+def issue() -> Any:
     if request.method == 'GET':
-        return _render_report_form()
+        return _render_issue_form()
 
     if not _claim_report_slot():
         return render_template(
@@ -246,14 +284,22 @@ def report_error() -> Any:
         # The form shows client-side errors only, so a rejection here just
         # re-serves it. This path is reached only by submissions that bypassed
         # the JavaScript checks, hence the log line instead of on-page feedback.
-        log.info("Rejected error report: %s", error)
-        return _render_report_form(), 400
+        log.info("Rejected issue report: %s", error)
+        return _render_issue_form(), 400
 
-    save_error_report(get_db(), **report)
-    log.info("Error report received: category=%s city=%s", report['category'], report['city'])
-    _notify_admin(report)
+    # The choices, but not the comment or the handle: web.log rotates on disk,
+    # and free text someone typed about themselves does not belong there.
+    log.info(
+        "Issue report: category=%s option=%s delay=%s city=%s",
+        report['category'], report['sub_option'], report['delay'], report['city'],
+    )
 
-    return _render_report_form(success=True)
+    if not _report_to_sentry(report):
+        # Nothing else is holding the report, so a failed send has to reach the
+        # reporter: the page keeps what they typed and lets them try again.
+        return _render_issue_form(), 503
+
+    return _render_issue_form(success=True)
 
 
 def handle_not_found(error: Exception) -> tuple[str, int]:
@@ -338,17 +384,21 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
     )
     sentry_sdk.set_tag("service", "web")
 
+    if not SENTRY_DSN:
+        # /issue keeps reports nowhere else, so an unset DSN silently discards
+        # every one of them while the page still says "надіслано".
+        log.warning("SENTRY_DSN not set; issue reports will not be delivered anywhere")
+
     @app.context_processor
     def inject_version() -> dict[str, str]:
         return {'version': VERSION}
 
-    app.teardown_appcontext(close_db)
     app.after_request(add_caching_headers)
     app.jinja_env.globals['static_url'] = static_url
 
     app.add_url_rule('/', view_func=index)
     app.add_url_rule('/api', view_func=api, methods=['GET'])
-    app.add_url_rule('/report-error', view_func=report_error, methods=['GET', 'POST'])
+    app.add_url_rule('/issue', view_func=issue, methods=['GET', 'POST'])
 
     app.register_error_handler(404, handle_not_found)
     app.register_error_handler(500, handle_server_error)
@@ -360,6 +410,7 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
         _start_healthcheck_thread()
 
     return app
+
 
 
 app = create_app()

@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Повідомити про помилку</title>
+<title>Повідомити про збій / Сирени</title>
 <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ static_url('css/tokens.css') }}">
-<link rel="stylesheet" href="{{ static_url('css/report-error.css') }}">
+<link rel="stylesheet" href="{{ static_url('css/issue.css') }}">
 
-<!-- Розділи, варіанти й міста - з web/report_form.py: тим самим переліком
+<!-- Розділи, варіанти й міста - з web/issue.py: тим самим переліком
      сервер перевіряє те, що прийшло назад. -->
 <script type="application/json" id="report-config">{{ page_config | tojson }}</script>
-<script src="{{ static_url('js/report-error.js') }}" defer></script>
+<script src="{{ static_url('js/issue.js') }}" defer></script>
 </head>
 
 <body {% if success %}class="sent"{% endif %}>
@@ -25,10 +25,10 @@
   </a>
 
   <div class="card" id="card">
-    <h1>Повідомити про помилку</h1>
+    <h1>Повідомити про збій</h1>
 
     <!-- Та сама таблетка, що в попапі на мапі, з тими самими іконками: зелена
-         «відбій» на успіх, оранжева «тривога» на збій - по одній за раз.
+         «відбій» на успіх, червона на збій - по одній за раз.
          Зовнішній .notice - сітка на один рядок: у ній таблетка розгортається
          з нуля до власної висоти, скільки б рядків не зайняв напис. Живе в
          потоці завжди, тож role="status" читалка бачить із першого кадру. -->
@@ -39,14 +39,14 @@
                src="{{ url_for('static', filename='img/icons/air-raid-alert-cancelled-icon.svg') }}"
                alt="" width="24" height="24">
           <img class="notice-icon-error"
-               src="{{ url_for('static', filename='img/icons/air-raid-alert-icon.svg') }}"
+               src="{{ url_for('static', filename='img/icons/explosion-icon.svg') }}"
                alt="" width="24" height="24">
         </span>
         <span class="notice-text" id="notice-text">Повідомлення надіслано — перевіримо найближчим часом.</span>
       </div>
     </div>
 
-    <form id="report-form" action="/report-error" method="POST" novalidate>
+    <form id="report-form" action="/issue" method="POST" novalidate>
       <input type="hidden" name="category" id="input-category" value="{{ categories[0].name }}">
       <input type="hidden" name="sub_option" id="input-sub-option" value="">
 
@@ -64,14 +64,22 @@
         <p class="err">Оберіть, будь ласка, що саме сталося.</p>
       </fieldset>
 
+      <fieldset class="block" id="block-delay">
+        <legend class="label">На скільки запізнилося</legend>
+        <div class="opts opts--mono" id="opts-delay"></div>
+        <p class="err">Оберіть, будь ласка, на скільки запізнилося сповіщення.</p>
+      </fieldset>
+
       <div class="block" id="block-city">
-        <label class="label" for="city">Місто</label>
+        <label class="label" for="city">Місто <span class="opt-mark">— необов'язково</span></label>
         <div class="combo" id="combo-city">
           <input class="input" id="city" name="city" placeholder="Наприклад, Харків"
                  autocomplete="off" role="combobox" aria-expanded="false"
                  aria-controls="city-list" aria-autocomplete="list">
-          <div class="combo-list">
-            <ul class="combo-scroll" id="city-list" role="listbox" aria-label="Міста"></ul>
+          <!-- .scroller - коробка для смуги прокрутки, яку малює issue.js:
+               системної на iOS не видно. -->
+          <div class="combo-list scroller">
+            <ul class="combo-scroll scroller-view" id="city-list" role="listbox" aria-label="Міста"></ul>
           </div>
         </div>
         <p class="err">Вкажіть, будь ласка, місто — без нього ми не знайдемо збій.</p>
@@ -79,13 +87,14 @@
 
       <div class="block" id="block-comment">
         <label class="label" for="comment">Коментар <span class="opt-mark">— необов'язково</span></label>
-        <textarea class="textarea" id="comment" name="comment" placeholder="Що сталося і приблизно коли"></textarea>
+        <textarea class="textarea" id="comment" name="message" maxlength="250"
+                  placeholder="Що сталося і приблизно коли"></textarea>
         <p class="err">Опишіть, будь ласка, що сталося — без цього ми не знатимемо, що шукати.</p>
       </div>
 
       <div class="block block--tail" id="block-tg">
         <label class="label" for="tg">Telegram <span class="opt-mark">— необов'язково</span></label>
-        <input class="input input-id" id="tg" name="tg" placeholder="@username" autocomplete="off">
+        <input class="input input-id" id="tg" name="contact" placeholder="@username" autocomplete="off">
         <p class="hint">Напишемо, тільки якщо знадобляться подробиці.</p>
       </div>
 

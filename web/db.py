@@ -236,50 +236,12 @@ def ensure_pg_tables() -> None:
                 cur.execute(
                     "CREATE INDEX IF NOT EXISTS subscribers_time_idx ON subscribers (time)"
                 )
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS error_reports (
-                        id SERIAL PRIMARY KEY,
-                        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                        category TEXT NOT NULL,
-                        sub_option TEXT,
-                        city TEXT,
-                        message TEXT,
-                        contact TEXT
-                    )
-                """)
-                cur.execute(
-                    "CREATE INDEX IF NOT EXISTS error_reports_created_at_idx ON error_reports (created_at DESC)"
-                )
-
             conn.commit()
     except Exception:
         log.exception("Failed to ensure the database schema exists")
         raise
 
     log.info("PostgreSQL schema ready")
-
-
-def save_error_report(
-    conn: psycopg2.extensions.connection,
-    *,
-    category: str,
-    sub_option: str,
-    city: str,
-    message: str,
-    contact: str,
-) -> None:
-    """Store one report submitted through the /report-error form.
-
-    Takes the caller's connection so a web request writes through its own
-    request-scoped connection instead of opening a second one.
-    """
-    with conn.cursor() as cur:
-        cur.execute(
-            """INSERT INTO error_reports (category, sub_option, city, message, contact)
-               VALUES (%s, %s, %s, %s, %s)""",
-            (category, sub_option, city, message, contact),
-        )
-    conn.commit()
 
 
 THREAT_TABLES = {"alerts", "explosions", "shellings"}

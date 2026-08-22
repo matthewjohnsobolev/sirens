@@ -8,213 +8,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --bg:#E9E9E7;
-    --card:#FFFFFF;
-    --track:#EDEDEA;
-    --hair:#E2E2DD;
-    --hair-2:#CCCCC7;
-    --ink:#16181C;
-    --text:#5F5F59;
-    --muted:#75756D;
-    --place:#9A9A92;
-    --brand:#8FE81A;
-    --alert:#F7941E;
-    --alert-ink:#9A5A00;
-    --shadow:0 10px 34px rgba(20,22,26,.10), 0 2px 6px rgba(20,22,26,.05);
-    --card-bottom-gap:32px;
+<link rel="stylesheet" href="{{ static_url('css/tokens.css') }}">
+<link rel="stylesheet" href="{{ static_url('css/report-error.css') }}">
 
-    --inter:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0}
-  body{
-    background:var(--bg);
-    font-family:var(--inter);
-    color:var(--text);
-    -webkit-font-smoothing:antialiased;
-    padding:clamp(24px,6vw,56px) 20px;
-  }
-  .shell{width:min(520px,100%);margin:0 auto}
-
-  .logo{
-    display:block;
-    width:60px;
-    height:60px;
-    margin:0 auto 24px;
-    text-decoration:none;
-  }
-  .logo:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:14px}
-  .logo img{
-    width:60px;
-    height:60px;
-    display:block;
-  }
-
-  .card{
-    background:var(--card);
-    border-radius:16px;
-    box-shadow:var(--shadow);
-    padding:32px clamp(20px,5vw,32px) var(--card-bottom-gap);
-    transition:min-height .28s cubic-bezier(.2,.7,.3,1);
-  }
-  .card h1{
-    margin:0;text-align:center;
-    font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-.015em;
-  }
-
-  /* розділи: це фільтр, а не таби — radiogroup з плавною анімацією слайдера */
-  .seg{
-    position:relative;
-    display:grid;
-    grid-template-columns:repeat(3,1fr);
-    background:var(--track);
-    border-radius:12px;
-    padding:4px;
-    margin:24px 0 28px;
-    user-select:none;
-  }
-  .seg-slider{
-    position:absolute;
-    top:4px;
-    bottom:4px;
-    left:4px;
-    width:calc((100% - 8px) / 3);
-    background:var(--card);
-    border-radius:8px;
-    box-shadow:0 1px 3px rgba(20,22,26,.12);
-    transition:transform 0.28s cubic-bezier(0.2, 0.7, 0.3, 1);
-    will-change:transform;
-    z-index:1;
-    pointer-events:none;
-  }
-  .seg button{
-    position:relative;
-    z-index:2;
-    font:inherit;
-    font-size:15px;
-    font-weight:500;
-    color:var(--muted);
-    background:transparent !important;
-    border:0;
-    border-radius:8px;
-    padding:11px 6px;
-    cursor:pointer;
-    transition:color 0.2s ease;
-    box-shadow:none !important;
-  }
-  .seg button[aria-checked="true"]{
-    color:var(--ink);
-    font-weight:600;
-  }
-  .seg button:not([aria-checked="true"]):hover{
-    color:var(--text);
-  }
-  .seg button:focus-visible{
-    outline:2px solid var(--ink);
-    outline-offset:2px;
-  }
-
-  /* блоки */
-  .block{margin-bottom:24px;border:0;padding:0;min-width:0}
-  .label{
-    display:block;margin:0 0 8px;padding:0;
-    font-family:var(--mono);font-size:11px;font-weight:500;
-    letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
-  }
-  .label .opt-mark{color:var(--muted);opacity:.7}
-
-  /* варіанти */
-  .opts{display:grid;gap:8px}
-  .opt{display:block;position:relative}
-  .opt input{position:absolute;opacity:0;width:0;height:0}
-  .opt span{
-    display:flex;align-items:center;gap:12px;
-    border:1px solid var(--hair);border-radius:12px;
-    padding:14px 16px;font-size:15px;line-height:1.4;
-    color:var(--text);cursor:pointer;
-    transition:border-color .15s, color .15s;
-  }
-  .opt span::after{
-    content:"";margin-left:auto;flex:none;width:16px;height:16px;opacity:0;
-    background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 8.5l4 4 8-9' fill='none' stroke='%2316181C' stroke-width='2'/%3E%3C/svg%3E");
-    transition:opacity .15s;
-  }
-  .opt input:checked + span{
-    border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);color:var(--ink);
-  }
-  .opt input:checked + span::after{opacity:1}
-  .opt input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
-  .opt span:hover{border-color:var(--hair-2)}
-
-  /* поля */
-  .input,.textarea{
-    width:100%;font-family:var(--inter);font-size:15px;color:var(--ink);
-    border:1px solid var(--hair);border-radius:12px;padding:14px 16px;background:var(--card);
-  }
-  .textarea{min-height:110px;resize:vertical;line-height:1.6}
-  .input::placeholder,.textarea::placeholder{color:var(--place)}
-  .input:focus,.textarea:focus{outline:0;border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
-  .hint{margin:8px 0 0;font-size:13px;color:var(--muted)}
-
-  /* помилка валідації — єдине місце для помаранчевого */
-  .block.invalid .input,
-  .block.invalid .opt span{border-color:var(--alert);box-shadow:inset 0 0 0 1px var(--alert)}
-  .block.invalid .label{color:var(--alert-ink)}
-  .err{display:none;margin:8px 0 0;font-size:13px;color:var(--alert-ink)}
-  .block.invalid .err{display:block}
-  .block.invalid .hint{display:none}
-
-  .submit{
-    width:100%;font:inherit;font-size:15px;font-weight:600;color:#fff;
-    background:var(--ink);border:0;border-radius:12px;padding:16px;cursor:pointer;
-    margin-top:32px;
-    transition:background-color .15s;
-  }
-  .submit:hover{background:#2A2C31}
-  .submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
-  .submit:disabled{opacity:.6;cursor:not-allowed}
-
-  /* стан після відправки */
-  .done{display:none;text-align:center;padding:20px 0 4px;opacity:0;transition:opacity .25s .06s}
-  .done .mark{
-    width:52px;height:52px;border-radius:50%;background:var(--brand);
-    display:grid;place-items:center;margin:0 auto 20px;
-  }
-  .done h2{margin:0;font-size:18px;font-weight:700;color:var(--ink)}
-  .done p{margin:8px 0 0;font-size:13px;color:var(--muted)}
-  .done .id{
-    display:inline-block;margin-top:20px;font-family:var(--mono);font-size:13px;
-    color:var(--text);background:var(--track);border-radius:8px;padding:6px 10px;
-  }
-  .again{
-    display:block;margin:24px auto 0;font:inherit;font-size:15px;font-weight:500;
-    color:var(--ink);background:none;border:0;cursor:pointer;
-    text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--hair-2);
-  }
-  .again:hover{text-decoration-color:var(--ink)}
-  .again:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:4px}
-  body.sent form{display:none}
-  body.sent .done{display:block;opacity:1}
-
-  .copy{
-    margin:var(--card-bottom-gap) 0 0;
-    text-align:center;
-    font-family:var(--mono);
-    font-size:11px;
-    color:#68685F;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-    margin-right:-.14em;
-  }
-
-  @media (prefers-reduced-motion:reduce){
-    *{transition:none !important}
-  }
-</style>
+<!-- Розділи, варіанти й міста - з web/report_form.py: тим самим переліком
+     сервер перевіряє те, що прийшло назад. -->
+<script type="application/json" id="report-config">{{ page_config | tojson }}</script>
+<script src="{{ static_url('js/report-error.js') }}" defer></script>
 </head>
+
 <body {% if success %}class="sent"{% endif %}>
 <div class="shell">
 
@@ -225,230 +27,74 @@
   <div class="card" id="card">
     <h1>Повідомити про помилку</h1>
 
+    <!-- Та сама таблетка, що в попапі на мапі, з тими самими іконками: зелена
+         «відбій» на успіх, оранжева «тривога» на збій - по одній за раз.
+         Зовнішній .notice - сітка на один рядок: у ній таблетка розгортається
+         з нуля до власної висоти, скільки б рядків не зайняв напис. Живе в
+         потоці завжди, тож role="status" читалка бачить із першого кадру. -->
+    <div class="notice" id="notice" role="status" aria-live="polite">
+      <div class="notice-pill">
+        <span class="notice-icon" aria-hidden="true">
+          <img class="notice-icon-ok"
+               src="{{ url_for('static', filename='img/icons/air-raid-alert-cancelled-icon.svg') }}"
+               alt="" width="24" height="24">
+          <img class="notice-icon-error"
+               src="{{ url_for('static', filename='img/icons/air-raid-alert-icon.svg') }}"
+               alt="" width="24" height="24">
+        </span>
+        <span class="notice-text" id="notice-text">Повідомлення надіслано — перевіримо найближчим часом.</span>
+      </div>
+    </div>
+
     <form id="report-form" action="/report-error" method="POST" novalidate>
-      <input type="hidden" name="category" id="input-category" value="Сповіщення">
+      <input type="hidden" name="category" id="input-category" value="{{ categories[0].name }}">
       <input type="hidden" name="sub_option" id="input-sub-option" value="">
 
       <div class="seg" role="radiogroup" aria-label="Розділ">
         <div class="seg-slider" id="seg-slider"></div>
-        <button type="button" role="radio" aria-checked="true"  data-tab="alerts">Сповіщення</button>
-        <button type="button" role="radio" aria-checked="false" data-tab="map">Мапа</button>
-        <button type="button" role="radio" aria-checked="false" data-tab="other">Інше</button>
+        {%- for category in categories %}
+        <button type="button" role="radio" aria-checked="{{ 'true' if loop.first else 'false' }}"
+                data-tab="{{ category.id }}">{{ category.tab }}</button>
+        {%- endfor %}
       </div>
 
       <fieldset class="block" id="block-issue">
         <legend class="label">Що саме сталося</legend>
         <div class="opts" id="opts"></div>
-        <p class="err">Оберіть один із варіантів.</p>
+        <p class="err">Оберіть, будь ласка, що саме сталося.</p>
       </fieldset>
 
       <div class="block" id="block-city">
         <label class="label" for="city">Місто</label>
-        <input class="input" id="city" name="city" list="cities" placeholder="Наприклад, Харків" autocomplete="off">
-        <datalist id="cities">
-          <option>Київ</option><option>Харків</option><option>Одеса</option>
-          <option>Дніпро</option><option>Львів</option><option>Запоріжжя</option>
-          <option>Миколаїв</option><option>Вінниця</option><option>Полтава</option>
-          <option>Чернігів</option><option>Черкаси</option><option>Суми</option>
-          <option>Житомир</option><option>Рівне</option><option>Тернопіль</option>
-          <option>Івано-Франківськ</option><option>Ужгород</option><option>Луцьк</option>
-          <option>Хмельницький</option><option>Чернівці</option><option>Кропивницький</option>
-          <option>Херсон</option><option>Кривий Ріг</option>
-        </datalist>
-        <p class="err">Вкажіть місто — без нього ми не знайдемо збій.</p>
+        <div class="combo" id="combo-city">
+          <input class="input" id="city" name="city" placeholder="Наприклад, Харків"
+                 autocomplete="off" role="combobox" aria-expanded="false"
+                 aria-controls="city-list" aria-autocomplete="list">
+          <div class="combo-list">
+            <ul class="combo-scroll" id="city-list" role="listbox" aria-label="Міста"></ul>
+          </div>
+        </div>
+        <p class="err">Вкажіть, будь ласка, місто — без нього ми не знайдемо збій.</p>
       </div>
 
-      <div class="block">
+      <div class="block" id="block-comment">
         <label class="label" for="comment">Коментар <span class="opt-mark">— необов'язково</span></label>
-        <textarea class="textarea" id="comment" name="comment" placeholder="Що саме пішло не так і коли"></textarea>
+        <textarea class="textarea" id="comment" name="comment" placeholder="Що сталося і приблизно коли"></textarea>
+        <p class="err">Опишіть, будь ласка, що сталося — без цього ми не знатимемо, що шукати.</p>
       </div>
 
-      <div class="block">
+      <div class="block block--tail" id="block-tg">
         <label class="label" for="tg">Telegram <span class="opt-mark">— необов'язково</span></label>
-        <input class="input" id="tg" name="tg" placeholder="@username" autocomplete="off">
-        <p class="hint">Напишемо, якщо знадобляться подробиці.</p>
+        <input class="input input-id" id="tg" name="tg" placeholder="@username" autocomplete="off">
+        <p class="hint">Напишемо, тільки якщо знадобляться подробиці.</p>
       </div>
 
       <button class="submit" type="submit">Надіслати</button>
     </form>
 
-    <div class="done" role="status" tabindex="-1">
-      <div class="mark" aria-hidden="true">
-        <svg width="22" height="22" viewBox="0 0 16 16">
-          <path d="M2.5 8.5l3.6 3.6L13.5 4" fill="none" stroke="#16181C" stroke-width="2.2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <h2>Повідомлення надіслано</h2>
-      <p>Дякуємо. Перевіримо найближчим часом.</p>
-      <span class="id" id="report-id">ID: 7F3A-2610</span>
-      <button class="again" type="button" id="again">Повідомити ще про одну помилку</button>
-    </div>
   </div>
 
   <p class="copy">© 2026 «Сирени»</p>
 </div>
-
-<script>
-  const SETS = {
-    alerts:[
-      "Сповіщення прийшло із запізненням",
-      "Сповіщення не прийшло зовсім",
-      "Сповіщення про відбій без тривоги (або навпаки)"
-    ],
-    map:[
-      "Область підсвічена неправильно",
-      "Тривога не зникає з мапи",
-      "Мапа не оновлюється"
-    ],
-    other:[
-      "Помилка в тексті на сайті",
-      "Сайт не відкривається",
-      "Інша проблема"
-    ]
-  };
-
-  const TAB_CATEGORIES = {
-    alerts: "Сповіщення",
-    map: "Мапа тривог",
-    other: "Інше"
-  };
-
-  const form      = document.getElementById('report-form');
-  const card      = document.getElementById('card');
-  const opts      = document.getElementById('opts');
-  const tabs      = [...document.querySelectorAll('.seg button')];
-  const segSlider = document.getElementById('seg-slider');
-  const city      = document.getElementById('city');
-  const comment   = document.getElementById('comment');
-  const tg        = document.getElementById('tg');
-  const done      = document.querySelector('.done');
-  const bIssue    = document.getElementById('block-issue');
-  const bCity     = document.getElementById('block-city');
-  const inputCat  = document.getElementById('input-category');
-  const inputSub  = document.getElementById('input-sub-option');
-  const reportId  = document.getElementById('report-id');
-
-  const choice = {alerts:null, map:null, other:null};
-  let tab = 'alerts';
-
-  function render(){
-    opts.innerHTML = SETS[tab].map((t,i) => `
-      <label class="opt">
-        <input type="radio" name="issue" value="${i}" ${choice[tab] === String(i) ? 'checked' : ''}>
-        <span>${t}</span>
-      </label>`).join('');
-  }
-
-  function syncInputs(){
-    inputCat.value = TAB_CATEGORIES[tab];
-    inputSub.value = choice[tab] !== null ? (SETS[tab][choice[tab]] || '') : '';
-  }
-
-  opts.addEventListener('change', e => {
-    choice[tab] = e.target.value;
-    syncInputs();
-    bIssue.classList.remove('invalid');
-  });
-
-  tabs.forEach((b, i) => {
-    b.addEventListener('click', () => select(i));
-    b.addEventListener('keydown', e => {
-      const step = {ArrowRight:1, ArrowDown:1, ArrowLeft:-1, ArrowUp:-1}[e.key];
-      if(!step) return;
-      e.preventDefault();
-      const next = (i + step + tabs.length) % tabs.length;
-      select(next); tabs[next].focus();
-    });
-  });
-
-  function select(i){
-    tabs.forEach((x, j) => {
-      x.setAttribute('aria-checked', String(j === i));
-      x.tabIndex = j === i ? 0 : -1;
-    });
-    if (segSlider) {
-      segSlider.style.transform = `translateX(${i * 100}%)`;
-    }
-    tab = tabs[i].dataset.tab;
-    syncInputs();
-    render();
-  }
-
-  city.addEventListener('input', () => bCity.classList.remove('invalid'));
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const noIssue = choice[tab] === null || choice[tab] === undefined;
-    const noCity  = !city.value.trim();
-    bIssue.classList.toggle('invalid', noIssue);
-    bCity.classList.toggle('invalid', noCity);
-
-    if(noIssue || noCity){
-      (noIssue ? opts.querySelector('input') : city).focus();
-      return;
-    }
-
-    syncInputs();
-
-    const submitBtn = form.querySelector('.submit');
-    submitBtn.disabled = true;
-
-    const formData = new FormData();
-    formData.append('category', TAB_CATEGORIES[tab]);
-    formData.append('sub_option', SETS[tab][choice[tab]] || '');
-    formData.append('city', city.value.trim());
-    formData.append('message', comment.value.trim());
-    formData.append('contact', tg.value.trim());
-
-    try {
-      const res = await fetch('/report-error', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (res.ok) {
-        const randHex = Math.random().toString(16).substring(2, 6).toUpperCase();
-        const randDigits = Math.floor(1000 + Math.random() * 9000);
-        if (reportId) {
-          reportId.textContent = `ID: ${randHex}-${randDigits}`;
-        }
-
-        const from = card.offsetHeight;
-        card.style.minHeight = from + 'px';
-        document.body.classList.add('sent');
-        card.style.minHeight = '';
-        const to = card.offsetHeight;
-        card.style.minHeight = from + 'px';
-        void card.offsetHeight;
-        requestAnimationFrame(() => { card.style.minHeight = to + 'px'; });
-
-        done.focus();
-      } else if (res.status === 429) {
-        alert('Ви надіслали кілька повідомлень поспіль. Спробуйте ще раз за годину — попередні вже в роботі.');
-      } else {
-        alert('Не вдалося надіслати повідомлення. Спробуйте ще раз пізніше.');
-      }
-    } catch (err) {
-      alert('Помилка мережі. Перевірте зʼєднання з інтернетом.');
-    } finally {
-      submitBtn.disabled = false;
-    }
-  });
-
-  document.getElementById('again').addEventListener('click', () => {
-    form.reset();
-    Object.keys(choice).forEach(k => choice[k] = null);
-    bIssue.classList.remove('invalid');
-    bCity.classList.remove('invalid');
-    select(0);
-    document.body.classList.remove('sent');
-    card.style.minHeight = '';
-    city.focus();
-  });
-
-  select(0);
-</script>
 </body>
 </html>

@@ -387,3 +387,49 @@ for district_key, conf in DISTRICT_CONFIG.items():
     DISTRICTS_BY_OBLAST.setdefault(conf['oblast'], []).append(district_key)
 
 CITIES_LIST = [(key, data['display_name']) for key, data in REGION_CONFIG.items()]
+
+# Українська назва міста, що дало ім'я району з каналом. У довіднику вище її
+# немає: там 'name' - це район ("Харківський район"), а 'display_name' -
+# латиниця для службових написів. Форма помилки питає саме місто: людина живе
+# в Харкові, а не в Харківському районі, і шукає в підказці "Харків".
+#
+# Ключі збігаються з BROADCAST_DISTRICTS - тобто це рівно ті міста, куди йде
+# сповіщення. За відповідністю стежить тест: новий канал без назви міста
+# з'явився б у розсилці, але не в підказці.
+BROADCAST_CITIES = {
+    'bilatserkva':    'Біла Церква',
+    'bucha':          'Буча',
+    'cherkasy':       'Черкаси',
+    'chernihiv':      'Чернігів',
+    'chernivtsi':     'Чернівці',
+    'dnipro':         'Дніпро',
+    'fastiv':         'Фастів',
+    'ivanofrankivsk': 'Івано-Франківськ',
+    'izmail':         'Ізмаїл',
+    'kamianske':      "Кам'янське",
+    'kharkiv':        'Харків',
+    'kherson':        'Херсон',
+    'khmelnytskyi':   'Хмельницький',
+    'kovel':          'Ковель',
+    'kremenchuk':     'Кременчук',
+    'kropyvnytskyi':  'Кропивницький',
+    'kryvyirih':      'Кривий Ріг',
+    'kyiv':           'Київ',
+    'lutsk':          'Луцьк',
+    'lviv':           'Львів',
+    'mykolaiv':       'Миколаїв',
+    'nikopol':        'Нікополь',
+    'odesa':          'Одеса',
+    'pervomaisk':     'Первомайськ',
+    'poltava':        'Полтава',
+    'rivne':          'Рівне',
+    'sumy':           'Суми',
+    'ternopil':       'Тернопіль',
+    'uman':           'Умань',
+    'uzhhorod':       'Ужгород',
+    'vinnytsia':      'Вінниця',
+    'zaporizhzhia':   'Запоріжжя',
+    'zhytomyr':       'Житомир',
+    'zolotonosha':    'Золотоноша',
+    'zvenyhorodka':   'Звенигородка',
+}

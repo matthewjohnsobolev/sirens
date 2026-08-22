@@ -1,0 +1,416 @@
+/* ===========================================================================
+   report-error.css - сторінка «Повідомити про помилку».
+
+   Кольори, шрифти й рух - із tokens.css; тут лише те, чим повна сторінка
+   відрізняється від попапа на мапі, та власне форма.
+
+   РОЗМІРНА СИСТЕМА. Чотири кеглі, кожен зі своєю роботою; проміжних значень
+   немає - раніше на сторінці стояли 11, 13, 14, 15, 16 і 20, і сусідні
+   13/14/15 не розрізнялись, а лише плодили винятки.
+
+     20 / 700   заголовок. Один на сторінку.
+     16 / 400   те, що людина вводить або обирає: поля, коментар, варіанти.
+     14         інтерфейс. 500 - підписи, вкладки, кнопка, таблетка стану;
+                400 - пояснення, помилки, підказка всередині поля.
+     11 / 500   моно, капс, розрядка .14em - підвал, як на сторінці 404.
+
+   Розрізняє елементи вага й колір, а не десята частка кегля: підпис поля
+   й пояснення під ним однакові за розміром, але 500 проти 400.
+   =========================================================================== */
+
+:root{
+  /* --- Масштаб сторінки, а не попапа --------------------------------------
+     tokens.css міряє попап: 40px контрол, 12px текст, 10px проміжок. На повній
+     сторінці ті самі співвідношення беруть більший крок - палець замість
+     курсора, ціла ширина замість бульбашки 310px. Змінюються значення,
+     правило лишається: радіус = висота / 4 (у попапа 40 -> 10, тут 48 -> 12). */
+  --control-h:48px;
+  --radius-control:12px;
+  --radius-card:14px;          /* радіус контрола + 2, як у попапі */
+  --radius-nested:8px;         /* 12 - 4 (відступ жолоба) */
+
+  --gap-tight:8px;
+  --gap-block:24px;
+  --gap-section:32px;
+
+  --text-title:20px;
+  --text-body:16px;            /* нижче 16px iOS зумить поле при фокусі */
+  --text-ui:14px;
+  --text-footer:11px;
+
+  /* --- Чого немає в попапі -------------------------------------------------
+     Підказки в порожньому полі й помаранчевого напису на мапі не буває. */
+  --placeholder:#9A9A9A;
+  /* Той самий тон, що й --alert, затемнений до 4.8:1 на білому: сам #FF831A
+     у тексті дає 2.5:1 і не читається. Колір лишається впізнаваним,
+     напис - робочим. */
+  --alert-ink:#B85700;
+
+  /* Рух розділів. Решта сторінки міняє колір за --motion (0.15s) - як мапа;
+     тут же їде предмет, а не відтінок, тож довше й з гальмуванням у кінці:
+     та сама крива, що тримає висоту картки. Ривка на старті немає - .2
+     замість типового .42 у ease. */
+  --motion-slide:.28s cubic-bezier(.2,.7,.3,1);
+  /* Згасання - удвічі коротше за рух і без гальмування: колір з'являється
+     майже одразу, рухається довше. */
+  --motion-fade:.14s ease-out;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--page);
+  font-family:var(--font);
+  font-size:var(--text-body);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  padding:clamp(24px,6vw,56px) 20px;
+}
+.shell{width:min(520px,100%);margin:0 auto}
+
+.logo{display:block;width:60px;height:60px;margin:0 auto 24px;text-decoration:none}
+.logo:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:14px}
+.logo img{width:60px;height:60px;display:block}
+
+.card{
+  background:var(--surface);
+  border:1px solid var(--hairline);
+  border-radius:var(--radius-card);
+  padding:var(--gap-section) clamp(20px,5vw,32px);
+  transition:min-height .28s cubic-bezier(.2,.7,.3,1);
+}
+.card h1{
+  margin:0;text-align:center;
+  font-size:var(--text-title);font-weight:700;letter-spacing:-.01em;color:var(--ink);
+}
+
+/* Порядок блоків задає flex, а не розмітка: у розділі «Інше» переліку
+   варіантів немає, і його місце займає коментар. Так поле, яке в цьому
+   розділі несе всю суть звернення, стоїть першим, а не третім. */
+#report-form{display:flex;flex-direction:column}
+.seg{order:0}
+#block-issue{order:1}
+#block-city{order:2}
+#block-comment{order:3}
+#block-tg{order:4}
+.submit{order:5}
+body.tab-other #block-issue{display:none}
+body.tab-other #block-comment{order:1}
+/* У «Іншому» коментар - єдине джерело подробиць, тож він обов'язковий */
+body.tab-other #block-comment .opt-mark{display:none}
+
+/* Розділи */
+.seg{
+  position:relative;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  background:var(--page);
+  border-radius:var(--radius-control);
+  padding:4px;
+  margin:var(--gap-block) 0 28px;
+  user-select:none;
+}
+/* Біла плитка під активною вкладкою - єдине, що на цій сторінці справді
+   їде. Рухається саме вона, а не три написи: тоді перехід читається як
+   переміщення одного предмета, і око стежить за ним, а не перемальовує
+   рядок. Тінь під плитку не кладемо - на сторінці немає жодної, крім
+   випадного списку міст.
+   translateX у відсотках від власної ширини плитки: колонки в .seg рівні
+   (repeat(3,1fr) у полі 4px), тож 100% - це рівно крок вкладки, і при
+   будь-якій ширині екрана плитка стає точно в жолоб. */
+.seg-slider{
+  position:absolute;
+  top:4px;bottom:4px;left:4px;
+  width:calc((100% - 8px) / 3);
+  background:var(--surface);
+  border-radius:var(--radius-nested);
+  transition:transform var(--motion-slide);
+  will-change:transform;
+  z-index:1;pointer-events:none;
+}
+.seg button{
+  position:relative;z-index:2;
+  font-family:var(--font);font-size:var(--text-ui);font-weight:500;
+  color:var(--ink-muted);
+  background:transparent !important;border:0;border-radius:var(--radius-nested);
+  padding:12px 6px;cursor:pointer;
+  transition:color var(--motion-slide);
+  box-shadow:none !important;
+}
+.seg button[aria-checked="true"]{color:var(--ink);font-weight:600}
+.seg button:not([aria-checked="true"]):hover{color:var(--ink-muted-hover)}
+.seg button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+/* Блоки */
+.block{margin-bottom:var(--gap-block);border:0;padding:0;min-width:0}
+/* Останній блок віддає нижній відступ кнопці: над «Надіслати» й під нею
+   однакові 32. */
+.block--tail{margin-bottom:0}
+.label{
+  display:block;margin:0 0 var(--gap-tight);padding:0;
+  font-size:var(--text-ui);font-weight:500;color:var(--ink-muted);
+}
+.label .opt-mark{font-weight:400}
+
+/* Варіанти */
+.opts{display:grid;gap:var(--gap-tight)}
+.opt{display:block;position:relative}
+.opt input{position:absolute;opacity:0;width:0;height:0}
+/* Обраний варіант позначає сама коробка: волосок #E8E8E8 проти подвійного
+   чорного кільця. Позначки-галочки немає навмисно - вона повторювала б те,
+   що вже сказано контуром, і була б єдиним таким знаком у продукті.
+   Стан несе не колір, а товщина й тон обводки, тож на чорно-білому екрані
+   й у сонці він читається так само. */
+.opt span{
+  display:flex;align-items:center;
+  min-height:var(--control-h);
+  border:1px solid var(--hairline);border-radius:var(--radius-control);
+  padding:12px 16px;font-size:var(--text-body);line-height:1.4;
+  color:var(--ink);cursor:pointer;
+  transition:border-color var(--motion),box-shadow var(--motion);
+}
+.opt span:hover{border-color:var(--hairline-hover)}
+.opt input:checked + span{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.opt input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
+
+/* Поля */
+.input,.textarea{
+  width:100%;font-family:var(--font);
+  font-size:var(--text-body);   /* нижче 16px iOS зумить поле при фокусі */
+  color:var(--ink);
+  background:transparent;
+  border:1px solid var(--hairline);border-radius:var(--radius-control);
+  padding:12px 16px;min-height:var(--control-h);
+  transition:border-color var(--motion),box-shadow var(--motion);
+}
+.textarea{min-height:104px;resize:vertical;line-height:1.6}
+/* Нік - ідентифікатор: посимвольна точність важливіша за читабельність
+   речення. Єдине поле форми з моношрифтом. */
+.input-id{font-family:var(--font-mono);letter-spacing:.01em}
+/* Підказка в полі - не введений текст, а пояснення, тож кегль інтерфейсу.
+   Кегль самого поля лишається 16px, тому iOS не зумить. */
+.input::placeholder,.textarea::placeholder{
+  font-family:var(--font);font-size:var(--text-ui);font-weight:400;color:var(--placeholder);
+}
+.input:hover,.textarea:hover{border-color:var(--hairline-hover)}
+.input:focus,.textarea:focus{outline:0;border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+
+/* Рядок під блоком - одне місце для двох станів: спокійне пояснення сірим
+   і повідомлення про незаповнене поле оранжевим. Однакові кегль, відступ
+   і позиція, тож поява помилки не рухає верстку. */
+.hint,.err{
+  margin:var(--gap-tight) 0 0;
+  font-size:var(--text-ui);font-weight:400;line-height:1.4;
+}
+.hint{color:var(--ink-muted)}
+.err{display:none;color:var(--alert-ink)}
+.block.invalid .err{display:block}
+.block.invalid .hint{display:none}
+/* Незаповнене поле бере брендовий контур. Обводка подвійна (рамка + внутрішнє
+   кільце), бо в один волосок оранжевий на білому надто тихий. */
+.block.invalid .input,
+.block.invalid .textarea,
+.block.invalid .opt span{border-color:var(--alert);box-shadow:inset 0 0 0 1px var(--alert)}
+
+/* Автодоповнення міста. Нативний <datalist> малює системний список, який не
+   підпорядковується жодному токену продукту, тож список власний.
+   Це єдиний елемент сторінки, який справді висить над вмістом, - тому саме
+   йому дістається єдина тінь продукту (приглушена Leaflet-івська). */
+.combo{position:relative}
+.combo-list{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:20;
+  display:none;padding:4px;
+  background:var(--surface);
+  border:1px solid var(--hairline);
+  border-radius:var(--radius-control);
+  box-shadow:var(--shadow-card);
+  overflow:hidden;   /* щоб рядки не вилазили за скруглення */
+}
+.combo.open .combo-list{display:block}
+/* Прокрутка - на внутрішньому елементі, як .scrollable-content у попапі.
+   Від'ємний margin рівно на відступ коробки виносить смугу в цей відступ:
+   інакше вона з'їдала б ширину рядків. Видно чотири рядки й половину
+   п'ятого - тоді одразу зрозуміло, що список гортається. */
+.combo-scroll{
+  margin:0 -4px 0 0;padding:0;list-style:none;
+  max-height:180px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  touch-action:pan-y;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+}
+.combo-option{
+  display:flex;align-items:center;min-height:40px;
+  padding:0 12px;border-radius:var(--radius-nested);
+  font-size:var(--text-body);color:var(--ink);cursor:pointer;
+  transition:background-color var(--motion);
+}
+.combo-option:hover,
+.combo-option[aria-selected="true"]{background:var(--page)}
+/* Збіг виділяється вагою, а не кольором: колір зайнятий станом. */
+.combo-option b{font-weight:600}
+
+/* Смуга прокрутки - та сама, що в списку районів у попапі: доріжка 10px,
+   щоб у повзунок можна було влучити мишею й пальцем, але сам повзунок
+   лишається візуально вузьким - прозора рамка з background-clip: padding-box
+   малює 4px, а хапається всі 10px. min-height не дає повзунку зіщулитись
+   у нерухому крапку, коли в списку всі тридцять п'ять міст. */
+.combo-scroll::-webkit-scrollbar{width:10px}
+.combo-scroll::-webkit-scrollbar-track{
+  background:rgba(0,0,0,0.05);
+  background-clip:padding-box;
+  border:3px solid transparent;
+  border-radius:5px;
+}
+.combo-scroll::-webkit-scrollbar-thumb{
+  background:rgba(0,0,0,0.25);
+  background-clip:padding-box;
+  border:3px solid transparent;
+  border-radius:5px;
+  min-height:24px;
+}
+.combo-scroll::-webkit-scrollbar-thumb:hover{
+  background:rgba(0,0,0,0.4);
+  background-clip:padding-box;
+}
+/* Firefox не знає ::-webkit-scrollbar. Умова потрібна, щоб Chrome від 121
+   не побачив scrollbar-width: там він через нього ігнорує всі правила вище. */
+@supports not selector(::-webkit-scrollbar){
+  .combo-scroll{
+    scrollbar-width:thin;
+    scrollbar-color:rgba(0,0,0,0.25) rgba(0,0,0,0.05);
+  }
+}
+
+.submit{
+  width:100%;font-family:var(--font);font-size:var(--text-ui);font-weight:600;color:#fff;
+  background:var(--ink);border:0;border-radius:var(--radius-control);
+  min-height:var(--control-h);padding:14px;cursor:pointer;
+  margin-top:var(--gap-section);
+  transition:background-color var(--motion);
+}
+.submit:hover{background:var(--ink-muted-hover)}
+.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.submit:disabled{opacity:.6;cursor:not-allowed}
+
+/* --- Успіх ----------------------------------------------------------------
+   Не окрема сторінка, а стан над формою: та сама таблетка, що в попапі
+   (контейнер іконки завширшки з висоту, далі напис), стоїть просто над
+   перемикачем розділів і зникає за двадцять секунд. Форма при цьому чиста й
+   готова до наступного звернення - окрема кнопка «повідомити ще» більше
+   не потрібна. Сторінку прокручує до початку, щоб повідомлення не лишилось
+   за кадром, якщо людина стояла внизу біля кнопки.
+
+   Таблетка не вмикається з display:none, а розгортається: рядок сітки їде
+   з 0fr у 1fr, і картка виростає рівно на висоту повідомлення - хоч на один
+   рядок, хоч на два. height:auto не анімується, а max-height довелося б
+   вгадувати наперед, і при двох рядках перехід обривався б на середині.
+   Заразом таблетка завжди в потоці, тож role="status" читалка бачить із
+   першого кадру, а не помічає його раптовою появою. */
+.notice{
+  display:grid;
+  grid-template-rows:0fr;
+  margin-top:0;
+  opacity:0;
+  /* Розгортається тією ж кривою, якою їде плитка розділів - на сторінці
+     одна мова руху. Заливка при цьому набігає вдвічі швидше за коробку:
+     таблетка встигає прочитатись раніше, ніж дорозгорнеться, і поява
+     читається швидкою, лишаючись плавною. */
+  transition:grid-template-rows var(--motion-slide),
+             margin-top var(--motion-slide),
+             opacity var(--motion-fade);
+}
+/* .show вмикає JavaScript; body.sent лишається для сторінки, яку сервер
+   віддав уже з успіхом - там таблетка просто є, без появи. */
+.notice.show,
+body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
+/* Обрізає вміст, поки рядок нижчий за нього; min-height:0 обов'язковий -
+   без нього елемент відмовиться стиснутись до нуля й розгортати буде нічого.
+   Висоту тримає контейнер іконки, а не min-height: 48px мусять лишитись
+   стисливими. */
+.notice-pill{
+  overflow:hidden;min-height:0;
+  display:flex;align-items:center;
+  background:var(--status-green);
+  border-radius:var(--radius-control);
+  font-size:var(--text-ui);font-weight:500;color:var(--ink);
+}
+/* Збій відправки - та сама таблетка в оранжевому: колір несе стан, напис на
+   ньому чорний. Насичений #FF831A лишається контуром незаповненого поля,
+   як на мапі він лишається межею області. */
+.notice--error .notice-pill{background:var(--status-orange)}
+/* Квадрат завширшки з таблетку - як .icon-container у попапі, тільки за її
+   висотою: 48 замість 40. Він же й задає висоту однорядковій таблетці. */
+.notice-icon{
+  flex:none;width:var(--control-h);height:var(--control-h);
+  display:flex;align-items:center;justify-content:center;
+}
+/* Іконка - половина висоти таблетки, те саме співвідношення, що в попапі
+   (20 з 40). При 48 це рівно 24, з полем 12px навколо. display тут не
+   ставимо навмисно: .notice-icon img переважив би правила нижче за
+   специфічністю (клас + тег проти класу), і видно було б обидві іконки. */
+.notice-icon img{width:24px;height:24px}
+.notice-icon-error{display:none}
+.notice--error .notice-icon-ok{display:none}
+.notice--error .notice-icon-error{display:block}
+.notice-text{padding:12px 16px 12px 0;line-height:1.35}
+
+/* Підвал - той самий рядок, що на сторінці 404 */
+.copy{
+  margin:var(--gap-section) 0 0;text-align:center;
+  font-family:var(--font-mono);font-size:var(--text-footer);font-weight:500;
+  color:var(--ink-muted);letter-spacing:.14em;text-transform:uppercase;margin-right:-.14em;
+}
+
+/* ==========================================================================
+   МОБІЛЬНЕ
+   ========================================================================== */
+
+/* На 320px три вкладки ділять ~232px, тобто по 77px на кожну, а «Сповіщення»
+   при 14px займає ~73px - слово впритул торкалось сусіднього або лізло в
+   другий рядок. Тут сторінка й картка віддають по 4px поля з кожного боку,
+   а кегль вкладок падає до 13: слово стає ~68px при 78px доступних. */
+@media (max-width:420px){
+  body{padding-left:16px;padding-right:16px}
+  .card{padding-left:16px;padding-right:16px}
+  .seg button{font-size:13px;padding:12px 2px;letter-spacing:-.01em}
+  /* З відкритою клавіатурою вікно вдвічі нижче: список не має затуляти
+     все, що лишилось видимим. */
+  .combo-scroll{max-height:min(180px,40vh)}
+}
+
+/* Палець - не курсор: рядок списку піднімається до 44px, мінімальної цілі
+   для дотику. У полях і варіантах уже 48. */
+@media (pointer:coarse){
+  .combo-option{min-height:44px}
+}
+
+/* На дотику ховер «залипає»: після тапу елемент лишається підсвіченим, доки
+   людина не торкнеться чогось іншого, і виглядає обраним, хоч ним не є.
+   Тому там, де ховера не буває, він скасовується - лишається тільки те,
+   що справді означає стан. */
+@media (hover:none){
+  .seg button:not([aria-checked="true"]):hover{color:var(--ink-muted)}
+  .opt span:hover{border-color:var(--hairline)}
+  .opt input:checked + span{border-color:var(--ink)}
+  .input:hover,.textarea:hover{border-color:var(--hairline)}
+  .combo-option:hover{background:transparent}
+  .combo-option[aria-selected="true"]{background:var(--page)}
+  .submit:hover{background:var(--ink)}
+  .block.invalid .input,
+  .block.invalid .textarea,
+  .block.invalid .opt span{border-color:var(--alert)}
+}
+
+/* Перевага стосується руху, а не будь-якої зміни стану: згасанням і зміною
+   кольору рух якраз і рекомендують заміняти, тож вони лишаються. Миттєвим
+   стає те, що їде або розгортається, - плитка розділів, висота картки й
+   розгортання таблетки. Напис вкладки при цьому теж перемикається коротко:
+   0.28s кольору при миттєвому стрибку плитки виглядали б відв'язано. */
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important}
+  .seg-slider,.card{transition:none}
+  .seg button{transition:color var(--motion)}
+  .notice{transition:opacity var(--motion-fade)}
+}

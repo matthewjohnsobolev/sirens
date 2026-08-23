@@ -1,11 +1,10 @@
 /**
- * Сторінка «Повідомити про збій»: розділи, автодоповнення міста,
- * перевірка полів і відправка.
+ * Сторінка «Повідомити про збій»: розділи, автодоповнення міста й району,
+ * вибір часу події, перевірка полів і відправка.
  *
- * Перелік розділів, варіантів і міст сюди не вписаний - він приїздить із
+ * Перелік розділів, варіантів, міст, районів і опцій часу приїздить із
  * сервера в <script id="report-config">, бо тим самим переліком сервер
- * перевіряє те, що прийшло (web/issue.py). Другий примірник тут
- * розійшовся б із ним першим.
+ * перевіряє те, що прийшло (web/issue.py).
  */
 
 const CONFIG = JSON.parse(document.getElementById('report-config').textContent);
@@ -17,35 +16,78 @@ const SETS = CONFIG.sets;
 /* Вкладка -> назва, під якою звернення прийде в Sentry. */
 const TAB_CATEGORIES = CONFIG.categories;
 
-/* Варіанти тривалості запізнення для розділу «Сповіщення». */
-const DELAY_OPTIONS = CONFIG.delay_options || ['Менше 5 хв', '5 - 10 хв', '10 хв і більше'];
+/* Варіанти часу, коли сталася проблема. */
+const TIME_OPTIONS = CONFIG.time_options || ['Щойно', 'Менше години тому', 'Вибрати дату і час'];
 
-const form      = document.getElementById('report-form');
-const opts      = document.getElementById('opts');
-const bDelay    = document.getElementById('block-delay');
-const optsDelay = document.getElementById('opts-delay');
-const tabs      = [...document.querySelectorAll('.seg button')];
-const segSlider = document.getElementById('seg-slider');
-const city      = document.getElementById('city');
-const comment   = document.getElementById('comment');
-const tg        = document.getElementById('tg');
-const notice    = document.getElementById('notice');
-const noticeText= document.getElementById('notice-text');
-const bIssue    = document.getElementById('block-issue');
-const bCity     = document.getElementById('block-city');
-const bComment  = document.getElementById('block-comment');
-const inputCat  = document.getElementById('input-category');
-const inputSub  = document.getElementById('input-sub-option');
+/* Списки міст та районів */
+const CITIES = CONFIG.cities || [];
+const DISTRICTS = CONFIG.districts || [];
 
-/* Обраний варіант кожного розділу окремо: перемкнувся туди-сюди - вибір
-   лишився. Ключі беруться з довідника, тож новий розділ на сервері не
-   потребує правки тут. */
+const form           = document.getElementById('report-form');
+const opts           = document.getElementById('opts');
+const bTime          = document.getElementById('block-time');
+const optsTime       = document.getElementById('opts-time');
+const errTime        = document.getElementById('err-time');
+const timePickerWrap = document.getElementById('time-picker-wrap');
+const exactDatetime  = document.getElementById('exact-datetime');
+const pickerDate     = document.getElementById('picker-date');
+const pickerTime     = document.getElementById('picker-time');
+const tabs           = [...document.querySelectorAll('.seg button')];
+const segSlider      = document.getElementById('seg-slider');
+const city           = document.getElementById('city');
+const labelCity      = document.getElementById('label-city');
+const errCity        = document.getElementById('err-city');
+const comment        = document.getElementById('comment');
+const tg             = document.getElementById('tg');
+const notice         = document.getElementById('notice');
+const noticeText     = document.getElementById('notice-text');
+const bIssue         = document.getElementById('block-issue');
+const bCity          = document.getElementById('block-city');
+const bComment       = document.getElementById('block-comment');
+const inputCat       = document.getElementById('input-category');
+const inputSub       = document.getElementById('input-sub-option');
+
+/* Обраний варіант кожного розділу окремо */
 const choice = Object.fromEntries(Object.keys(SETS).map(id => [id, null]));
-let delayChoice = null;
+const locationByTab = Object.fromEntries(Object.keys(SETS).map(id => [id, '']));
+let timeChoice = null;
+
+const UK_MONTHS = ['січ.', 'лют.', 'берез.', 'квіт.', 'трав.', 'черв.', 'лип.', 'серп.', 'верес.', 'жовт.', 'листоп.', 'груд.'];
+
+function getDefaultDateStr(dateObj = new Date()) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function getDefaultTimeStr(dateObj = new Date()) {
+  return String(dateObj.getHours()).padStart(2, '0') + ':' + String(dateObj.getMinutes()).padStart(2, '0');
+}
+
+let selectedDate = new Date();
+let selectedTimeStr = getDefaultTimeStr();
 let tab = Object.keys(SETS)[0];
-/* Розділ без переліку - той, де суть звернення несе коментар, а не вибір.
-   Питаємо про це самі дані, а не назву вкладки: розділ може називатись
-   як завгодно, порожній перелік означає те саме. */
+
+function formatUkrainianDateTime(dateObj, timeStr) {
+  const d = dateObj.getDate();
+  const m = UK_MONTHS[dateObj.getMonth()];
+  let hh = '00', mm = '00';
+  if (timeStr && /^\d{1,2}:\d{2}$/.test(timeStr)) {
+    const parts = timeStr.split(':');
+    hh = parts[0].padStart(2, '0');
+    mm = parts[1];
+  } else {
+    hh = String(dateObj.getHours()).padStart(2, '0');
+    mm = String(dateObj.getMinutes()).padStart(2, '0');
+  }
+  return `${d} ${m} ${hh}:${mm}`;
+}
+
+function getFormattedCustomDateTime() {
+  return formatUkrainianDateTime(selectedDate, selectedTimeStr);
+}
+
 const isOther = () => SETS[tab].length === 0;
 
 function render(){
@@ -55,52 +97,198 @@ function render(){
       <span>${t}</span>
     </label>`).join('');
 
-  renderDelay();
-  updateDelayVisibility();
+  renderTime();
 }
 
-function renderDelay(){
-  if (!optsDelay) return;
-  optsDelay.innerHTML = DELAY_OPTIONS.map(t => `
+function renderTime(){
+  if (!optsTime) return;
+  optsTime.innerHTML = TIME_OPTIONS.map(t => `
     <label class="opt">
-      <input type="radio" name="delay" value="${t}" ${delayChoice === t ? 'checked' : ''}>
+      <input type="radio" name="time_opt" value="${t}" ${timeChoice === t ? 'checked' : ''}>
       <span>${t}</span>
     </label>`).join('');
+  updateTimePickerVisibility();
 }
 
-function updateDelayVisibility(){
-  const showDelay = (tab === 'alerts' && choice[tab] === '0');
-  document.body.classList.toggle('has-delay', showDelay);
-  if (!showDelay && bDelay) {
-    bDelay.classList.remove('invalid');
+function updateTimePickerVisibility(){
+  if (!timePickerWrap) return;
+  const isCustom = (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час');
+  timePickerWrap.classList.toggle('open', isCustom);
+  if (!isCustom) {
+    if (bTime) bTime.classList.remove('picker-active');
+    if (exactDatetime) {
+      exactDatetime.value = '';
+      exactDatetime.classList.remove('active');
+    }
   }
 }
 
-/* Варіант їде окремо від запізнення: сервер тримає їх двома полями, і
-   склеювати їх тут означало б розійтися з ним. Саме запізнення несе радіо
-   з name="delay" - окремого прихованого поля йому не треба. */
+function updateTabUI(){
+  if (tab === 'alerts') {
+    if (labelCity) labelCity.innerHTML = 'Місто <span class="opt-mark">— необов\'язково</span>';
+    if (city) {
+      city.placeholder = 'Наприклад, Харків';
+      city.setAttribute('aria-label', 'Місто');
+    }
+    if (errCity) errCity.textContent = 'Вкажіть, будь ласка, місто — без нього ми не знайдемо збій.';
+  } else if (tab === 'map') {
+    if (labelCity) labelCity.innerHTML = 'Район <span class="opt-mark">— необов\'язково</span>';
+    if (city) {
+      city.placeholder = 'Наприклад, Бучанський район';
+      city.setAttribute('aria-label', 'Район');
+    }
+    if (errCity) errCity.textContent = 'Вкажіть, будь ласка, район — без нього ми не знайдемо збій.';
+  } else {
+    if (labelCity) labelCity.innerHTML = 'Місто або район <span class="opt-mark">— необов\'язково</span>';
+    if (city) {
+      city.placeholder = 'Наприклад, Харків або Бучанський район';
+      city.setAttribute('aria-label', 'Місто або район');
+    }
+    if (errCity) errCity.textContent = 'Вкажіть, будь ласка, місто або район.';
+  }
+}
+
 function syncInputs(){
   inputCat.value = TAB_CATEGORIES[tab];
   inputSub.value = choice[tab] !== null ? (SETS[tab][choice[tab]] || '') : '';
 }
 
 opts.addEventListener('change', e => {
-  const prev = choice[tab];
   choice[tab] = e.target.value;
-  if (tab === 'alerts' && choice[tab] === '0' && prev !== '0') {
-    delayChoice = null;
-  }
   syncInputs();
   bIssue.classList.remove('invalid');
-  updateDelayVisibility();
-  renderDelay();
 });
 
-if (optsDelay) {
-  optsDelay.addEventListener('change', e => {
-    delayChoice = e.target.value;
-    syncInputs();
-    bDelay.classList.remove('invalid');
+function openDatePicker() {
+  if (!pickerDate) return;
+  if (!pickerDate.value) {
+    pickerDate.value = getDefaultDateStr(selectedDate);
+  }
+  if (exactDatetime) {
+    const rect = exactDatetime.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < 320) {
+      window.scrollBy({ top: 320 - spaceBelow, behavior: 'smooth' });
+    }
+  }
+  try {
+    if (typeof pickerDate.showPicker === 'function') {
+      pickerDate.showPicker();
+      return;
+    }
+  } catch (e) {}
+  pickerDate.focus();
+}
+
+function openTimePicker() {
+  if (!pickerTime) return;
+  if (!pickerTime.value) {
+    pickerTime.value = selectedTimeStr;
+  }
+  if (exactDatetime) {
+    const rect = exactDatetime.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < 280) {
+      window.scrollBy({ top: 280 - spaceBelow, behavior: 'smooth' });
+    }
+  }
+  try {
+    if (typeof pickerTime.showPicker === 'function') {
+      pickerTime.showPicker();
+      return;
+    }
+  } catch (e) {}
+  pickerTime.focus();
+}
+
+if (optsTime) {
+  optsTime.addEventListener('click', e => {
+    const optLabel = e.target.closest('.opt');
+    if (!optLabel) return;
+    const radio = optLabel.querySelector('input[type="radio"]');
+    if (!radio) return;
+    const val = radio.value;
+    if (val === 'Вибрати дату і час' || val === 'Вибрати час') {
+      timeChoice = val;
+      radio.checked = true;
+      if (bTime) {
+        bTime.classList.remove('picker-active', 'picker-invalid', 'invalid');
+      }
+      selectedDate = new Date();
+      selectedTimeStr = getDefaultTimeStr(selectedDate);
+      if (exactDatetime) {
+        exactDatetime.value = '';
+        exactDatetime.placeholder = getFormattedCustomDateTime();
+        exactDatetime.classList.remove('active');
+      }
+      if (pickerDate) pickerDate.value = getDefaultDateStr(selectedDate);
+      if (pickerTime) pickerTime.value = selectedTimeStr;
+      updateTimePickerVisibility();
+    }
+  });
+
+  optsTime.addEventListener('change', e => {
+    timeChoice = e.target.value;
+    const isCustom = (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час');
+    if (isCustom) {
+      if (bTime) {
+        bTime.classList.remove('picker-active', 'picker-invalid');
+      }
+      selectedDate = new Date();
+      selectedTimeStr = getDefaultTimeStr(selectedDate);
+      if (exactDatetime) {
+        exactDatetime.value = '';
+        exactDatetime.placeholder = getFormattedCustomDateTime();
+        exactDatetime.classList.remove('active');
+      }
+      if (pickerDate) pickerDate.value = getDefaultDateStr(selectedDate);
+      if (pickerTime) pickerTime.value = selectedTimeStr;
+    } else {
+      if (bTime) bTime.classList.remove('picker-active', 'picker-invalid');
+    }
+    if (bTime) bTime.classList.remove('invalid');
+    renderTime();
+  });
+}
+
+if (exactDatetime) {
+  exactDatetime.addEventListener('click', e => {
+    e.preventDefault();
+    timeChoice = 'Вибрати дату і час';
+    if (bTime) {
+      bTime.classList.add('picker-active');
+      bTime.classList.remove('invalid', 'picker-invalid');
+    }
+    exactDatetime.classList.add('active');
+    openDatePicker();
+  });
+}
+
+if (pickerDate) {
+  pickerDate.addEventListener('change', () => {
+    if (pickerDate.value) {
+      selectedDate = new Date(pickerDate.value + 'T00:00:00');
+    }
+    if (bTime) {
+      bTime.classList.add('picker-active');
+      bTime.classList.remove('invalid', 'picker-invalid');
+    }
+    if (exactDatetime) exactDatetime.classList.add('active');
+    setTimeout(openTimePicker, 120);
+  });
+}
+
+if (pickerTime) {
+  pickerTime.addEventListener('change', () => {
+    if (pickerTime.value) {
+      selectedTimeStr = pickerTime.value;
+    }
+    exactDatetime.value = getFormattedCustomDateTime();
+    if (bTime) {
+      bTime.classList.add('picker-active');
+      bTime.classList.remove('invalid', 'picker-invalid');
+    }
+    if (exactDatetime) exactDatetime.classList.add('active');
   });
 }
 
@@ -116,6 +304,9 @@ tabs.forEach((b, i) => {
 });
 
 function select(i){
+  if (city && tab) {
+    locationByTab[tab] = city.value;
+  }
   tabs.forEach((x, j) => {
     x.setAttribute('aria-checked', String(j === i));
     x.tabIndex = j === i ? 0 : -1;
@@ -125,11 +316,16 @@ function select(i){
   }
   tab = tabs[i].dataset.tab;
   document.body.classList.toggle('tab-other', isOther());
+  if (city) {
+    city.value = locationByTab[tab] || '';
+  }
+  comboClose();
   /* помилки попереднього розділу не переносяться на новий */
   bIssue.classList.remove('invalid');
-  if (bDelay) bDelay.classList.remove('invalid');
+  if (bTime) bTime.classList.remove('invalid');
   bCity.classList.remove('invalid');
   bComment.classList.remove('invalid');
+  updateTabUI();
   syncInputs();
   render();
 }
@@ -222,12 +418,7 @@ function attachScrollbar(view){
   return {update};
 }
 
-/* --- Автодоповнення міста -------------------------------------------------
-   Підказує рівно ті міста, куди йде сповіщення: скаржаться на те, чого
-   чекали, а чекати його можна тільки там, де є канал. Поле при цьому
-   лишається вільним - список підказує, але не обмежує. */
-const CITIES = CONFIG.cities;
-
+/* --- Автодоповнення міста й району (тільки за префіксом) ------------------- */
 const combo      = document.getElementById('combo-city');
 const cityList   = document.getElementById('city-list');
 const cityScroll = attachScrollbar(cityList);
@@ -237,13 +428,18 @@ let comboIndex  = -1;
 const norm = s => s.toLowerCase().replace(/ʼ|'|’/g, "'").trim();
 
 function comboMatch(q){
-  if(!q) return CITIES;
+  const items = (tab === 'alerts') ? CITIES
+              : (tab === 'map') ? DISTRICTS
+              : [...CITIES, ...DISTRICTS];
+  if(!q) return items;
   const n = norm(q);
-  /* спочатку ті, що починаються на введене, потім ті, де воно всередині:
-     «Рівне» має стояти вище за «Кривий Ріг», коли набрано «рів» */
-  const starts = CITIES.filter(c => norm(c).startsWith(n));
-  const inside = CITIES.filter(c => !norm(c).startsWith(n) && norm(c).includes(n));
-  return [...starts, ...inside];
+  /* Пошук виключно за префіксом (початком слова або початком назви) */
+  return items.filter(item => {
+    const full = norm(item);
+    if (full.startsWith(n)) return true;
+    const words = full.split(/[\s\.\-]+/).filter(Boolean);
+    return words.some(w => w.startsWith(n));
+  });
 }
 
 function comboRender(q){
@@ -255,7 +451,17 @@ function comboRender(q){
   cityList.innerHTML = comboItems.map((c, i) => {
     let label = c;
     if(n){
-      const at = norm(c).indexOf(n);
+      const full = norm(c);
+      let at = -1;
+      if (full.startsWith(n)) {
+        at = 0;
+      } else {
+        const re = new RegExp(`(^|[\\s\\.\\-])${n.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}`, 'i');
+        const m = c.match(re);
+        if (m) {
+          at = m.index + m[1].length;
+        }
+      }
       if(at > -1){
         label = c.slice(0, at) + '<b>' + c.slice(at, at + n.length) + '</b>' + c.slice(at + n.length);
       }
@@ -263,8 +469,6 @@ function comboRender(q){
     return `<li class="combo-option" role="option" id="city-opt-${i}" aria-selected="false">${label}</li>`;
   }).join('');
   comboOpen();
-  /* Довжину повзунка міряємо після відкриття: у закритого списку висоти
-     немає, і міряти було б нічого. */
   if(cityScroll) cityScroll.update();
 }
 
@@ -295,11 +499,13 @@ function comboHighlight(i){
 function comboPick(i){
   if(i < 0 || i >= comboItems.length) return;
   city.value = comboItems[i];
+  if (tab) locationByTab[tab] = city.value;
   bCity.classList.remove('invalid');
   comboClose();
 }
 
 city.addEventListener('input', () => {
+  if (tab) locationByTab[tab] = city.value;
   bCity.classList.remove('invalid');
   comboRender(city.value);
 });
@@ -314,7 +520,6 @@ city.addEventListener('keydown', e => {
     const len  = comboItems.length;
     comboHighlight((comboIndex + step + len + (comboIndex === -1 && step === -1 ? 1 : 0)) % len);
   } else if(e.key === 'Enter'){
-    /* Enter підтверджує підказку, а не надсилає форму */
     if(combo.classList.contains('open') && comboIndex > -1){
       e.preventDefault();
       comboPick(comboIndex);
@@ -324,8 +529,6 @@ city.addEventListener('keydown', e => {
   }
 });
 
-/* mousedown, а не click: інакше поле встигає втратити фокус і список
-   закривається раніше, ніж спрацює вибір */
 cityList.addEventListener('mousedown', e => {
   const li = e.target.closest('.combo-option');
   if(!li) return;
@@ -339,8 +542,6 @@ cityList.addEventListener('mousemove', e => {
   if(li) comboHighlight([...cityList.children].indexOf(li));
 });
 
-/* pointerdown, а не click: на iOS click не завжди спливає з неінтерактивних
-   елементів, і список лишався б відкритим після тапу повз нього. */
 document.addEventListener('pointerdown', e => {
   if(!combo.contains(e.target)) comboClose();
 });
@@ -348,13 +549,55 @@ document.addEventListener('pointerdown', e => {
 const COMMENT_MAX = 250;
 const errComment = bComment.querySelector('.err');
 
-comment.addEventListener('input', () => {
+function checkCommentOverflow() {
+  let hasOverflow = false;
   if (comment.value.length > COMMENT_MAX) {
     comment.value = comment.value.slice(0, COMMENT_MAX);
+    hasOverflow = true;
   }
-  if (bComment.classList.contains('invalid') && (comment.value.trim().length > 0 || !isOther())) {
-    bComment.classList.remove('invalid');
+  while (comment.scrollHeight > comment.clientHeight && comment.value.length > 0) {
+    comment.value = comment.value.slice(0, -1);
+    hasOverflow = true;
   }
+  if (hasOverflow) {
+    bComment.classList.add('invalid');
+    if (errComment) {
+      errComment.textContent = 'Скоротіть, будь ласка, коментар — він занадто довгий.';
+    }
+  } else {
+    if (bComment.classList.contains('invalid')) {
+      const isOtherTab = isOther();
+      if (!isOtherTab || comment.value.trim().length > 0) {
+        bComment.classList.remove('invalid');
+        if (errComment) {
+          errComment.textContent = 'Опишіть, будь ласка, що сталося — без цього ми не знатимемо, що шукати.';
+        }
+      }
+    }
+  }
+}
+
+comment.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Tab', 'Escape'].includes(e.key)) {
+    return;
+  }
+  const hasSelection = comment.selectionStart !== comment.selectionEnd;
+  if (!hasSelection && (comment.scrollHeight > comment.clientHeight || comment.value.length >= COMMENT_MAX)) {
+    e.preventDefault();
+    bComment.classList.add('invalid');
+    if (errComment) {
+      errComment.textContent = 'Скоротіть, будь ласка, коментар — він занадто довгий.';
+    }
+  }
+});
+
+comment.addEventListener('paste', () => {
+  setTimeout(checkCommentOverflow, 0);
+});
+
+comment.addEventListener('input', () => {
+  checkCommentOverflow();
 });
 
 form.addEventListener('submit', async (e) => {
@@ -365,24 +608,44 @@ form.addEventListener('submit', async (e) => {
   }
 
   const isOtherTab = isOther();
-  const needsDelay = tab === 'alerts' && choice[tab] === '0';
-  const noIssue   = !isOtherTab && (choice[tab] === null || choice[tab] === undefined);
-  const noDelay   = needsDelay && !delayChoice;
+  const noIssue = !isOtherTab && (choice[tab] === null || choice[tab] === undefined);
+  
+  let noTime = false;
+  let missingExactTime = false;
+  if (!isOtherTab) {
+    if (!timeChoice) {
+      noTime = true;
+    } else if ((timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час') && !exactDatetime.value.trim()) {
+      noTime = true;
+      missingExactTime = true;
+    }
+  }
+
+  if (errTime) {
+    if (missingExactTime) {
+      errTime.textContent = 'Вкажіть, будь ласка, дату і час.';
+    } else {
+      errTime.textContent = 'Оберіть, будь ласка, коли це сталося.';
+    }
+  }
+
   const noComment = isOtherTab && !comment.value.trim();
-  const noCity    = !isOtherTab && !city.value.trim();
+  const noLocation = !isOtherTab && !city.value.trim();
 
   bIssue.classList.toggle('invalid', noIssue);
-  if (bDelay) bDelay.classList.toggle('invalid', noDelay);
+  if (bTime) {
+    bTime.classList.toggle('invalid', noTime);
+    bTime.classList.toggle('picker-invalid', missingExactTime);
+  }
   bComment.classList.toggle('invalid', noComment);
   if (errComment) {
     errComment.textContent = 'Опишіть, будь ласка, що сталося — без цього ми не знатимемо, що шукати.';
   }
-  bCity.classList.toggle('invalid', noCity);
+  bCity.classList.toggle('invalid', noLocation);
 
-  if(noIssue || noDelay || noComment || noCity){
-    /* фокус - на першому незаповненому в порядку показу */
+  if(noIssue || noTime || noComment || noLocation){
     const first = noIssue ? opts.querySelector('input')
-                : noDelay ? (optsDelay ? optsDelay.querySelector('input') : null)
+                : noTime ? ((timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час') && exactDatetime ? exactDatetime : (optsTime ? optsTime.querySelector('input') : null))
                 : noComment ? comment
                 : city;
     if (first) first.focus();
@@ -397,10 +660,26 @@ form.addEventListener('submit', async (e) => {
   const formData = new FormData();
   formData.append('category', TAB_CATEGORIES[tab]);
   formData.append('sub_option', choice[tab] !== null ? (SETS[tab][choice[tab]] || '') : '');
-  if (delayChoice) {
-    formData.append('delay', delayChoice);
+  
+  const isCustomTime = (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час');
+  const chosenTime = isCustomTime
+    ? exactDatetime.value.trim()
+    : (timeChoice || '');
+  if (chosenTime) {
+    formData.append('time', chosenTime);
+    if (isCustomTime) {
+      formData.append('exact_time', `${pickerDate.value || getDefaultDateStr(selectedDate)} ${pickerTime.value || selectedTimeStr}`);
+    }
   }
-  formData.append('city', city.value.trim());
+
+  const locVal = city.value.trim();
+  if (tab === 'map') {
+    formData.append('district', locVal);
+    formData.append('city', locVal);
+  } else {
+    formData.append('city', locVal);
+  }
+
   formData.append('message', comment.value.trim());
   formData.append('contact', tg.value.trim());
 
@@ -446,9 +725,21 @@ const MSG = {
 function resetForm(){
   form.reset();
   Object.keys(choice).forEach(k => choice[k] = null);
-  delayChoice = null;
+  Object.keys(locationByTab).forEach(k => locationByTab[k] = '');
+  if (city) city.value = '';
+  timeChoice = null;
+  selectedDate = new Date();
+  selectedTimeStr = getDefaultTimeStr();
+  if (exactDatetime) {
+    exactDatetime.value = '';
+    exactDatetime.placeholder = getFormattedCustomDateTime();
+    exactDatetime.classList.remove('active');
+  }
+  if (pickerDate) pickerDate.value = '';
+  if (pickerTime) pickerTime.value = '';
+  renderTime();
   bIssue.classList.remove('invalid');
-  if (bDelay) bDelay.classList.remove('invalid');
+  if (bTime) bTime.classList.remove('invalid', 'picker-active');
   bCity.classList.remove('invalid');
   bComment.classList.remove('invalid');
   if (errComment) errComment.textContent = 'Опишіть, будь ласка, що сталося — без цього ми не знатимемо, що шукати.';
@@ -479,6 +770,7 @@ function showNotice(kind, text){
   }, NOTICE_MS);
 }
 
+if (exactDatetime) exactDatetime.placeholder = getFormattedCustomDateTime();
 select(0);
 
 /* Якщо сторінку віддав сервер уже з успіхом (форма пішла звичайним POST,

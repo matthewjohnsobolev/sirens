@@ -94,19 +94,60 @@ body{
 #report-form{display:flex;flex-direction:column}
 .seg{order:0}
 #block-issue{order:1}
-#block-delay{order:2;display:none}
+#block-time{order:2}
 #block-city{order:3}
 #block-comment{order:4}
 #block-tg{order:5}
 .submit{order:6}
 body.tab-other #block-issue{display:none}
-body.tab-other #block-delay{display:none !important}
 body.tab-other #block-comment{order:1}
-/* У «Іншому» коментар - єдине джерело подробиць, тож він обов'язковий, а місто стає необов'язковим */
+body.tab-other #block-time{order:2}
+body.tab-other #block-city{order:3}
+/* У «Іншому» коментар - єдине джерело подробиць, тож він обов'язковий, а місто та час стають необов'язковими */
 body.tab-other #block-comment .opt-mark{display:none}
 #block-city .opt-mark{display:none}
 body.tab-other #block-city .opt-mark{display:inline}
-body.has-delay #block-delay{display:block}
+#block-time .opt-mark{display:none}
+body.tab-other #block-time .opt-mark{display:inline}
+
+.time-picker{
+  margin-top:var(--gap-tight);
+  display:none;
+}
+.time-picker.open{
+  display:block;
+}
+.datetime-wrap{
+  position:relative;
+  width:100%;
+}
+.input-datetime{
+  font-family:var(--font-mono, 'JetBrains Mono', monospace);
+  font-size:var(--text-body);
+  letter-spacing:.02em;
+  cursor:pointer;
+  user-select:none;
+}
+.input-datetime.active,
+.input-datetime:focus{
+  border-color:var(--ink);
+  box-shadow:inset 0 0 0 1px var(--ink);
+}
+#block-time.picker-active #opts-time .opt input:checked + span{
+  border-color:var(--hairline);
+  box-shadow:none;
+}
+#block-time.picker-active #opts-time .opt span:hover{
+  border-color:var(--hairline-hover);
+}
+.picker-hidden{
+  position:absolute;
+  top:0;left:0;
+  width:100%;height:100%;
+  opacity:0;
+  pointer-events:none;
+  border:0;padding:0;margin:0;
+}
 
 /* Розділи */
 .seg{
@@ -183,13 +224,6 @@ body.has-delay #block-delay{display:block}
 .opt input:checked + span{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 .opt input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
 
-/* Варіанти тривалості запізнення моноширинним шрифтом */
-.opts--mono .opt span{
-  font-family:var(--font-mono);
-  font-size:14px;
-  letter-spacing:.01em;
-}
-
 /* Поля. -webkit-appearance:none - для iOS: без нього Safari домальовує полю
    власну рамку з внутрішньою тінню і своє скруглення поверх наших. */
 .input,.textarea{
@@ -204,27 +238,48 @@ body.has-delay #block-delay{display:block}
 }
 .textarea{
   display:block;
-  height:140px;
   min-height:140px;
+  height:140px;
+  max-height:140px;
   resize:none;
-  overflow-y:auto;
-  overflow-x:hidden;
+  overflow:hidden;
   overflow-wrap:break-word;
-  line-height:1.5;
-  scrollbar-width:none;
-  -ms-overflow-style:none;
+  word-break:break-word;
+  line-height:1.4;
+  padding:12px 16px;
+  box-sizing:border-box;
 }
-.textarea::-webkit-scrollbar{display:none}
 /* Нік - ідентифікатор: посимвольна точність важливіша за читабельність
-   речення. Єдине поле форми з моношрифтом. */
+   речення. */
 .input-id{font-family:var(--font-mono);letter-spacing:.01em}
+.input.input-datetime,
+.input-datetime{
+  font-family:var(--font-mono, 'JetBrains Mono', monospace);
+  font-size:15px;
+  letter-spacing:.01em;
+  cursor:pointer;
+  user-select:none;
+}
 /* Підказка в полі - не введений текст, а пояснення, тож кегль інтерфейсу.
    Кегль самого поля лишається 16px, тому iOS не зумить. */
 .input::placeholder,.textarea::placeholder{
   font-family:var(--font);font-size:var(--text-ui);font-weight:400;color:var(--placeholder);
 }
+.input.input-datetime::placeholder,
+.input-datetime::placeholder{
+  font-family:var(--font-mono, 'JetBrains Mono', monospace);
+  font-size:15px;
+  font-weight:400;
+  color:var(--placeholder);
+  opacity:1;
+}
 .input:hover,.textarea:hover{border-color:var(--hairline-hover)}
 .input:focus,.textarea:focus{outline:0;border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.input.input-datetime.active,
+.input-datetime.active{
+  border-color:var(--ink);
+  box-shadow:inset 0 0 0 1px var(--ink);
+}
 
 /* Рядок під блоком - одне місце для двох станів: спокійне пояснення сірим
    і повідомлення про незаповнене поле червоним. Однакові кегль, відступ
@@ -242,6 +297,16 @@ body.has-delay #block-delay{display:block}
 .block.invalid .input,
 .block.invalid .textarea,
 .block.invalid .opt span{border-color:var(--explosion);box-shadow:inset 0 0 0 1px var(--explosion)}
+
+#block-time.picker-invalid .opts .opt span,
+#block-time.picker-invalid .opts .opt input:checked + span{
+  border-color:var(--hairline);
+  box-shadow:none;
+}
+#block-time.picker-invalid .input-datetime{
+  border-color:var(--explosion);
+  box-shadow:inset 0 0 0 1px var(--explosion);
+}
 
 /* Автодоповнення міста. Нативний <datalist> малює системний список, який не
    підпорядковується жодному токену продукту, тож список власний.
@@ -426,6 +491,16 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
 /* ==========================================================================
    МОБІЛЬНЕ
    ========================================================================== */
+
+@media (max-width:600px){
+  /* На мобільних пристроях переносимо випадний список автодоповнення наверх над полем,
+     щоб його не перекривала екранна клавіатура. */
+  .combo-list{
+    top:auto;
+    bottom:calc(100% + 6px);
+    box-shadow:0 -3px 14px rgba(0,0,0,0.15);
+  }
+}
 
 /* На 320px три вкладки ділять ~232px, тобто по 77px на кожну, а «Сповіщення»
    при 14px займає ~73px - слово впритул торкалось сусіднього або лізло в

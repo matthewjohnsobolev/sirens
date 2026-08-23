@@ -10,7 +10,7 @@
 порядок кнопок усередині розділу.
 """
 
-from config import BROADCAST_CITIES
+from config import BROADCAST_CITIES, DISTRICT_CONFIG
 
 # Розділ - це не тема листа, а місце, де шукати збій: сповіщення живуть у
 # ботові, мапа - у вебі, решта не має спільного місця взагалі.
@@ -62,9 +62,6 @@ CATEGORIES = (
         'tab': 'Мапа',
         'name': 'Мапа тривог',
         'en': 'Alert map',
-        # Два симетричні збої (не показала тривогу / показала зайву),
-        # залипання після відбою і неправильний час у таблетці - це різні
-        # речі, і шукати їх доводиться в різних місцях.
         'options': (
             {
                 'key': 'oblast_not_highlighted',
@@ -77,14 +74,9 @@ CATEGORIES = (
                 'en': 'Oblast highlighted with no alert',
             },
             {
-                'key': 'alert_stuck',
-                'name': 'Тривога не зникає після відбою',
-                'en': 'Alert stays on after the all-clear',
-            },
-            {
-                'key': 'wrong_duration',
-                'name': 'Час у таблетці не збігається з реальним',
-                'en': 'Duration in the pill is wrong',
+                'key': 'map_not_opening',
+                'name': 'Мапа не відкривається зовсім',
+                'en': 'Map does not open at all',
             },
         ),
     },
@@ -121,20 +113,17 @@ def ukrainian_sort_key(name: str) -> list[int]:
 # Поле при цьому лишається вільним - список підказує, але не обмежує.
 CITIES = tuple(sorted(BROADCAST_CITIES.values(), key=ukrainian_sort_key))
 
-# Наскільки саме спізнилось сповіщення. Питання уточнює один-єдиний варіант -
-# той, що нижче в DELAY_APPLIES_TO; під рештою воно не має сенсу.
-DELAY_OPTIONS = (
-    {'key': 'under_5min', 'name': 'Менше 5 хв', 'en': 'Under 5 min'},
-    {'key': '5_10min', 'name': '5 - 10 хв', 'en': '5-10 min'},
-    {'key': 'over_10min', 'name': '10 хв і більше', 'en': '10 min or more'},
+# Підказка району - повний список районів з конфігурації.
+DISTRICTS = tuple(sorted({conf['name'] for conf in DISTRICT_CONFIG.values()}, key=ukrainian_sort_key))
+
+# Коли саме сталася проблема (обов'язково для сповіщення та мапи, необов'язково для іншого).
+TIME_OPTIONS = (
+    {'key': 'just_now', 'name': 'Щойно', 'en': 'Just now'},
+    {'key': 'under_1hour', 'name': 'Менше години тому', 'en': 'Less than 1 hour ago'},
+    {'key': 'custom', 'name': 'Вибрати дату і час', 'en': 'Specific time'},
 )
 
-DELAY_NAMES = tuple(d['name'] for d in DELAY_OPTIONS)
-
-# Питання про запізнення належить рівно одному варіанту. Тримати цей зв'язок
-# тут, а не рядком у server.py: інакше перейменування варіанта тихо вимикало б
-# підпитання, і сервер відкидав би власну ж форму.
-DELAY_APPLIES_TO = CATEGORIES[0]['options'][0]['name']
+TIME_NAMES = tuple(t['name'] for t in TIME_OPTIONS)
 
 # Українське формулювання -> те, чим воно є для Sentry. Пошук іде за 'name',
 # бо саме він приходить із форми: сторінка не знає ні про ключі, ні про
@@ -143,7 +132,7 @@ CATEGORY_INFO = {c['name']: {'key': c['id'], 'en': c['en']} for c in CATEGORIES}
 OPTION_INFO = {
     o['name']: {'key': o['key'], 'en': o['en']} for c in CATEGORIES for o in c['options']
 }
-DELAY_INFO = {d['name']: {'key': d['key'], 'en': d['en']} for d in DELAY_OPTIONS}
+TIME_INFO = {t['name']: {'key': t['key'], 'en': t['en']} for t in TIME_OPTIONS}
 
 
 def page_config() -> dict:
@@ -159,5 +148,6 @@ def page_config() -> dict:
         'sets': {c['id']: [o['name'] for o in c['options']] for c in CATEGORIES},
         'categories': {c['id']: c['name'] for c in CATEGORIES},
         'cities': list(CITIES),
-        'delay_options': list(DELAY_NAMES),
+        'districts': list(DISTRICTS),
+        'time_options': list(TIME_NAMES),
     }

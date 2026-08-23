@@ -564,6 +564,16 @@ def test_start_date_falls_back_to_remembered_first_seen():
     assert start.date().isoformat() == remembered
 
 
+def test_start_date_does_not_rewind_to_midnight_when_flips_exist_today():
+    """Флип усередині сьогоднішнього дня не має відкочуватись на північ через first_seen."""
+    now = datetime.now(KYIV_TZ).replace(hour=14, minute=0, second=0, microsecond=0)
+    flip_time = now.replace(hour=12, minute=7)
+    flips = [(flip_time, 1)]
+
+    start = _resolve_history_start('alerts', _probe(flips), {'alerts': now.date().isoformat()}, now)
+    assert start == flip_time
+
+
 def test_start_date_is_none_without_a_check():
     now = datetime.now(KYIV_TZ)
     assert _resolve_history_start('tg', _probe(present=False), {}, now) is None

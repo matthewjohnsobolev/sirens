@@ -68,11 +68,17 @@
         <legend class="label" id="label-time">Коли це сталося <span class="opt-mark">— необов'язково</span></legend>
         <div class="opts" id="opts-time"></div>
         <div class="time-picker" id="time-picker-wrap">
-          <div class="datetime-wrap">
-            <input type="text" class="input input-datetime" id="exact-datetime" name="exact_datetime"
-                   readonly placeholder="23 Сер 23:56" autocomplete="off">
-            <input type="date" id="picker-date" tabindex="-1" aria-hidden="true" class="picker-hidden">
-            <input type="time" id="picker-time" tabindex="-1" aria-hidden="true" class="picker-hidden">
+          <div class="datetime-grid">
+            <div class="datetime-wrap">
+              <input type="text" class="input input-datetime" id="exact-date" name="exact_date"
+                     readonly placeholder="23 серп." autocomplete="off" aria-label="Дата">
+              <input type="date" id="picker-date" tabindex="-1" aria-hidden="true" class="picker-hidden">
+            </div>
+            <div class="datetime-wrap">
+              <input type="text" class="input input-datetime" id="exact-time" name="exact_time"
+                     readonly placeholder="23:56" autocomplete="off" aria-label="Час">
+              <input type="time" id="picker-time" tabindex="-1" aria-hidden="true" class="picker-hidden">
+            </div>
           </div>
         </div>
         <p class="err" id="err-time">Оберіть, будь ласка, коли це сталося.</p>

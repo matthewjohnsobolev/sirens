@@ -446,7 +446,9 @@ def _resolve_history_start(
     remembered = first_seen.get(key)
     if remembered:
         try:
-            candidates.append(_midnight(date.fromisoformat(remembered)))
+            remembered_dt = _midnight(date.fromisoformat(remembered))
+            if not candidates or remembered_dt.date() < min(candidates).date():
+                candidates.append(remembered_dt)
         except ValueError:
             log.warning("Stored first-seen date for %s is malformed: %r", key, remembered)
 

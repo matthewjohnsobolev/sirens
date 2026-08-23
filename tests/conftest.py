@@ -58,14 +58,16 @@ def _isolate_alerts_globals():
     # Стан моніторингу теж глобальний: без скидання мітка тиші й вердикт
     # бродкасту протікали б з тесту в тест.
     alerts_main.last_source_message_at = None
-    alerts_main.last_broadcast_ok = None
+    alerts_main.last_broadcast_at = None
     alerts_main.source_silence_reported = False
+    alerts_main.broadcast_silence_reported = False
     yield
     alerts_main.client, alerts_main.redis_client, alerts_main.pg_pool = saved
     alerts_main.running_tasks.clear()
     alerts_main.last_source_message_at = None
-    alerts_main.last_broadcast_ok = None
+    alerts_main.last_broadcast_at = None
     alerts_main.source_silence_reported = False
+    alerts_main.broadcast_silence_reported = False
 
 
 @pytest.fixture

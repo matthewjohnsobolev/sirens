@@ -87,8 +87,9 @@ client: TelegramClient = None
 # source_silence_reported - дедуп події в Sentry, свідомо лише в пам'яті:
 # після рестарту ще-тиха черга дасть одну повторну подію, і це радше добре.
 last_source_message_at: Optional[float] = None
-last_broadcast_ok: Optional[bool] = None
+last_broadcast_at: Optional[float] = None
 source_silence_reported: bool = False
+broadcast_silence_reported: bool = False
 
 CHANNEL_PHOTO_PATHS = {
     "air_raid_alert": f"{IMAGES_PATH}/air-raid-alert.png",
@@ -558,7 +559,7 @@ def log_unrecognised_districts(message_text: str) -> None:
 
 
 LAST_SOURCE_MESSAGE_KEY = "service:alerts:last_source_message_at"
-LAST_BROADCAST_OK_KEY = "service:alerts:last_broadcast_ok"
+LAST_BROADCAST_AT_KEY = "service:alerts:last_broadcast_at"
 
 
 async def record_source_message(moment: Optional[datetime.datetime] = None) -> None:
@@ -586,49 +587,62 @@ async def record_source_message(moment: Optional[datetime.datetime] = None) -> N
 
 
 async def record_broadcast(succeeded: bool) -> None:
-    """Запам'ятати, чим скінчилась остання спроба бродкасту."""
-    global last_broadcast_ok
+    """Запам'ятати, коли востаннє успішно пройшов бродкаст."""
+    global last_broadcast_at
 
-    last_broadcast_ok = bool(succeeded)
+    if not succeeded:
+        return
+
+    now_ts = time.time()
+    last_broadcast_at = now_ts
 
     if not redis_client:
         return
 
     try:
-        await redis_client.set(LAST_BROADCAST_OK_KEY, "1" if succeeded else "0")
+        await redis_client.set(LAST_BROADCAST_AT_KEY, str(int(now_ts)))
     except Exception:
-        log.warning("Failed to store the broadcast verdict in Redis", exc_info=True)
+        log.warning("Failed to store the broadcast timestamp in Redis", exc_info=True)
 
 
 async def _prime_monitoring_state(source_channel) -> None:
     """Відновити стан обох кінців ланцюга на старті.
 
-    Мітку тиші спершу шукаємо в Redis: рестарт воркера не має скидати годинник.
+    Мітку тиші входу спершу шукаємо в Redis: рестарт воркера не має скидати годинник.
     Якщо її там немає - питаємо Telegram про останній пост у джерелі, бо це і є
     справжня відповідь. І лише коли не вийшло ні те, ні те, беремо «зараз»:
     хибна тривога відразу після старту дорожча за пізніше виявлення.
-    """
-    global last_broadcast_ok, last_source_message_at
 
-    stored_seen_at = None
-    stored_verdict = None
+    Мітку виходу (last_broadcast_at) так само відновлюємо з Redis, а коли там
+    порожньо - беремо «зараз», щоб годинник стартував з моменту підняття процесу.
+    """
+    global last_broadcast_at, last_source_message_at
+
+    stored_source_seen_at = None
+    stored_broadcast_at = None
     if redis_client:
         try:
             raw_seen_at = await redis_client.get(LAST_SOURCE_MESSAGE_KEY)
-            stored_verdict = await redis_client.get(LAST_BROADCAST_OK_KEY)
+            raw_bcast_at = await redis_client.get(LAST_BROADCAST_AT_KEY)
         except Exception:
             log.warning("Redis unreachable while restoring monitoring state", exc_info=True)
         else:
             try:
-                stored_seen_at = float(raw_seen_at) if raw_seen_at else None
+                stored_source_seen_at = float(raw_seen_at) if raw_seen_at else None
             except (TypeError, ValueError):
                 log.warning("Stored source message timestamp is malformed: %r", raw_seen_at)
+            try:
+                stored_broadcast_at = float(raw_bcast_at) if raw_bcast_at else None
+            except (TypeError, ValueError):
+                log.warning("Stored broadcast timestamp is malformed: %r", raw_bcast_at)
 
-    if stored_verdict in ("0", "1"):
-        last_broadcast_ok = stored_verdict == "1"
+    if stored_broadcast_at is not None:
+        last_broadcast_at = stored_broadcast_at
+    else:
+        last_broadcast_at = time.time()
 
-    if stored_seen_at is not None:
-        last_source_message_at = stored_seen_at
+    if stored_source_seen_at is not None:
+        last_source_message_at = stored_source_seen_at
         return
 
     moment = None
@@ -691,9 +705,10 @@ TRANSIENT_CONNECTION_ERRORS = (OSError,)
 HEALTHCHECK_PING_INTERVAL = 60
 HEALTHCHECK_PING_TIMEOUT = 10
 
-# Скільки джерело може мовчати, доки це ще схоже на спокійну ніч. Шість годин
-# суцільної тиші по всій країні - вже не тиша, а обірваний вхід.
+# Скільки джерело чи вихідна мережа можуть мовчати, доки це ще схоже на спокійну ніч.
+# Шість годин суцільної тиші по всій країні та по прифронтових каналах - вже обрив.
 SOURCE_SILENCE_THRESHOLD = 6 * 3600
+BROADCAST_SILENCE_THRESHOLD = 6 * 3600
 
 
 def _ping_url(base: str, suffix: str = "") -> None:
@@ -720,6 +735,13 @@ async def _source_silence_seconds() -> Optional[float]:
     return max(0.0, time.time() - last_source_message_at)
 
 
+async def _broadcast_silence_seconds() -> Optional[float]:
+    """Скільки триває тиша виходу, або None, поки мітки немає."""
+    if last_broadcast_at is None:
+        return None
+    return max(0.0, time.time() - last_broadcast_at)
+
+
 def _report_source_silence(silence: Optional[float]) -> None:
     """Одна подія в Sentry на епізод тиші, і одна - на повернення джерела.
 
@@ -743,6 +765,25 @@ def _report_source_silence(silence: Optional[float]) -> None:
     elif source_silence_reported:
         source_silence_reported = False
         log.info("The source channel is posting again")
+
+
+def _report_broadcast_silence(silence: Optional[float]) -> None:
+    """Одна подія в Sentry на епізод тиші виходу, і одна - на відновлення розсилки."""
+    global broadcast_silence_reported
+
+    if silence is None:
+        return
+
+    if silence >= BROADCAST_SILENCE_THRESHOLD:
+        if not broadcast_silence_reported:
+            broadcast_silence_reported = True
+            log.error(
+                "No alerts broadcasted to any network channel for %.1f h; outgoing pipeline may be stuck",
+                silence / 3600,
+            )
+    elif broadcast_silence_reported:
+        broadcast_silence_reported = False
+        log.info("Alerts broadcasting resumed")
 
 
 async def _healthcheck_loop(client: TelegramClient) -> None:
@@ -773,24 +814,29 @@ async def _healthcheck_loop(client: TelegramClient) -> None:
             await asyncio.to_thread(_ping_healthcheck)
 
 
-async def _broadcast_watchdog_loop() -> None:
+async def _broadcast_watchdog_loop(client: TelegramClient) -> None:
     """Чек «Сповіщення в Telegram» - вихід ланцюга.
 
-    Мовчазний dead-man's switch тут не годиться: спокійна доба без тривог - це
-    норма, а не відмова. Тож чек несе вердикт ОСТАННЬОЇ спроби відправки й
-    лишається червоним доти, доки наступна не вдасться. Поки спроб не було,
-    не пінгуємо взагалі: чеку просто нема чого сказати, а «нема чого сказати»
-    не можна показувати як «все добре».
+    Зелений означає, що з'єднання з Telegram живе І хоча б одне повідомлення
+    було надіслано в канали мережі за останні 6 годин (або з моменту старту).
+    Цикл працює й без налаштованого пінга: подія в Sentry про тишу потрібна
+    незалежно від healthchecks.io.
     """
     if not HEALTHCHECKS_PING_URL_ALERTS_BROADCAST:
         log.warning("HEALTHCHECKS_PING_URL_ALERTS_BROADCAST not set; skipping broadcast health pings")
-        return
 
     while True:
         await asyncio.sleep(HEALTHCHECK_PING_INTERVAL)
-        if last_broadcast_ok is None:
+        silence = await _broadcast_silence_seconds()
+        _report_broadcast_silence(silence)
+
+        if not client.is_connected():
             continue
-        await asyncio.to_thread(_ping_tg_healthcheck, "" if last_broadcast_ok else "/fail")
+
+        if silence is not None and silence >= BROADCAST_SILENCE_THRESHOLD:
+            await asyncio.to_thread(_ping_tg_healthcheck, "/fail")
+        else:
+            await asyncio.to_thread(_ping_tg_healthcheck)
 
 
 async def main():
@@ -847,7 +893,7 @@ async def main():
 
             monitoring_tasks = [
                 asyncio.create_task(_healthcheck_loop(client)),
-                asyncio.create_task(_broadcast_watchdog_loop()),
+                asyncio.create_task(_broadcast_watchdog_loop(client)),
             ]
             try:
                 await client.run_until_disconnected()

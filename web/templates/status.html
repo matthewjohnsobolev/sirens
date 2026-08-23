@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стан сервісу / Сирени</title>
+<link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ static_url('css/status.css') }}">
+<script src="{{ static_url('js/status.js') }}" defer></script>
+</head>
+<body>
+  <main>
+    <div class="top">
+      <span><a href="/" title="Сирени">Стан сервісу</a></span>
+      <span>{% if stale %}дані станом на {% endif %}{{ updated_at }}</span>
+    </div>
+
+    <h1 class="state">{{ headline }}</h1>
+    <p class="state-sub">
+      {%- if overall_uptime is none -%}
+        Дані про доступність відсутні
+      {%- else -%}
+        Доступність за {{ period_days }} {{ period_days_word }} — {{ '%.2f'|format(overall_uptime)|replace('.', ',') }}&nbsp;%
+      {%- endif -%}
+    </p>
+
+    <div class="list" id="list">
+      {%- for comp in components %}
+      <section class="comp" data-key="{{ comp.key }}" data-monitored="{{ 'true' if comp.monitored else 'false' }}">
+        <div class="comp-head">
+          <h2 class="comp-name">{{ comp.name }}</h2>
+          <span class="comp-val">
+            {%- if not comp.monitored -%}
+              моніторинг не налаштовано
+            {%- elif comp.uptime is none -%}
+              —
+            {%- else -%}
+              {{ '%.2f'|format(comp.uptime)|replace('.', ',') }}&nbsp;%
+            {%- endif -%}
+          </span>
+        </div>
+        {#- Смуги приходять готовими з сервера: сторінка стану має читатись і тоді,
+            коли JavaScript не завантажився - тобто саме тоді, коли щось зламалось. -#}
+        <div class="bars" role="img" aria-label="{{ comp.name }}: {{ days_summary(comp.days) }}">
+          {%- for day in comp.days %}
+          <div class="bar" data-state="{{ day.state }}" data-title="{{ day_title(day.date, day.state) }}" title="{{ day_title(day.date, day.state) }}" aria-hidden="true"></div>
+          {%- endfor %}
+        </div>
+        <div class="scale">
+          {#- Скільки смуг видно, вирішує CSS, тож і підпис перемикає він. -#}
+          <span class="scale-from"><span class="scale-full">90 днів тому</span><span class="scale-short">45 днів тому</span></span>
+          <span>Сьогодні</span>
+        </div>
+      </section>
+      {%- endfor %}
+    </div>
+
+    <div class="key">
+      <span><i style="background:var(--day-ok)"></i>Працює</span>
+      <span><i style="background:var(--day-mnt)"></i>Планові роботи</span>
+      <span><i style="background:var(--day-deg)"></i>Збої</span>
+      <span><i style="background:var(--day-down)"></i>Недоступно</span>
+      <span><i style="background:var(--day-nodata)"></i>Немає даних</span>
+    </div>
+  </main>
+
+  <p class="copy">© 2026 «Сирени» · <a href="/">Мапа</a> · <a href="/issue">Повідомити про збій</a></p>
+</body>
+</html>

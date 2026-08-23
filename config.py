@@ -1,5 +1,13 @@
 import os
+import sys
 from dotenv import load_dotenv
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        try:
+            _stream.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
 
 load_dotenv()
 
@@ -9,8 +17,38 @@ REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/sirens')
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '')
-HEALTHCHECKS_PING_URL_ALERTS = os.getenv('HEALTHCHECKS_PING_URL_ALERTS', '')
+# Два кінці ланцюга тривог міряються окремо: SOURCE - чи пости з джерела доходять
+# до нас, BROADCAST - чи наші розсилки в канали мережі проходять. Ламаються вони
+# незалежно, тож і чеки різні.
+HEALTHCHECKS_PING_URL_ALERTS_SOURCE = os.getenv('HEALTHCHECKS_PING_URL_ALERTS_SOURCE', '')
+HEALTHCHECKS_PING_URL_ALERTS_BROADCAST = os.getenv('HEALTHCHECKS_PING_URL_ALERTS_BROADCAST', '')
 HEALTHCHECKS_PING_URL_WEB = os.getenv('HEALTHCHECKS_PING_URL_WEB', '')
+HEALTHCHECKS_API = (
+    os.getenv('HEALTHCHECKS_API')
+    or os.getenv('HEALTHCHECKS_READ_ONLY_API')
+    or os.getenv('HEALTHCHECKS_API_KEY')
+    or ''
+)
+# З якої дати історія на сторінці стану вважається достовірною. Спільна для обох
+# провайдерів; HEALTHCHECKS_START_DATE лишається запасним ім'ям заради тих .env,
+# де воно вже прописане.
+STATUS_START_DATE = (
+    os.getenv('STATUS_START_DATE')
+    or os.getenv('HEALTHCHECKS_START_DATE')
+    or ''
+)
+# Явні slug чеків для сторінки стану. Read-only ключ не віддає ping_url, тож
+# зіставити компонент із чеком інакше можна лише за назвою - здогадкою, яку
+# ламає будь-яке перейменування в healthchecks.io.
+HEALTHCHECKS_SLUG_ALERTS_SOURCE = os.getenv('HEALTHCHECKS_SLUG_ALERTS_SOURCE', '')
+HEALTHCHECKS_SLUG_ALERTS_BROADCAST = os.getenv('HEALTHCHECKS_SLUG_ALERTS_BROADCAST', '')
+
+# UptimeRobot - друга модель моніторингу: чорна скриня ззовні там, де
+# healthchecks.io знає лише те, що сервіс сам про себе розповів. Ключі тут
+# помоніторні, а не акаунтні: такий ключ віддає рівно свій монітор, тож
+# зіставляти компонент із монітором не доводиться взагалі.
+UPTIMEROBOT_SIRENS_WEB_API = os.getenv('UPTIMEROBOT_SIRENS_WEB_API', '')
+UPTIMEROBOT_SIRENS_API_API = os.getenv('UPTIMEROBOT_SIRENS_API_API', '')
 
 # R2 credentials for BI stats upload:
 R2_ACCESS_KEY_ID = os.getenv('CLOUDFLARE_R2_ACCESS_KEY_ID') or os.getenv('R2_ACCESS_KEY_ID', '')

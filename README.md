@@ -150,6 +150,85 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 * `districts`: every district of the region, keyed by district id, each with its Ukrainian `name` and its own `alert` and `shelling` state. Alerts are tracked for all districts of the government-controlled regions; Crimea, Sevastopol, Donetsk and Luhansk regions carry an empty map.
 * `coverage`: `"full"` when every district of the region is under alert, `"partial"` when only some are, `"none"` when none are. `active_districts` and `tracked_districts` list the district ids behind that verdict.
 
+## Monitoring and the Status Page
+
+`/status` shows four components. Each one asserts something the others cannot,
+because two different monitoring models feed it:
+
+* **healthchecks.io** is a dead-man's switch — it only knows what a service
+  reported about itself. It cannot tell whether the site is reachable from the
+  outside.
+* **UptimeRobot** is the opposite: a black box probing from the internet. It
+  cannot see inside the alerts worker.
+
+| Component | Source | What a green bar actually means |
+|---|---|---|
+| Мапа | UptimeRobot `GET /` | the site opens for a visitor: DNS, TLS, Cloudflare, nginx, render |
+| API | UptimeRobot `GET /api` | the endpoint answers with real JSON, not a 200 full of nothing |
+| Потік тривог | healthchecks `sirens-alerts-source` | posts from the source channel are reaching us |
+| Сповіщення в Telegram | healthchecks `sirens-alerts-broadcast` | our broadcasts into the network channels go through |
+
+The last two are the two ends of the same chain, and they break independently.
+A source channel that stopped posting, an account thrown out of it, a handler
+that missed a migrated chat — none of those touch our ability to send, and a
+`FloodWaitError` or a lost admin right in one of our channels says nothing about
+the source. One check could not honestly stand for both.
+
+### How the two ends are measured
+
+**Input.** The worker records the timestamp of every post it sees in the source
+channel (`service:alerts:last_source_message_at` in Redis, so a restart does not
+reset the clock). The healthcheck ping goes out only while that mark is fresher
+than `SOURCE_SILENCE_THRESHOLD` — six hours; past that the worker sends an
+explicit `/fail` and raises one Sentry event per episode of silence. Before this
+existed, the check only proved the Telegram socket was connected, which a
+silently dead source looks exactly like.
+
+**Output.** Every broadcast attempt records its verdict
+(`service:alerts:last_broadcast_ok`). The check carries the verdict of the *last*
+attempt and stays red until the next one succeeds. A plain dead-man's switch
+would not work here: a calm day with no alerts is normal, not a failure. While
+no attempt has been made at all, nothing is pinged — the check has nothing to
+say, and "nothing to say" must not read as "all good".
+
+### Matching components to checks
+
+Component-to-check matching is **explicit only**: a configured slug, or an exact
+slug/name match. There is deliberately no keyword search — it used to mean that
+any future check with `api` or `tg` in its name would silently be adopted by a
+component and show its history there. A component with nothing configured says
+"моніторинг не налаштовано" and draws empty bars.
+
+For the same reason, a provider that is configured but fails to answer aborts
+the whole refresh instead of returning blanks: the page keeps serving the last
+good snapshot, labelled with its age, rather than replacing 90 days of real
+history with "no data".
+
+### One-time setup
+
+1. Create the two healthchecks.io checks, period **3 min** and grace **2 min**
+   each. Both are plain heartbeats pinged once a minute, so the period follows
+   the ping cadence and nothing else: 3 min tolerates two missed pings before
+   the check goes late, and 5 min total absorbs a deploy restart without
+   recording a flip. Do **not** stretch the source check's period towards the
+   six-hour silence threshold — silence is reported by an explicit `/fail` from
+   the worker, while the heartbeat keeps ticking every minute regardless of
+   whether any alert happened. Put their ping URLs in
+   `HEALTHCHECKS_PING_URL_ALERTS_SOURCE` / `HEALTHCHECKS_PING_URL_ALERTS_BROADCAST`
+   and their slugs in `HEALTHCHECKS_SLUG_ALERTS_SOURCE` /
+   `HEALTHCHECKS_SLUG_ALERTS_BROADCAST`.
+2. Create two HTTP(s) monitors in UptimeRobot, for `/` and `/api`. Use **keyword**
+   monitoring, not a bare 200 — otherwise an empty page still reads as healthy.
+   Create a per-monitor API key for each (Monitor → Settings → API key) and put
+   them in `UPTIMEROBOT_SIRENS_WEB_API` / `UPTIMEROBOT_SIRENS_API_API`. Per-monitor
+   keys return exactly their own monitor, so nothing has to be matched by id.
+3. Put a read-only Management API key in `HEALTHCHECKS_API` — that is what the
+   status page reads history from.
+
+`HEALTHCHECKS_PING_URL_WEB` stays as it was. It is no longer a row on the public
+page, but it remains a useful internal signal that gunicorn is alive and can see
+Redis.
+
 ## Channel Statistics
 
 The project tracks how many subscribers the network has. A snapshot counts every

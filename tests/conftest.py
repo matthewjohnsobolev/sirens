@@ -2,8 +2,17 @@ import os
 
 for _external in (
     "SENTRY_DSN",
-    "HEALTHCHECKS_PING_URL_ALERTS",
+    "HEALTHCHECKS_PING_URL_ALERTS_SOURCE",
+    "HEALTHCHECKS_PING_URL_ALERTS_BROADCAST",
     "HEALTHCHECKS_PING_URL_WEB",
+    # Без цього фоновий потік оновлення статусу пішов би в реальний
+    # healthchecks.io з ключем із .env розробника.
+    "HEALTHCHECKS_API",
+    "HEALTHCHECKS_READ_ONLY_API",
+    "HEALTHCHECKS_API_KEY",
+    # Те саме для другого провайдера.
+    "UPTIMEROBOT_SIRENS_WEB_API",
+    "UPTIMEROBOT_SIRENS_API_API",
 ):
     os.environ[_external] = ""
 
@@ -21,17 +30,22 @@ def _neutralize_external_secrets(monkeypatch):
     from alerts import main as alerts_main
     from bi import main as bi_main
     from web import server as web_server
+    from web import status as web_status
+    from web import uptime as web_uptime
 
     monkeypatch.setattr(alerts_main, "SENTRY_DSN", "", raising=False)
-    monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL_ALERTS", "", raising=False)
+    monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL_ALERTS_SOURCE", "", raising=False)
+    monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL_ALERTS_BROADCAST", "", raising=False)
     monkeypatch.setattr(bi_main, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(bi_main, "R2_ACCESS_KEY_ID", "", raising=False)
     monkeypatch.setattr(bi_main, "R2_SECRET_ACCESS_KEY", "", raising=False)
     monkeypatch.setattr(bi_main, "GITHUB_PAT", "", raising=False)
     monkeypatch.setattr(web_server, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(web_server, "HEALTHCHECKS_PING_URL_WEB", "", raising=False)
-    monkeypatch.setattr(web_server, "TELEGRAM_BOT_TOKEN", "", raising=False)
-    monkeypatch.setattr(web_server, "ADMIN_CHAT_ID", "", raising=False)
+    monkeypatch.setattr(web_server, "HEALTHCHECKS_API", "", raising=False)
+    monkeypatch.setattr(web_status, "HEALTHCHECKS_API", "", raising=False)
+    monkeypatch.setattr(web_uptime, "UPTIMEROBOT_SIRENS_WEB_API", "", raising=False)
+    monkeypatch.setattr(web_uptime, "UPTIMEROBOT_SIRENS_API_API", "", raising=False)
 
 
 
@@ -41,9 +55,17 @@ def _isolate_alerts_globals():
 
     saved = (alerts_main.client, alerts_main.redis_client, alerts_main.pg_pool)
     alerts_main.running_tasks.clear()
+    # Стан моніторингу теж глобальний: без скидання мітка тиші й вердикт
+    # бродкасту протікали б з тесту в тест.
+    alerts_main.last_source_message_at = None
+    alerts_main.last_broadcast_ok = None
+    alerts_main.source_silence_reported = False
     yield
     alerts_main.client, alerts_main.redis_client, alerts_main.pg_pool = saved
     alerts_main.running_tasks.clear()
+    alerts_main.last_source_message_at = None
+    alerts_main.last_broadcast_ok = None
+    alerts_main.source_silence_reported = False
 
 
 @pytest.fixture

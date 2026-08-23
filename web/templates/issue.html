@@ -64,25 +64,34 @@
         <p class="err">Оберіть, будь ласка, що саме сталося.</p>
       </fieldset>
 
-      <fieldset class="block" id="block-delay">
-        <legend class="label">На скільки запізнилося</legend>
-        <div class="opts opts--mono" id="opts-delay"></div>
-        <p class="err">Оберіть, будь ласка, на скільки запізнилося сповіщення.</p>
+      <fieldset class="block" id="block-time">
+        <legend class="label" id="label-time">Коли це сталося <span class="opt-mark">— необов'язково</span></legend>
+        <div class="opts" id="opts-time"></div>
+        <div class="time-picker" id="time-picker-wrap">
+          <div class="datetime-wrap">
+            <input type="text" class="input input-datetime" id="exact-datetime" name="exact_datetime"
+                   readonly placeholder="23 Сер 23:56" autocomplete="off">
+            <input type="date" id="picker-date" tabindex="-1" aria-hidden="true" class="picker-hidden">
+            <input type="time" id="picker-time" tabindex="-1" aria-hidden="true" class="picker-hidden">
+          </div>
+        </div>
+        <p class="err" id="err-time">Оберіть, будь ласка, коли це сталося.</p>
       </fieldset>
 
       <div class="block" id="block-city">
-        <label class="label" for="city">Місто <span class="opt-mark">— необов'язково</span></label>
+        <label class="label" for="city" id="label-city">Місто <span class="opt-mark">— необов'язково</span></label>
         <div class="combo" id="combo-city">
           <input class="input" id="city" name="city" placeholder="Наприклад, Харків"
                  autocomplete="off" role="combobox" aria-expanded="false"
-                 aria-controls="city-list" aria-autocomplete="list">
+                 aria-controls="city-list" aria-autocomplete="list"
+                 lang="uk" inputmode="text" autocapitalize="words">
           <!-- .scroller - коробка для смуги прокрутки, яку малює issue.js:
                системної на iOS не видно. -->
           <div class="combo-list scroller">
             <ul class="combo-scroll scroller-view" id="city-list" role="listbox" aria-label="Міста"></ul>
           </div>
         </div>
-        <p class="err">Вкажіть, будь ласка, місто — без нього ми не знайдемо збій.</p>
+        <p class="err" id="err-city">Вкажіть, будь ласка, місто — без нього ми не знайдемо збій.</p>
       </div>
 
       <div class="block" id="block-comment">

@@ -312,7 +312,9 @@ def test_unhandled_exception_renders_the_500_page():
 VALID_REPORT = {
     'category': 'Сповіщення',
     'sub_option': 'Сповіщення прийшло із запізненням',
+    'time': 'Щойно',
     'city': 'Київ',
+    'district': '',
     'message': 'Сирена о 3:00 прийшла на 10 хвилин пізніше',
     'contact': '@reporter',
 }
@@ -351,6 +353,8 @@ def test_report_form_carries_the_taxonomy_the_server_checks_against(client):
         c['id']: [o['name'] for o in c['options']] for c in issue.CATEGORIES
     }
     assert config['cities'] == list(issue.CITIES)
+    assert config['districts'] == list(issue.DISTRICTS)
+    assert config['time_options'] == list(issue.TIME_NAMES)
 
 
 def test_report_form_keeps_the_sentry_vocabulary_off_the_page(client):
@@ -378,6 +382,17 @@ def test_report_form_suggests_every_city_with_a_channel(client):
     assert 'Харків' in config['cities'] and 'Звенигородка' in config['cities']
 
 
+def test_report_form_suggests_districts(client):
+    """Підказка районів містить усі райони з конфігурації."""
+    html = client.get('/issue').get_data(as_text=True)
+    config = json.loads(re.search(
+        r'<script type="application/json" id="report-config">(.*?)</script>', html, re.S
+    ).group(1))
+
+    assert 'Бучанський район' in config['districts']
+    assert 'Харківський район' in config['districts']
+
+
 def test_report_form_keeps_three_tabs(client):
     """Перемикач розділів зверстаний на три колонки (repeat(3,1fr) у
     issue.css), і на 320px четверта вкладка вже не вміститься."""
@@ -401,13 +416,11 @@ def test_form_fields_are_named_the_way_the_server_reads_them(client, app):
     assert "formData.append('contact'" in js
 
 
-def test_the_page_does_not_glue_the_delay_onto_the_option(app):
-    """Сервер тримає варіант і запізнення двома полями; склеївши їх на
-    сторінці, форма почала б відкидати сама себе."""
+def test_the_page_travels_time_as_its_own_field(app):
+    """Сервер тримає час окремим полем."""
     js = (Path(app.static_folder) / 'js' / 'issue.js').read_text(encoding='utf-8')
 
-    assert '(${delayChoice})' not in js
-    assert "formData.append('delay', delayChoice)" in js
+    assert "formData.append('time', chosenTime)" in js
 
 
 def test_report_notice_shows_one_icon_at_a_time(app):
@@ -455,8 +468,9 @@ def test_valid_report_reaches_sentry_and_is_confirmed(client, report_deps):
     assert sent_report(report_deps) == {
         'category': 'Сповіщення',
         'sub_option': 'Сповіщення прийшло із запізненням',
-        'delay': '',
+        'time': 'Щойно',
         'city': 'Київ',
+        'district': '',
         'message': 'Сирена о 3:00 прийшла на 10 хвилин пізніше',
         'contact': '@reporter',
     }
@@ -475,14 +489,16 @@ def test_report_normalizes_the_short_tab_label(client, report_deps):
     """Без JavaScript у полі category опиняється напис вкладки."""
     response = client.post('/issue', data={
         'category': 'Мапа',
-        'sub_option': 'Тривога не зникає після відбою',
-        'city': 'Харків',
+        'sub_option': 'Мапа не відкривається зовсім',
+        'time': 'Щойно',
+        'district': 'Харківський район',
         'message': 'Зависла сирена',
         'contact': '@user',
     })
 
     assert response.status_code == 200
     assert sent_report(report_deps)['category'] == 'Мапа тривог'
+    assert sent_report(report_deps)['district'] == 'Харківський район'
 
 
 def test_report_keeps_only_the_options_its_own_form_offers(client, report_deps):
@@ -514,6 +530,39 @@ def test_report_without_a_city_is_rejected(client, report_deps):
     report_deps.assert_not_called()
 
 
+def test_report_map_without_a_district_is_rejected(client, report_deps):
+    response = client.post('/issue', data={
+        'category': 'Мапа',
+        'sub_option': 'Мапа не відкривається зовсім',
+        'time': 'Щойно',
+        'district': '',
+        'city': '',
+        'message': 'Не відкривається',
+        'contact': '',
+    })
+
+    assert response.status_code == 400
+    report_deps.assert_not_called()
+
+
+def test_report_without_time_is_rejected_for_alerts_and_map(client, report_deps):
+    response = client.post('/issue', data={**VALID_REPORT, 'time': ''})
+
+    assert response.status_code == 400
+    report_deps.assert_not_called()
+
+    response_map = client.post('/issue', data={
+        'category': 'Мапа',
+        'sub_option': 'Мапа не відкривається зовсім',
+        'time': '',
+        'district': 'Бучанський район',
+        'message': '',
+        'contact': '',
+    })
+    assert response_map.status_code == 400
+    report_deps.assert_not_called()
+
+
 def test_other_category_needs_a_description(client, report_deps):
     response = client.post('/issue', data={**VALID_REPORT, 'category': 'Інше', 'message': ''})
 
@@ -521,10 +570,12 @@ def test_other_category_needs_a_description(client, report_deps):
     report_deps.assert_not_called()
 
 
-def test_other_category_without_city_is_accepted(client, report_deps):
+def test_other_category_without_city_and_time_is_accepted(client, report_deps):
     response = client.post('/issue', data={
         'category': 'Інше',
         'city': '',
+        'district': '',
+        'time': '',
         'message': 'Щось сталося на сайті',
         'contact': '@tester',
     })
@@ -533,20 +584,19 @@ def test_other_category_without_city_is_accepted(client, report_deps):
     assert sent_report(report_deps) == {
         'category': 'Інше',
         'sub_option': '',
-        'delay': '',
+        'time': '',
         'city': '',
+        'district': '',
         'message': 'Щось сталося на сайті',
         'contact': '@tester',
     }
 
 
-def test_delay_travels_as_its_own_field(client, report_deps):
-    """Склеєне «...із запізненням (5 - 10 хв)» перестало б збігатися з
-    довідником, і розбивка за типом збою втратила б сенс."""
+def test_time_travels_as_its_own_field(client, report_deps):
     response = client.post('/issue', data={
         'category': 'Сповіщення',
         'sub_option': 'Сповіщення прийшло із запізненням',
-        'delay': '5 - 10 хв',
+        'time': 'Менше години тому',
         'city': 'Київ',
         'message': '',
         'contact': '',
@@ -555,23 +605,68 @@ def test_delay_travels_as_its_own_field(client, report_deps):
     assert response.status_code == 200
     report = sent_report(report_deps)
     assert report['sub_option'] == 'Сповіщення прийшло із запізненням'
-    assert report['delay'] == '5 - 10 хв'
+    assert report['time'] == 'Менше години тому'
 
 
-def test_delay_is_dropped_under_an_option_it_does_not_belong_to(client, report_deps):
-    """Підпитання показують лише під запізненням; відповідь на нього під
-    «не прийшло взагалі» не означає нічого."""
-    client.post('/issue', data={
+def test_exact_time_selection_without_value_is_rejected(client, report_deps):
+    report, error = web_server._clean_report_form({
         **VALID_REPORT,
-        'sub_option': 'Сповіщення не прийшло взагалі',
-        'delay': '5 - 10 хв',
+        'time': 'Вибрати дату і час',
+        'exact_time': '',
+    })
+    assert error == 'Вкажіть, будь ласка, дату і час.'
+
+    response = client.post('/issue', data={
+        **VALID_REPORT,
+        'time': 'Вибрати дату і час',
+        'exact_time': '',
     })
 
-    assert sent_report(report_deps)['delay'] == ''
+    assert response.status_code == 400
+    report_deps.assert_not_called()
 
 
-def test_delay_outside_the_vocabulary_is_rejected(client, report_deps):
-    response = client.post('/issue', data={**VALID_REPORT, 'delay': '3 доби'})
+def test_exact_time_selection_with_value_is_accepted(client, report_deps):
+    response = client.post('/issue', data={
+        **VALID_REPORT,
+        'time': 'Вибрати дату і час',
+        'exact_time': '12:45',
+    })
+
+    assert response.status_code == 200
+    assert sent_report(report_deps)['time'] == '12:45'
+
+
+def test_custom_time_format_is_accepted(client, report_deps):
+    response = client.post('/issue', data={
+        'category': 'Сповіщення',
+        'sub_option': 'Сповіщення прийшло із запізненням',
+        'time': '14:30',
+        'city': 'Київ',
+        'message': '',
+        'contact': '',
+    })
+
+    assert response.status_code == 200
+    assert sent_report(report_deps)['time'] == '14:30'
+
+
+def test_custom_datetime_format_with_date_is_accepted(client, report_deps):
+    response = client.post('/issue', data={
+        'category': 'Сповіщення',
+        'sub_option': 'Сповіщення прийшло із запізненням',
+        'time': '23 серп. 23:56',
+        'city': 'Київ',
+        'message': '',
+        'contact': '',
+    })
+
+    assert response.status_code == 200
+    assert sent_report(report_deps)['time'] == '23 серп. 23:56'
+
+
+def test_time_outside_the_vocabulary_is_rejected(client, report_deps):
+    response = client.post('/issue', data={**VALID_REPORT, 'time': '3 доби'})
 
     assert response.status_code == 400
     report_deps.assert_not_called()
@@ -586,10 +681,12 @@ def test_unknown_category_is_rejected(client, report_deps):
 
 @pytest.mark.parametrize("overrides, expected", [
     ({'city': ''}, 'Будь ласка, вкажіть місто.'),
+    ({'time': ''}, 'Оберіть, будь ласка, коли це сталося.'),
+    ({'category': 'Мапа', 'sub_option': 'Мапа не відкривається зовсім', 'city': '', 'district': ''}, 'Будь ласка, вкажіть район.'),
     ({'category': 'Інше', 'message': ''}, 'Опис помилки обовʼязковий для цієї категорії.'),
     ({'category': 'Хакер'}, 'Оберіть категорію помилки.'),
     ({'sub_option': 'Щось своє'}, 'Оберіть, будь ласка, що саме сталося.'),
-    ({'delay': '3 доби'}, 'Оберіть, будь ласка, на скільки запізнилося сповіщення.'),
+    ({'time': '3 доби'}, 'Оберіть, будь ласка, коли це сталося.'),
     ({'message': 'я' * 251}, 'Коментар не може бути довшим за 250 символів.'),
 ])
 def test_rejection_messages(app, overrides, expected):
@@ -704,8 +801,9 @@ DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0'
 REPORT = {
     'category': 'Сповіщення',
     'sub_option': 'Сповіщення прийшло із запізненням',
-    'delay': '5 - 10 хв',
+    'time': 'Щойно',
     'city': 'Київ',
+    'district': '',
     'message': 'Запізнилось',
     'contact': '@reporter',
 }
@@ -756,9 +854,35 @@ def test_sentry_tags_are_stable_ascii_keys(sentry):
     assert tags == {
         'report.category': 'alerts',
         'report.option': 'late',
-        'report.delay': '5_10min',
+        'report.time': 'just_now',
         'report.city': 'Київ',
     }
+
+
+def test_sentry_map_report_tags_district(sentry):
+    mock_scope, _, _ = sentry
+
+    map_report = {
+        'category': 'Мапа тривог',
+        'sub_option': 'Мапа не відкривається зовсім',
+        'time': '15:20',
+        'district': 'Бучанський район',
+        'city': '',
+        'message': 'Не працює',
+        'contact': '',
+    }
+    web_server._report_to_sentry(map_report)
+
+    tags = dict(call.args for call in mock_scope.set_tag.call_args_list)
+    assert tags == {
+        'report.category': 'map',
+        'report.option': 'map_not_opening',
+        'report.time': 'custom',
+        'report.district': 'Бучанський район',
+    }
+    name, context = mock_scope.set_context.call_args.args
+    assert context['District'] == 'Бучанський район'
+    assert context['When'] == '15:20'
 
 
 def test_sentry_context_spells_the_choices_out_in_english(sentry):
@@ -771,7 +895,7 @@ def test_sentry_context_spells_the_choices_out_in_english(sentry):
     assert context == {
         'Category': 'Alerts',
         'Problem': 'Notification arrived late',
-        'Delay': '5-10 min',
+        'When': 'Just now',
         'City': 'Київ',
         'Comment': 'Запізнилось',
         'Contact': '@reporter',
@@ -796,33 +920,70 @@ def test_sentry_does_not_invent_a_user_when_no_handle_was_left(sentry):
     mock_scope.set_user.assert_not_called()
 
 
+def test_sentry_custom_ukrainian_datetime_and_tags(sentry):
+    mock_scope, mock_capture, _ = sentry
+
+    report = {
+        'category': 'Сповіщення',
+        'sub_option': 'Сповіщення прийшло із запізненням',
+        'time': '23 серп. 23:56',
+        'city': 'Харків',
+        'district': '',
+        'message': 'Спізнилось на 15 хв',
+        'contact': '@testuser',
+    }
+    web_server._report_to_sentry(report)
+
+    tags = dict(call.args for call in mock_scope.set_tag.call_args_list)
+    assert tags == {
+        'report.category': 'alerts',
+        'report.option': 'late',
+        'report.time': 'custom',
+        'report.city': 'Харків',
+    }
+    mock_scope.set_user.assert_called_once_with({'username': '@testuser'})
+    name, context = mock_scope.set_context.call_args.args
+    assert name == 'Issue report'
+    assert context == {
+        'Category': 'Alerts',
+        'Problem': 'Notification arrived late',
+        'When': '23 серп. 23:56',
+        'City': 'Харків',
+        'Comment': 'Спізнилось на 15 хв',
+        'Contact': '@testuser',
+    }
+    mock_capture.assert_called_once_with(
+        'Issue report: Alerts — Notification arrived late', level='info'
+    )
+
+
 def test_sentry_marks_the_choices_a_report_did_not_make(sentry):
-    """«Інше» не має ні варіанта, ні запізнення, ні обовʼязкового міста -
+    """«Інше» не має ні варіанта, ні обовʼязкового міста або часу -
     тег мусить лишитись, інакше фільтр за ним губить саме ці звернення."""
     mock_scope, mock_capture, _ = sentry
 
     web_server._report_to_sentry({
-        'category': 'Інше', 'sub_option': '', 'delay': '',
-        'city': '', 'message': 'Щось зламалось', 'contact': '',
+        'category': 'Інше', 'sub_option': '', 'time': '',
+        'city': '', 'district': '', 'message': 'Щось зламалось', 'contact': '',
     })
 
     tags = dict(call.args for call in mock_scope.set_tag.call_args_list)
     assert tags == {
         'report.category': 'other',
         'report.option': 'unspecified',
-        'report.delay': 'unspecified',
+        'report.time': 'unspecified',
         'report.city': 'unspecified',
     }
     mock_capture.assert_called_once_with('Issue report: Other', level='info')
 
 
-def test_sentry_groups_one_failure_regardless_of_city_or_delay(sentry):
-    """Місто й запізнення в заголовку розсипали б один збій на групу за
+def test_sentry_groups_one_failure_regardless_of_city_or_time(sentry):
+    """Місто й час у заголовку розсипали б один збій на групу за
     містом. Вони теги - саме ними й фільтрують."""
     _, mock_capture, _ = sentry
 
-    web_server._report_to_sentry({**REPORT, 'city': 'Львів', 'delay': 'Менше 5 хв'})
-    web_server._report_to_sentry({**REPORT, 'city': 'Харків', 'delay': '10 хв і більше'})
+    web_server._report_to_sentry({**REPORT, 'city': 'Львів', 'time': 'Щойно'})
+    web_server._report_to_sentry({**REPORT, 'city': 'Харків', 'time': 'Менше години тому'})
 
     titles = {call.args[0] for call in mock_capture.call_args_list}
     assert titles == {'Issue report: Alerts — Notification arrived late'}
@@ -887,3 +1048,93 @@ def test_missing_dsn_is_announced_at_startup(caplog):
     create_app(init_db=False, start_healthcheck=False)
 
     assert "issue reports will not be delivered anywhere" in caplog.text
+
+
+def test_claim_status_slot_uses_atomic_set():
+    """Троє воркерів - один обхід healthchecks.io: інакше втрьох упремось у ліміт."""
+    with patch('web.server.redis_client') as mock_redis:
+        mock_redis.set.return_value = True
+
+        assert web_server._claim_status_slot() is True
+
+    _, kwargs = mock_redis.set.call_args
+    assert kwargs['nx'] is True
+    assert kwargs['ex'] == web_server.STATUS_LOCK_TTL
+    assert web_server.STATUS_LOCK_TTL < web_server.STATUS_REFRESH_INTERVAL
+
+
+def test_status_refresh_loop_refreshes_before_it_sleeps():
+    """Перший обхід - одразу: інакше після рестарту сторінка цілу хвилину
+    показувала б «немає даних»."""
+    with patch('web.server.time.sleep', side_effect=[StopIteration]), \
+         patch('web.server._claim_status_slot', return_value=True), \
+         patch('web.server.refresh_status_cache') as mock_refresh:
+        with pytest.raises(StopIteration):
+            web_server._status_refresh_loop()
+
+    mock_refresh.assert_called_once_with()
+
+
+def test_status_refresh_loop_skips_when_another_worker_leads():
+    with patch('web.server.time.sleep', side_effect=[StopIteration]), \
+         patch('web.server._claim_status_slot', return_value=False), \
+         patch('web.server.refresh_status_cache') as mock_refresh:
+        with pytest.raises(StopIteration):
+            web_server._status_refresh_loop()
+
+    mock_refresh.assert_not_called()
+
+
+def test_status_refresh_loop_survives_unreachable_redis(caplog):
+    caplog.set_level(logging.WARNING)
+
+    with patch('web.server.time.sleep', side_effect=[StopIteration]), \
+         patch('web.server._claim_status_slot', side_effect=ConnectionError('redis down')), \
+         patch('web.server.refresh_status_cache') as mock_refresh:
+        with pytest.raises(StopIteration):
+            web_server._status_refresh_loop()
+
+    mock_refresh.assert_not_called()
+    assert "Redis unreachable" in caplog.text
+
+
+def test_create_app_starts_status_thread_when_configured(monkeypatch):
+    monkeypatch.setattr(web_server, 'HEALTHCHECKS_API', 'test-key')
+
+    with patch('web.server.threading.Thread') as MockThread:
+        create_app(init_db=False, start_healthcheck=True)
+
+    names = {kwargs.get('name') for _args, kwargs in MockThread.call_args_list}
+    assert 'status-refresh' in names
+
+
+def test_create_app_starts_status_thread_for_uptime_alone(monkeypatch):
+    """Провайдери незалежні: одного налаштованого досить, щоб було що показати."""
+    monkeypatch.setattr(web_server, 'HEALTHCHECKS_API', '')
+    monkeypatch.setattr(
+        web_server.uptime, 'UPTIMEROBOT_SIRENS_WEB_API', 'ur-key'
+    )
+
+    with patch('web.server.threading.Thread') as MockThread:
+        create_app(init_db=False, start_healthcheck=True)
+
+    names = {kwargs.get('name') for _args, kwargs in MockThread.call_args_list}
+    assert 'status-refresh' in names
+
+
+def test_create_app_skips_status_thread_when_unconfigured(monkeypatch, caplog):
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(web_server, 'HEALTHCHECKS_API', '')
+
+    with patch('web.server.threading.Thread') as MockThread:
+        create_app(init_db=False, start_healthcheck=True)
+
+    names = {kwargs.get('name') for _args, kwargs in MockThread.call_args_list}
+    assert 'status-refresh' not in names
+    assert "No monitoring provider is configured" in caplog.text
+
+
+def test_api_status_is_cacheable_at_the_edge(client):
+    """Дані оновлюються раз на хвилину, тож край може потримати їх пів хвилини."""
+    response = client.get('/api/status')
+    assert response.headers.get('Cache-Control') == 'public, max-age=30, s-maxage=30'

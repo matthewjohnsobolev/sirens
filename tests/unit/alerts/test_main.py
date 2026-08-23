@@ -4,6 +4,7 @@ Unit tests for alerts.main (alert monitoring, state persistence, and broadcastin
 
 import argparse
 import asyncio
+import datetime
 import logging
 import re
 from typing import NamedTuple
@@ -379,7 +380,8 @@ async def test_send_alert_writes_state_history_and_broadcasts(
         await send_alert(CHANNEL_ID, region, alert_type)
         await _drain_background_tasks()
 
-    mock_redis.set.assert_awaited_once_with(f"channel_state:{CHANNEL_ID}", alert_type)
+    mock_redis.set.assert_any_await(f"channel_state:{CHANNEL_ID}", alert_type)
+    mock_redis.set.assert_any_await(alerts_main.LAST_BROADCAST_OK_KEY, "1")
 
     if "shelling" in alert_type:
         mock_redis.hset.assert_any_call(
@@ -444,7 +446,7 @@ async def test_send_alert_processes_state_change_after_duplicate_suppression(
         await send_alert(CHANNEL_ID, "nikopol", "air_raid_alert_cancelled")
         await _drain_background_tasks()
 
-    mock_redis.set.assert_awaited_once_with(f"channel_state:{CHANNEL_ID}", "air_raid_alert_cancelled")
+    mock_redis.set.assert_any_await(f"channel_state:{CHANNEL_ID}", "air_raid_alert_cancelled")
     mock_telegram_client.send_message.assert_awaited_once_with(
         CHANNEL_ID, MESSAGES["air_raid_alert_cancelled"]
     )
@@ -519,7 +521,10 @@ async def test_send_alert_logs_but_survives_send_failure(
 
     assert expected_log in caplog.text
     mock_photo.assert_not_awaited()
-    mock_redis.set.assert_not_awaited()
+    # Стан не записується, а от невдача відправки - записується: саме з неї
+    # червоніє чек «Сповіщення в Telegram».
+    mock_redis.set.assert_awaited_once_with(alerts_main.LAST_BROADCAST_OK_KEY, "0")
+    assert alerts_main.last_broadcast_ok is False
 
 
 @pytest.mark.asyncio
@@ -887,7 +892,7 @@ async def test_main_logs_error_on_transient_connection_error(caplog):
 
 
 def test_ping_healthcheck_noop_when_unconfigured(monkeypatch):
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', '')
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_SOURCE', '')
 
     with patch('alerts.main.requests.get') as mock_get:
         alerts_main._ping_healthcheck()
@@ -896,7 +901,9 @@ def test_ping_healthcheck_noop_when_unconfigured(monkeypatch):
 
 
 def test_ping_healthcheck_sends_get_with_suffix(monkeypatch):
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', 'https://hc-ping.com/test-uuid')
+    monkeypatch.setattr(
+        alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_SOURCE', 'https://hc-ping.com/test-uuid'
+    )
 
     with patch('alerts.main.requests.get') as mock_get:
         alerts_main._ping_healthcheck('/fail')
@@ -906,9 +913,28 @@ def test_ping_healthcheck_sends_get_with_suffix(monkeypatch):
     )
 
 
+def test_ping_tg_healthcheck_uses_its_own_url(monkeypatch):
+    """Два кінці ланцюга - два чеки; переплутати їхні URL не можна."""
+    monkeypatch.setattr(
+        alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_SOURCE', 'https://hc-ping.com/source'
+    )
+    monkeypatch.setattr(
+        alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_BROADCAST', 'https://hc-ping.com/broadcast'
+    )
+
+    with patch('alerts.main.requests.get') as mock_get:
+        alerts_main._ping_tg_healthcheck('/fail')
+
+    mock_get.assert_called_once_with(
+        'https://hc-ping.com/broadcast/fail', timeout=alerts_main.HEALTHCHECK_PING_TIMEOUT
+    )
+
+
 def test_ping_healthcheck_logs_but_survives_request_failure(monkeypatch, caplog):
     caplog.set_level(logging.WARNING)
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', 'https://hc-ping.com/test-uuid')
+    monkeypatch.setattr(
+        alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_SOURCE', 'https://hc-ping.com/test-uuid'
+    )
 
     with patch('alerts.main.requests.get', side_effect=Exception('network down')):
         alerts_main._ping_healthcheck()
@@ -916,48 +942,328 @@ def test_ping_healthcheck_logs_but_survives_request_failure(monkeypatch, caplog)
     assert "Failed to ping healthchecks.io" in caplog.text
 
 
+# --- Вхід ланцюга: мітка часу останнього поста джерела ------------------------
+
+
 @pytest.mark.asyncio
-async def test_healthcheck_loop_skips_when_unconfigured(monkeypatch, caplog):
+async def test_record_source_message_prefers_the_post_time(mock_redis):
+    """Час беремо з поста, а не з годинника: наздоганяючи чергу після розриву,
+    саме він каже правду про тишу."""
+    posted_at = datetime.datetime(2026, 8, 23, 10, 0, tzinfo=datetime.timezone.utc)
+
+    await alerts_main.record_source_message(posted_at)
+
+    assert alerts_main.last_source_message_at == posted_at.timestamp()
+    mock_redis.set.assert_awaited_once_with(
+        alerts_main.LAST_SOURCE_MESSAGE_KEY, str(int(posted_at.timestamp()))
+    )
+
+
+@pytest.mark.asyncio
+async def test_record_source_message_falls_back_to_now(mock_redis):
+    with patch('alerts.main.time.time', return_value=1_700_000_000.0):
+        await alerts_main.record_source_message(None)
+
+    assert alerts_main.last_source_message_at == 1_700_000_000.0
+
+
+@pytest.mark.asyncio
+async def test_record_source_message_survives_unreachable_redis(mock_redis, caplog):
     caplog.set_level(logging.WARNING)
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', '')
-    mock_client = MagicMock()
+    mock_redis.set.side_effect = Exception('redis down')
 
-    await alerts_main._healthcheck_loop(mock_client)
+    with patch('alerts.main.time.time', return_value=1_700_000_000.0):
+        await alerts_main.record_source_message(None)
 
-    assert "HEALTHCHECKS_PING_URL_ALERTS not set" in caplog.text
-    mock_client.is_connected.assert_not_called()
+    # Мітка в пам'яті лишається: Redis тут персистенція, а не єдине джерело правди.
+    assert alerts_main.last_source_message_at == 1_700_000_000.0
+    assert "Failed to store the source message timestamp" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_healthcheck_loop_pings_while_connected(monkeypatch):
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', 'https://hc-ping.com/test-uuid')
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECK_PING_INTERVAL', 0.01)
+@pytest.mark.parametrize("message", [
+    "",                                    # пост без тексту
+    "Доброго вечора, ми з України",        # пост без збігу районів
+])
+async def test_handler_marks_the_source_alive_before_both_early_exits(
+    mock_redis, mock_pg_pool, mock_telegram_client, message
+):
+    """Пост без тексту й пост без тривоги однаково доводять, що вхід живий."""
+    handler = build_message_handler(ALL_REGION_CHANNELS)
+    event = MagicMock()
+    event.message.message = message
+
+    with patch('alerts.main.time.time', return_value=1_700_000_000.0):
+        await handler(event)
+
+    assert alerts_main.last_source_message_at == 1_700_000_000.0
+    mock_telegram_client.send_message.assert_not_awaited()
+
+
+# --- Вхід ланцюга: сторож тиші -----------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_source_silence_seconds_is_none_without_a_mark():
+    assert await alerts_main._source_silence_seconds() is None
+
+
+def test_silence_is_reported_once_per_episode(caplog):
+    caplog.set_level(logging.INFO)
+    silence = alerts_main.SOURCE_SILENCE_THRESHOLD + 60
+
+    alerts_main._report_source_silence(silence)
+    alerts_main._report_source_silence(silence + 300)
+
+    assert caplog.text.count("No message from the source channel") == 1
+    assert alerts_main.source_silence_reported is True
+
+
+def test_returning_source_closes_the_episode(caplog):
+    caplog.set_level(logging.INFO)
+    alerts_main._report_source_silence(alerts_main.SOURCE_SILENCE_THRESHOLD + 60)
+    caplog.clear()
+
+    alerts_main._report_source_silence(10)
+
+    assert "The source channel is posting again" in caplog.text
+    assert alerts_main.source_silence_reported is False
+
+
+class _StopLoop(Exception):
+    """Вихід із нескінченного циклу на другому колі."""
+
+
+async def _run_one_cycle(coro):
+    """Прокрутити рівно одне коло циклу.
+
+    Через підмінений sleep, а не через таймер: під coverage реальні мілісекунди
+    пливуть, і тест на них починає блимати.
+    """
+    with patch('alerts.main.asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
+        mock_sleep.side_effect = [None, _StopLoop]
+        with pytest.raises(_StopLoop):
+            await coro
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_loop_keeps_watching_without_a_ping_url(monkeypatch, caplog):
+    """Без healthchecks.io цикл не виходить: подія в Sentry про тишу від нього
+    не залежить."""
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_SOURCE', '')
+    alerts_main.last_source_message_at = 0.0  # тиша від початку епох
     mock_client = MagicMock()
     mock_client.is_connected.return_value = True
 
-    with patch('alerts.main._ping_healthcheck') as mock_ping:
-        task = asyncio.create_task(alerts_main._healthcheck_loop(mock_client))
-        await asyncio.sleep(0.03)
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+    await _run_one_cycle(alerts_main._healthcheck_loop(mock_client))
 
-    mock_ping.assert_called()
+    assert "HEALTHCHECKS_PING_URL_ALERTS_SOURCE not set" in caplog.text
+    assert "No message from the source channel" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_loop_pings_while_the_source_is_fresh(monkeypatch):
+    monkeypatch.setattr(
+        alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_SOURCE', 'https://hc-ping.com/test-uuid'
+    )
+    mock_client = MagicMock()
+    mock_client.is_connected.return_value = True
+
+    with patch('alerts.main.time.time', return_value=1_700_000_000.0):
+        alerts_main.last_source_message_at = 1_700_000_000.0 - 60
+        with patch('alerts.main._ping_healthcheck') as mock_ping:
+            await _run_one_cycle(alerts_main._healthcheck_loop(mock_client))
+
+    assert mock_ping.call_args_list
+    assert all(call.args == () for call in mock_ping.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_loop_fails_the_check_on_silence(monkeypatch):
+    """Тиша шле явний /fail: чек має почервоніти одразу, а не через period+grace."""
+    monkeypatch.setattr(
+        alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_SOURCE', 'https://hc-ping.com/test-uuid'
+    )
+    mock_client = MagicMock()
+    mock_client.is_connected.return_value = True
+
+    with patch('alerts.main.time.time', return_value=1_700_000_000.0):
+        alerts_main.last_source_message_at = (
+            1_700_000_000.0 - alerts_main.SOURCE_SILENCE_THRESHOLD - 1
+        )
+        with patch('alerts.main._ping_healthcheck') as mock_ping:
+            await _run_one_cycle(alerts_main._healthcheck_loop(mock_client))
+
+    assert mock_ping.call_args_list
+    assert all(call.args == ('/fail',) for call in mock_ping.call_args_list)
 
 
 @pytest.mark.asyncio
 async def test_healthcheck_loop_skips_ping_when_disconnected(monkeypatch):
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS', 'https://hc-ping.com/test-uuid')
-    monkeypatch.setattr(alerts_main, 'HEALTHCHECK_PING_INTERVAL', 0.01)
+    monkeypatch.setattr(
+        alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_SOURCE', 'https://hc-ping.com/test-uuid'
+    )
     mock_client = MagicMock()
     mock_client.is_connected.return_value = False
 
     with patch('alerts.main._ping_healthcheck') as mock_ping:
-        task = asyncio.create_task(alerts_main._healthcheck_loop(mock_client))
-        await asyncio.sleep(0.03)
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        await _run_one_cycle(alerts_main._healthcheck_loop(mock_client))
 
     mock_ping.assert_not_called()
+
+
+# --- Вихід ланцюга: вердикт останнього бродкасту ------------------------------
+
+
+@pytest.mark.asyncio
+async def test_record_broadcast_stores_the_verdict(mock_redis):
+    await alerts_main.record_broadcast(False)
+
+    assert alerts_main.last_broadcast_ok is False
+    mock_redis.set.assert_awaited_once_with(alerts_main.LAST_BROADCAST_OK_KEY, "0")
+
+
+@pytest.mark.asyncio
+async def test_record_broadcast_keeps_the_verdict_without_redis():
+    """Вердикт живе в пам'яті й тоді, коли Redis не піднявся зовсім."""
+    alerts_main.redis_client = None
+
+    await alerts_main.record_broadcast(True)
+
+    assert alerts_main.last_broadcast_ok is True
+
+
+@pytest.mark.asyncio
+async def test_record_broadcast_survives_unreachable_redis(mock_redis, caplog):
+    caplog.set_level(logging.WARNING)
+    mock_redis.set.side_effect = Exception('redis down')
+
+    await alerts_main.record_broadcast(True)
+
+    assert alerts_main.last_broadcast_ok is True
+    assert "Failed to store the broadcast verdict" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_broadcast_watchdog_says_nothing_before_the_first_attempt(monkeypatch):
+    """Спроб не було - чеку нема чого сказати, а мовчання чесніше за зелене."""
+    monkeypatch.setattr(
+        alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_BROADCAST', 'https://hc-ping.com/tg'
+    )
+    alerts_main.last_broadcast_ok = None
+
+    with patch('alerts.main._ping_tg_healthcheck') as mock_ping:
+        await _run_one_cycle(alerts_main._broadcast_watchdog_loop())
+
+    mock_ping.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("verdict, suffix", [(True, ''), (False, '/fail')])
+async def test_broadcast_watchdog_carries_the_last_verdict(monkeypatch, verdict, suffix):
+    monkeypatch.setattr(
+        alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_BROADCAST', 'https://hc-ping.com/tg'
+    )
+    alerts_main.last_broadcast_ok = verdict
+
+    with patch('alerts.main._ping_tg_healthcheck') as mock_ping:
+        await _run_one_cycle(alerts_main._broadcast_watchdog_loop())
+
+    assert mock_ping.call_args_list
+    assert all(call.args == (suffix,) for call in mock_ping.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_watchdog_stops_without_a_ping_url(monkeypatch, caplog):
+    """Тут ранній вихід доречний: подія в Sentry на невдалу відправку вже є в
+    send_alert, тож без чека цикл нічого не додає."""
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(alerts_main, 'HEALTHCHECKS_PING_URL_ALERTS_BROADCAST', '')
+    alerts_main.last_broadcast_ok = False
+
+    with patch('alerts.main._ping_tg_healthcheck') as mock_ping:
+        await alerts_main._broadcast_watchdog_loop()
+
+    mock_ping.assert_not_called()
+    assert "HEALTHCHECKS_PING_URL_ALERTS_BROADCAST not set" in caplog.text
+
+
+# --- Відновлення стану моніторингу на старті ----------------------------------
+
+
+@pytest.mark.asyncio
+async def test_prime_restores_the_clock_from_redis(mock_redis, mock_telegram_client):
+    """Рестарт воркера не має скидати годинник тиші."""
+    mock_redis.get.side_effect = lambda key: {
+        alerts_main.LAST_SOURCE_MESSAGE_KEY: "1700000000",
+        alerts_main.LAST_BROADCAST_OK_KEY: "0",
+    }.get(key)
+
+    await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
+
+    assert alerts_main.last_source_message_at == 1_700_000_000.0
+    assert alerts_main.last_broadcast_ok is False
+    mock_telegram_client.get_messages.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_prime_asks_telegram_when_redis_is_empty(mock_redis, mock_telegram_client):
+    posted_at = datetime.datetime(2026, 8, 23, 10, 0, tzinfo=datetime.timezone.utc)
+    mock_redis.get.return_value = None
+    mock_telegram_client.get_messages.return_value = [MagicMock(date=posted_at)]
+
+    await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
+
+    assert alerts_main.last_source_message_at == posted_at.timestamp()
+    mock_telegram_client.get_messages.assert_awaited_once_with(SOURCE_CHANNEL, limit=1)
+
+
+@pytest.mark.asyncio
+async def test_prime_starts_the_clock_from_now_as_a_last_resort(
+    mock_redis, mock_telegram_client, caplog
+):
+    """Хибна тривога відразу після старту дорожча за пізніше виявлення."""
+    caplog.set_level(logging.WARNING)
+    mock_redis.get.return_value = None
+    mock_telegram_client.get_messages.side_effect = Exception('telegram down')
+
+    with patch('alerts.main.time.time', return_value=1_700_000_000.0):
+        await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
+
+    assert alerts_main.last_source_message_at == 1_700_000_000.0
+    assert "Starting the silence clock from now" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_prime_ignores_a_malformed_stored_mark(
+    mock_redis, mock_telegram_client, caplog
+):
+    caplog.set_level(logging.WARNING)
+    mock_redis.get.side_effect = lambda key: (
+        "не число" if key == alerts_main.LAST_SOURCE_MESSAGE_KEY else None
+    )
+    mock_telegram_client.get_messages.return_value = []
+
+    with patch('alerts.main.time.time', return_value=1_700_000_000.0):
+        await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
+
+    assert "malformed" in caplog.text
+    assert alerts_main.last_source_message_at == 1_700_000_000.0
+
+
+@pytest.mark.asyncio
+async def test_prime_survives_unreachable_redis(mock_redis, mock_telegram_client, caplog):
+    caplog.set_level(logging.WARNING)
+    mock_redis.get.side_effect = Exception('redis down')
+    mock_telegram_client.get_messages.return_value = []
+
+    with patch('alerts.main.time.time', return_value=1_700_000_000.0):
+        await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
+
+    assert "Redis unreachable while restoring monitoring state" in caplog.text
+    assert alerts_main.last_source_message_at == 1_700_000_000.0
+
 
 
 # --- Districts without a channel: map state only -----------------------------

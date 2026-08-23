@@ -56,7 +56,16 @@ STATUS_LOCK_TTL = 50  # seconds; below the interval so each cycle can re-elect
 # What the page asks, and which answers count as answers, lives in
 # web/issue.py. The limits below cap what one submission may put into a Sentry
 # event; the comment cap matches COMMENT_MAX in web/static/js/issue.js.
-REPORT_FIELD_LIMITS = {'city': 100, 'district': 100, 'time': 50, 'exact_time': 50, 'message': 250, 'contact': 100}
+REPORT_FIELD_LIMITS = {
+    'city': 100,
+    'district': 100,
+    'time': 50,
+    'exact_time': 50,
+    'exact_date': 50,
+    'exact_datetime': 50,
+    'message': 250,
+    'contact': 100,
+}
 # Submissions per window, per client IP - not accepted reports: the slot is
 # claimed before the form is checked, so a flood of malformed posts runs a
 # client out of slots just as a flood of valid ones would.
@@ -209,15 +218,23 @@ def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
 
     time_val = (form.get('time') or '').strip()
     exact_time = (form.get('exact_time') or '').strip()
+    exact_date = (form.get('exact_date') or '').strip()
 
     if time_val in ('Вибрати дату і час', 'Вибрати час'):
-        if exact_time:
+        if exact_date and exact_time:
+            time_val = f"{exact_date} {exact_time}"
+        elif exact_time:
             time_val = exact_time
+        elif exact_date:
+            time_val = exact_date
         else:
             return {}, 'Вкажіть, будь ласка, дату і час.'
     elif time_val and time_val not in TIME_NAMES:
         import re
-        if not re.match(r'^(?:\d{1,2}\s+[^\d\s]+\s+)?(?:[01]?\d|2[0-3]):[0-5]\d$', time_val):
+        if not re.match(
+            r'^(?:(?:\d{4}-\d{2}-\d{2}|\d{1,2}\s+[^\d\s]+)\s+)?(?:[01]?\d|2[0-3]):[0-5]\d$',
+            time_val,
+        ):
             return {}, 'Оберіть, будь ласка, коли це сталося.'
 
     # Час обов'язковий для розділів «Сповіщення» та «Мапа тривог»,

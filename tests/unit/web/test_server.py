@@ -408,12 +408,15 @@ def test_form_fields_are_named_the_way_the_server_reads_them(client, app):
     html = client.get('/issue').get_data(as_text=True)
 
     assert 'name="message"' in html and 'name="contact"' in html
+    assert 'name="exact_date"' in html and 'name="exact_time"' in html
     assert 'name="comment"' not in html and 'name="tg"' not in html
     assert 'maxlength="250"' in html
 
     js = (Path(app.static_folder) / 'js' / 'issue.js').read_text(encoding='utf-8')
     assert "formData.append('message'" in js
     assert "formData.append('contact'" in js
+    assert "formData.append('exact_date'" in js
+    assert "formData.append('exact_time'" in js
 
 
 def test_the_page_travels_time_as_its_own_field(app):
@@ -635,6 +638,29 @@ def test_exact_time_selection_with_value_is_accepted(client, report_deps):
 
     assert response.status_code == 200
     assert sent_report(report_deps)['time'] == '12:45'
+
+
+def test_exact_date_and_time_selection_with_both_values_is_accepted(client, report_deps):
+    response = client.post('/issue', data={
+        **VALID_REPORT,
+        'time': 'Вибрати дату і час',
+        'exact_date': '2026-08-23',
+        'exact_time': '12:45',
+    })
+
+    assert response.status_code == 200
+    assert sent_report(report_deps)['time'] == '2026-08-23 12:45'
+
+
+def test_exact_date_only_selection_with_value_is_accepted(client, report_deps):
+    response = client.post('/issue', data={
+        **VALID_REPORT,
+        'time': 'Вибрати дату і час',
+        'exact_date': '2026-08-23',
+    })
+
+    assert response.status_code == 200
+    assert sent_report(report_deps)['time'] == '2026-08-23'
 
 
 def test_custom_time_format_is_accepted(client, report_deps):

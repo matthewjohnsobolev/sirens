@@ -29,7 +29,8 @@ const bTime          = document.getElementById('block-time');
 const optsTime       = document.getElementById('opts-time');
 const errTime        = document.getElementById('err-time');
 const timePickerWrap = document.getElementById('time-picker-wrap');
-const exactDatetime  = document.getElementById('exact-datetime');
+const exactDate      = document.getElementById('exact-date');
+const exactTime      = document.getElementById('exact-time');
 const pickerDate     = document.getElementById('picker-date');
 const pickerTime     = document.getElementById('picker-time');
 const tabs           = [...document.querySelectorAll('.seg button')];
@@ -69,23 +70,22 @@ let selectedDate = new Date();
 let selectedTimeStr = getDefaultTimeStr();
 let tab = Object.keys(SETS)[0];
 
-function formatUkrainianDateTime(dateObj, timeStr) {
+function formatUkrainianDate(dateObj) {
   const d = dateObj.getDate();
   const m = UK_MONTHS[dateObj.getMonth()];
-  let hh = '00', mm = '00';
-  if (timeStr && /^\d{1,2}:\d{2}$/.test(timeStr)) {
-    const parts = timeStr.split(':');
-    hh = parts[0].padStart(2, '0');
-    mm = parts[1];
-  } else {
-    hh = String(dateObj.getHours()).padStart(2, '0');
-    mm = String(dateObj.getMinutes()).padStart(2, '0');
-  }
-  return `${d} ${m} ${hh}:${mm}`;
+  return `${d} ${m}`;
 }
 
-function getFormattedCustomDateTime() {
-  return formatUkrainianDateTime(selectedDate, selectedTimeStr);
+function formatUkrainianTime(timeStr, dateObj = new Date()) {
+  if (timeStr && /^\d{1,2}:\d{2}$/.test(timeStr)) {
+    const parts = timeStr.split(':');
+    return `${parts[0].padStart(2, '0')}:${parts[1]}`;
+  }
+  return getDefaultTimeStr(dateObj);
+}
+
+function formatUkrainianDateTime(dateObj, timeStr) {
+  return `${formatUkrainianDate(dateObj)} ${formatUkrainianTime(timeStr, dateObj)}`;
 }
 
 const isOther = () => SETS[tab].length === 0;
@@ -116,9 +116,13 @@ function updateTimePickerVisibility(){
   timePickerWrap.classList.toggle('open', isCustom);
   if (!isCustom) {
     if (bTime) bTime.classList.remove('picker-active');
-    if (exactDatetime) {
-      exactDatetime.value = '';
-      exactDatetime.classList.remove('active');
+    if (exactDate) {
+      exactDate.value = '';
+      exactDate.classList.remove('active');
+    }
+    if (exactTime) {
+      exactTime.value = '';
+      exactTime.classList.remove('active');
     }
   }
 }
@@ -164,8 +168,8 @@ function openDatePicker() {
   if (!pickerDate.value) {
     pickerDate.value = getDefaultDateStr(selectedDate);
   }
-  if (exactDatetime) {
-    const rect = exactDatetime.getBoundingClientRect();
+  if (exactDate) {
+    const rect = exactDate.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     if (spaceBelow < 320) {
       window.scrollBy({ top: 320 - spaceBelow, behavior: 'smooth' });
@@ -185,8 +189,8 @@ function openTimePicker() {
   if (!pickerTime.value) {
     pickerTime.value = selectedTimeStr;
   }
-  if (exactDatetime) {
-    const rect = exactDatetime.getBoundingClientRect();
+  if (exactTime) {
+    const rect = exactTime.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     if (spaceBelow < 280) {
       window.scrollBy({ top: 280 - spaceBelow, behavior: 'smooth' });
@@ -216,10 +220,15 @@ if (optsTime) {
       }
       selectedDate = new Date();
       selectedTimeStr = getDefaultTimeStr(selectedDate);
-      if (exactDatetime) {
-        exactDatetime.value = '';
-        exactDatetime.placeholder = getFormattedCustomDateTime();
-        exactDatetime.classList.remove('active');
+      if (exactDate) {
+        exactDate.value = '';
+        exactDate.placeholder = formatUkrainianDate(selectedDate);
+        exactDate.classList.remove('active');
+      }
+      if (exactTime) {
+        exactTime.value = '';
+        exactTime.placeholder = formatUkrainianTime(selectedTimeStr, selectedDate);
+        exactTime.classList.remove('active');
       }
       if (pickerDate) pickerDate.value = getDefaultDateStr(selectedDate);
       if (pickerTime) pickerTime.value = selectedTimeStr;
@@ -236,10 +245,15 @@ if (optsTime) {
       }
       selectedDate = new Date();
       selectedTimeStr = getDefaultTimeStr(selectedDate);
-      if (exactDatetime) {
-        exactDatetime.value = '';
-        exactDatetime.placeholder = getFormattedCustomDateTime();
-        exactDatetime.classList.remove('active');
+      if (exactDate) {
+        exactDate.value = '';
+        exactDate.placeholder = formatUkrainianDate(selectedDate);
+        exactDate.classList.remove('active');
+      }
+      if (exactTime) {
+        exactTime.value = '';
+        exactTime.placeholder = formatUkrainianTime(selectedTimeStr, selectedDate);
+        exactTime.classList.remove('active');
       }
       if (pickerDate) pickerDate.value = getDefaultDateStr(selectedDate);
       if (pickerTime) pickerTime.value = selectedTimeStr;
@@ -251,16 +265,27 @@ if (optsTime) {
   });
 }
 
-if (exactDatetime) {
-  exactDatetime.addEventListener('click', e => {
+if (exactDate) {
+  exactDate.addEventListener('click', e => {
     e.preventDefault();
     timeChoice = 'Вибрати дату і час';
     if (bTime) {
       bTime.classList.add('picker-active');
       bTime.classList.remove('invalid', 'picker-invalid');
     }
-    exactDatetime.classList.add('active');
     openDatePicker();
+  });
+}
+
+if (exactTime) {
+  exactTime.addEventListener('click', e => {
+    e.preventDefault();
+    timeChoice = 'Вибрати дату і час';
+    if (bTime) {
+      bTime.classList.add('picker-active');
+      bTime.classList.remove('invalid', 'picker-invalid');
+    }
+    openTimePicker();
   });
 }
 
@@ -269,12 +294,14 @@ if (pickerDate) {
     if (pickerDate.value) {
       selectedDate = new Date(pickerDate.value + 'T00:00:00');
     }
+    if (exactDate) {
+      exactDate.value = formatUkrainianDate(selectedDate);
+      exactDate.classList.add('active');
+    }
     if (bTime) {
       bTime.classList.add('picker-active');
       bTime.classList.remove('invalid', 'picker-invalid');
     }
-    if (exactDatetime) exactDatetime.classList.add('active');
-    setTimeout(openTimePicker, 120);
   });
 }
 
@@ -283,12 +310,14 @@ if (pickerTime) {
     if (pickerTime.value) {
       selectedTimeStr = pickerTime.value;
     }
-    exactDatetime.value = getFormattedCustomDateTime();
+    if (exactTime) {
+      exactTime.value = formatUkrainianTime(selectedTimeStr, selectedDate);
+      exactTime.classList.add('active');
+    }
     if (bTime) {
       bTime.classList.add('picker-active');
       bTime.classList.remove('invalid', 'picker-invalid');
     }
-    if (exactDatetime) exactDatetime.classList.add('active');
   });
 }
 
@@ -615,9 +644,13 @@ form.addEventListener('submit', async (e) => {
   if (!isOtherTab) {
     if (!timeChoice) {
       noTime = true;
-    } else if ((timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час') && !exactDatetime.value.trim()) {
-      noTime = true;
-      missingExactTime = true;
+    } else if (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час') {
+      const hasDate = exactDate ? !!exactDate.value.trim() : false;
+      const hasTime = exactTime ? !!exactTime.value.trim() : false;
+      if (!hasDate || !hasTime) {
+        noTime = true;
+        missingExactTime = true;
+      }
     }
   }
 
@@ -644,10 +677,26 @@ form.addEventListener('submit', async (e) => {
   bCity.classList.toggle('invalid', noLocation);
 
   if(noIssue || noTime || noComment || noLocation){
-    const first = noIssue ? opts.querySelector('input')
-                : noTime ? ((timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час') && exactDatetime ? exactDatetime : (optsTime ? optsTime.querySelector('input') : null))
-                : noComment ? comment
-                : city;
+    let first = null;
+    if (noIssue) {
+      first = opts.querySelector('input');
+    } else if (noTime) {
+      if (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час') {
+        if (exactDate && !exactDate.value.trim()) {
+          first = exactDate;
+        } else if (exactTime && !exactTime.value.trim()) {
+          first = exactTime;
+        } else {
+          first = exactDate || exactTime;
+        }
+      } else {
+        first = optsTime ? optsTime.querySelector('input') : null;
+      }
+    } else if (noComment) {
+      first = comment;
+    } else {
+      first = city;
+    }
     if (first) first.focus();
     return;
   }
@@ -663,12 +712,13 @@ form.addEventListener('submit', async (e) => {
   
   const isCustomTime = (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час');
   const chosenTime = isCustomTime
-    ? exactDatetime.value.trim()
+    ? `${exactDate ? exactDate.value.trim() : ''} ${exactTime ? exactTime.value.trim() : ''}`.trim()
     : (timeChoice || '');
   if (chosenTime) {
     formData.append('time', chosenTime);
     if (isCustomTime) {
-      formData.append('exact_time', `${pickerDate.value || getDefaultDateStr(selectedDate)} ${pickerTime.value || selectedTimeStr}`);
+      if (pickerDate) formData.append('exact_date', pickerDate.value || getDefaultDateStr(selectedDate));
+      if (pickerTime) formData.append('exact_time', pickerTime.value || selectedTimeStr);
     }
   }
 
@@ -730,16 +780,21 @@ function resetForm(){
   timeChoice = null;
   selectedDate = new Date();
   selectedTimeStr = getDefaultTimeStr();
-  if (exactDatetime) {
-    exactDatetime.value = '';
-    exactDatetime.placeholder = getFormattedCustomDateTime();
-    exactDatetime.classList.remove('active');
+  if (exactDate) {
+    exactDate.value = '';
+    exactDate.placeholder = formatUkrainianDate(selectedDate);
+    exactDate.classList.remove('active');
+  }
+  if (exactTime) {
+    exactTime.value = '';
+    exactTime.placeholder = formatUkrainianTime(selectedTimeStr, selectedDate);
+    exactTime.classList.remove('active');
   }
   if (pickerDate) pickerDate.value = '';
   if (pickerTime) pickerTime.value = '';
   renderTime();
   bIssue.classList.remove('invalid');
-  if (bTime) bTime.classList.remove('invalid', 'picker-active');
+  if (bTime) bTime.classList.remove('invalid', 'picker-active', 'picker-invalid');
   bCity.classList.remove('invalid');
   bComment.classList.remove('invalid');
   if (errComment) errComment.textContent = 'Опишіть, будь ласка, що сталося — без цього ми не знатимемо, що шукати.';
@@ -770,7 +825,8 @@ function showNotice(kind, text){
   }, NOTICE_MS);
 }
 
-if (exactDatetime) exactDatetime.placeholder = getFormattedCustomDateTime();
+if (exactDate) exactDate.placeholder = formatUkrainianDate(selectedDate);
+if (exactTime) exactTime.placeholder = formatUkrainianTime(selectedTimeStr, selectedDate);
 select(0);
 
 /* Якщо сторінку віддав сервер уже з успіхом (форма пішла звичайним POST,

@@ -129,7 +129,7 @@ def test_unusable_log_entries_are_skipped(_web_key):
     (0, "mnt"),
     (1, "nodata"),
     (2, "ok"),
-    (8, "deg"),
+    (8, "minor"),
     (9, "down"),
     (42, "nodata"),
 ])

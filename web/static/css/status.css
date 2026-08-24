@@ -1,4 +1,25 @@
+/* ===========================================================================
+   status.css - сторінка стану сервісу («Стан сирен»).
+
+   РОЗМІРНА СИСТЕМА (Типографіка):
+   Три чітких кеглі з фіксованими ролями без проміжних часток:
+
+     --fs-title (clamp(22px, 5vw, 28px) / 700) - головний заголовок стану сервісу.
+     --fs-base  (13px)                           - основний інтерфейс і текст:
+                                                   назви компонентів (500), відсотки
+                                                   доступності, пояснювальний текст,
+                                                   посилання та копірайт у підвалі.
+     --fs-sm    (11px)                           - службові мітки та метадані:
+                                                   шапка/час оновлення, легенда кольорів,
+                                                   шкала дат (90/45 днів), підказка (tip),
+                                                   позначка «моніторинг не налаштовано».
+
+   Розрізнення елементів будується на вазі (400 / 500 / 700), кольорі та
+   структурі, а не на десяткових частках кегля.
+   =========================================================================== */
+
 :root {
+  /* Палітра фону та контрастності тексту */
   --bg: #E9E9E7;      /* 91% */
   --fig: #D8D8D5;     /* 84% */
   --hair: #CCCCC7;    /* 79% */
@@ -6,15 +27,27 @@
   --text: #65655D;    /* 38% */
   --strong: #40403B;  /* 24% */
 
-  /* Стан дня за шкалою світлоти (більше чорнила = гірше) */
-  --day-ok: #C0E7AC;      --day-ok-h: #B2DF99;    /* L 0.89 */
-  --day-mnt: #EEE592;     --day-mnt-h: #E7DD7B;   /* L 0.91 - не збій */
-  --day-deg: #FBBE86;     --day-deg-h: #F7B271;   /* L 0.85 */
-  --day-down: #FD9598;    --day-down-h: #FA878A;  /* L 0.78 */
-  --day-nodata: #D8D8D5;  --day-nodata-h: #CCCCC7;/* L 0.84 - немає даних */
+  /* Стан дня за шкалою світлоти та кольору */
+  --day-ok: #C0E7AC;      --day-ok-h: #B2DF99;    /* Зелений - без збоїв */
+  --day-minor: #EEE592;   --day-minor-h: #E7DD7B; /* Жовтий - незначні збої (<1%) */
+  --day-major: #FBBE86;   --day-major-h: #F7B271; /* Помаранчевий - помітні збої (1-5%) */
+  --day-down: #FD9598;    --day-down-h: #FA878A;  /* Червоний - тривалі збої (>5%) */
+  --day-mnt: #A4D4F4;     --day-mnt-h: #90C7EA;   /* Блакитний - планові роботи */
+  --day-nodata: #D8D8D5;  --day-nodata-h: #CCCCC7;/* Сірий - немає даних */
 
+  /* Система кеглів (Typography System) */
+  --fs-title: clamp(22px, 5vw, 28px);
+  --fs-base: 13px;
+  --fs-sm: 11px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+
+  /* Шкала відступів */
   --s1: 8px;
   --s2: 16px;
+  --s3: 24px;
   --s4: 32px;
   --s7: 56px;
 
@@ -23,6 +56,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html, body {
@@ -34,16 +68,21 @@ body {
   background: var(--bg);
   font-family: var(--mono);
   -webkit-font-smoothing: antialiased;
-  display: grid;
-  grid-template-rows: 1fr auto;
-  padding: clamp(24px, 6vw, var(--s7));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(24px, 5vw, var(--s7));
+  padding-top: max(clamp(24px, 5vw, var(--s7)), env(safe-area-inset-top, 0px));
+  padding-right: max(clamp(16px, 4vw, var(--s7)), env(safe-area-inset-right, 0px));
+  padding-bottom: max(clamp(24px, 5vw, var(--s7)), env(safe-area-inset-bottom, 0px));
+  padding-left: max(clamp(16px, 4vw, var(--s7)), env(safe-area-inset-left, 0px));
 }
 
 main {
   width: 100%;
-  max-width: 680px;
+  max-width: 720px;
   margin: 0 auto;
-  padding-top: clamp(var(--s2), 6vh, var(--s7));
+  padding-top: clamp(var(--s4), 6vh, var(--s7));
 }
 
 /* Шапка: заголовок — це і є стан. Дрібне службове зверху */
@@ -51,10 +90,11 @@ main {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--s2);
-  font-size: 10.5px;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s2);
+  font-size: var(--fs-sm);
   color: var(--copy);
-  letter-spacing: .14em;
+  letter-spacing: .1em;
   text-transform: uppercase;
 }
 
@@ -69,20 +109,50 @@ main {
 }
 
 .state {
-  margin: var(--s2) 0 0;
-  font-size: clamp(19px, 4.4vw, 27px);
-  font-weight: 700;
+  margin: var(--s7) 0 0;
+  font-size: var(--fs-title);
+  font-weight: var(--weight-bold);
   color: var(--strong);
-  letter-spacing: .04em;
-  line-height: 1.2;
+  letter-spacing: .02em;
+  line-height: 1.25;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .state-sub {
-  margin: 10px 0 0;
-  font-size: 10.5px;
+  margin: 14px 0 0;
+  font-size: var(--fs-base);
+  font-weight: var(--weight-regular);
   color: var(--copy);
-  letter-spacing: .14em;
+  letter-spacing: .05em;
   text-transform: uppercase;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.state-report {
+  margin: 12px 0 0;
+  font-size: var(--fs-base);
+  font-weight: var(--weight-regular);
+  color: var(--copy);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.state-sub a,
+.state-report a {
+  color: var(--strong);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color .15s ease;
+}
+
+.state-sub a:hover,
+.state-report a:hover {
+  color: #000;
 }
 
 .list {
@@ -91,7 +161,7 @@ main {
 }
 
 .comp {
-  padding: 22px 0;
+  padding: 24px 0;
   border-bottom: 1px solid var(--hair);
 }
 
@@ -104,28 +174,32 @@ main {
 }
 
 .comp-name {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--fs-base);
+  font-weight: var(--weight-medium);
   color: var(--strong);
-  letter-spacing: .14em;
+  letter-spacing: .08em;
   text-transform: uppercase;
   margin: 0;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .comp-val {
-  font-size: 11px;
+  font-size: var(--fs-base);
+  font-weight: var(--weight-regular);
   color: var(--copy);
   letter-spacing: .04em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Компонент без свого чека не має що показати - і не вдає, ніби має */
 .comp[data-monitored="false"] .comp-val {
-  font-size: 10px;
-  letter-spacing: .14em;
+  font-size: var(--fs-sm);
+  letter-spacing: .08em;
   text-transform: uppercase;
-  opacity: .7;
+  opacity: .75;
   white-space: normal;
   text-align: right;
 }
@@ -133,8 +207,8 @@ main {
 /* Сигнатура сторінки: 90 днів = 90 смуг */
 .bars {
   display: flex;
-  gap: 2px;
-  height: 38px;
+  gap: 2.5px;
+  height: 42px;
   align-items: stretch;
 }
 
@@ -147,24 +221,28 @@ main {
   cursor: pointer;
 }
 
-.bar[data-state="mnt"] { background: var(--day-mnt); }
-.bar[data-state="deg"] { background: var(--day-deg); }
+.bar[data-state="minor"] { background: var(--day-minor); }
+.bar[data-state="major"] { background: var(--day-major); }
 .bar[data-state="down"] { background: var(--day-down); }
+.bar[data-state="mnt"] { background: var(--day-mnt); }
 .bar[data-state="nodata"] { background: var(--day-nodata); }
 
-.bar:hover { background: var(--day-ok-h); }
-.bar[data-state="mnt"]:hover { background: var(--day-mnt-h); }
-.bar[data-state="deg"]:hover { background: var(--day-deg-h); }
-.bar[data-state="down"]:hover { background: var(--day-down-h); }
-.bar[data-state="nodata"]:hover { background: var(--day-nodata-h); }
+@media (hover: hover) and (pointer: fine) {
+  .bar:hover { background: var(--day-ok-h); }
+  .bar[data-state="minor"]:hover { background: var(--day-minor-h); }
+  .bar[data-state="major"]:hover { background: var(--day-major-h); }
+  .bar[data-state="down"]:hover { background: var(--day-down-h); }
+  .bar[data-state="mnt"]:hover { background: var(--day-mnt-h); }
+  .bar[data-state="nodata"]:hover { background: var(--day-nodata-h); }
+}
 
 .scale {
   display: flex;
   justify-content: space-between;
   margin-top: 10px;
-  font-size: 10px;
+  font-size: var(--fs-sm);
   color: var(--copy);
-  letter-spacing: .14em;
+  letter-spacing: .08em;
   text-transform: uppercase;
 }
 
@@ -177,16 +255,17 @@ main {
 /* Підказка по дотику: title на сенсорному екрані не показується */
 .tip {
   position: fixed;
-  z-index: 10;
+  z-index: 100;
   padding: 6px 10px;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--strong);
   color: var(--bg);
-  font-size: 10px;
-  letter-spacing: .1em;
+  font-size: var(--fs-sm);
+  letter-spacing: .08em;
   text-transform: uppercase;
   white-space: nowrap;
   pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
 }
 
 .tip[hidden] {
@@ -196,11 +275,13 @@ main {
 .key {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 22px;
+  justify-content: center;
+  align-items: center;
+  gap: 12px 24px;
   margin: var(--s4) 0 0;
-  font-size: 10px;
+  font-size: var(--fs-sm);
   color: var(--copy);
-  letter-spacing: .14em;
+  letter-spacing: .08em;
   text-transform: uppercase;
 }
 
@@ -208,64 +289,156 @@ main {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .key i {
-  width: 10px;
-  height: 10px;
-  border-radius: 1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
   display: block;
+  flex-shrink: 0;
 }
 
-.copy {
+.foot {
   margin: var(--s7) 0 0;
-  font-size: 10.5px;
-  font-weight: 400;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.foot-links {
+  margin: 0;
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  font-weight: var(--weight-regular);
   color: var(--copy);
-  letter-spacing: .14em;
+  letter-spacing: .06em;
   text-transform: uppercase;
   text-align: center;
-  margin-right: -.14em;
+  margin-right: -.06em;
 }
 
-.copy a {
+.foot-links a {
   color: inherit;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
   transition: color .15s ease;
+  padding: 2px 0;
 }
 
-.copy a:hover {
+.foot-links a:hover {
   color: var(--strong);
 }
 
-/* На вузькому екрані показуємо 45 днів */
+.copy {
+  margin: 0;
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  font-weight: var(--weight-regular);
+  color: var(--copy);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-align: center;
+  margin-right: -.06em;
+}
+
+/* ==========================================================================
+   МОБІЛЬНА АДАПТАЦІЯ
+   ========================================================================== */
+
+/* На вузькому екрані показуємо 45 днів замість 90 */
 @media (max-width: 600px) {
-  main {
-    padding-top: var(--s2);
+  body {
+    padding: max(clamp(24px, 5vw, var(--s7)), env(safe-area-inset-top, 24px))
+             max(16px, env(safe-area-inset-right, 16px))
+             max(clamp(24px, 5vw, var(--s7)), env(safe-area-inset-bottom, 24px))
+             max(16px, env(safe-area-inset-left, 16px));
   }
+
+  main {
+    padding-top: clamp(var(--s4), 6vh, var(--s7));
+  }
+
+  .state {
+    margin-top: var(--s7);
+  }
+
+  .list {
+    margin-top: var(--s7);
+  }
+
+  .comp {
+    padding: 18px 0;
+  }
+
+  .comp-head {
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+
   .bar:nth-child(-n+45) {
     display: none;
   }
+
   .scale-full {
     display: none;
   }
+
   .scale-short {
     display: inline;
   }
+
   .bars {
-    height: 34px;
+    height: 36px;
+    gap: 2px;
   }
-  .comp-name {
-    letter-spacing: .1em;
-    font-size: 10.5px;
+
+  .scale {
+    margin-top: 8px;
+    letter-spacing: .05em;
   }
-  .top, .state-sub, .scale, .key {
-    letter-spacing: .1em;
+
+  .top, .state-sub, .state-report {
+    letter-spacing: .04em;
   }
-  .copy {
-    letter-spacing: .1em;
-    margin-right: -.1em;
+
+  .key {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 12px 20px;
+    margin-top: var(--s4);
+    letter-spacing: .05em;
+  }
+
+  .foot {
+    margin-top: var(--s7);
+    gap: 8px;
+  }
+
+  .copy, .foot-links {
+    letter-spacing: .04em;
+    margin-right: -.04em;
+  }
+}
+
+/* Ультра-вузькі екрани (наприклад, iPhone SE 1st gen або компактні вікна <= 360px) */
+@media (max-width: 360px) {
+  .key {
+    gap: 8px 12px;
+  }
+
+  .comp-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .comp[data-monitored="false"] .comp-val {
+    text-align: left;
   }
 }
 

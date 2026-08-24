@@ -40,7 +40,7 @@ LIVE_BY_STATUS = {
     0: "mnt",
     1: "nodata",
     2: "ok",
-    8: "deg",
+    8: "minor",
     9: "down",
 }
 

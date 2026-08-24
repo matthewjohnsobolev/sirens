@@ -148,11 +148,13 @@ def api() -> Any:
 
 
 def status() -> str:
-    return render_template('status.html', **get_status_data())
+    mock = request.args.get('mock')
+    return render_template('status.html', **get_status_data(mock_scenario=mock))
 
 
 def api_status() -> Any:
-    return jsonify(get_status_data())
+    mock = request.args.get('mock')
+    return jsonify(get_status_data(mock_scenario=mock))
 
 
 def _client_ip() -> str:

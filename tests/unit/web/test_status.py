@@ -113,7 +113,10 @@ def test_status_route(client):
     response = client.get('/status')
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert 'Стан сервісу' in html
+    assert 'Стан сирен' in html
+    assert 'EEST' in html
+    assert 'Повідомити про помилку' in html
+    assert '© 2026 «Сирени»' in html
 
     assets = re.findall(r'(?:href|src)="(/static/(?:css|js)/status\.[^"]+)"', html)
     assert assets, "Не знайдено status.css або status.js у розмітці"
@@ -130,8 +133,8 @@ def test_status_route_renders_bars_without_javascript(client):
 def test_status_route_says_it_does_not_know(client):
     """Без даних сторінка мовчить про доступність, а не рапортує 100 %."""
     html = client.get('/status').get_data(as_text=True)
-    assert 'Немає даних про стан' in html
-    assert 'Усі системи працюють' not in html
+    assert 'Стан невідомий' in html
+    assert 'Сповіщення працюють' not in html
     assert '100,00' not in html
 
 
@@ -141,10 +144,11 @@ def test_api_status_route(client):
     data = response.json
     assert 'components' in data
     assert 'headline' in data
+    assert 'subtitle' in data
     assert 'overall_uptime' in data
     assert len(data['components']) == 4
     keys = [c['key'] for c in data['components']]
-    assert keys == ['map', 'api', 'alerts', 'tg']
+    assert keys == ['tg', 'alerts', 'map', 'api']
 
 
 def test_api_status_carries_no_markup():
@@ -270,21 +274,35 @@ def test_outage_across_midnight_is_split_between_days():
 
     # Двадцять хвилин простою, порівну по обидва боки півночі.
     assert down == pytest.approx(20 * 60, abs=1)
-    assert _days_ago(component, 1) == 'deg'
-    assert _days_ago(component, 0) == 'deg'
+    assert _days_ago(component, 1) == 'minor'
+    assert _days_ago(component, 0) == 'minor'
 
 
-def test_short_blip_is_degraded_not_down():
+def test_short_blip_is_minor_or_major_not_down():
     now = datetime.now(KYIV_TZ).replace(hour=12, minute=0, second=0, microsecond=0)
-    flips = [
+    # 10 хв простою (< 864 с, < 1% доби) -> minor
+    flips_minor = [
         (now - timedelta(days=2, minutes=10), 0),
         (now - timedelta(days=2), 1),
     ]
+    comp_minor, _, _ = _build_component(_spec('alerts'), _probe(flips_minor), now, {})
+    assert _days_ago(comp_minor, 2) == 'minor'
 
-    component, _tracked, _down = _build_component(
-        _spec('alerts'), _probe(flips), now, {}
-    )
-    assert _days_ago(component, 2) == 'deg'
+    # 30 хв простою (864 с < 1800 с <= 4320 с, 1–5% доби) -> major
+    flips_major = [
+        (now - timedelta(days=3, minutes=30), 0),
+        (now - timedelta(days=3), 1),
+    ]
+    comp_major, _, _ = _build_component(_spec('alerts'), _probe(flips_major), now, {})
+    assert _days_ago(comp_major, 3) == 'major'
+
+    # 2 год простою (> 4320 с, > 5% доби) -> down
+    flips_down = [
+        (now - timedelta(days=4, hours=2), 0),
+        (now - timedelta(days=4), 1),
+    ]
+    comp_down, _, _ = _build_component(_spec('alerts'), _probe(flips_down), now, {})
+    assert _days_ago(comp_down, 4) == 'down'
 
 
 def test_uptime_counts_seconds_not_whole_days():
@@ -315,7 +333,8 @@ def test_live_down_status_reaches_today_and_headline():
         with patch('web.status.HEALTHCHECKS_API', 'test-key'):
             data = _collect_status()
 
-    assert data['headline'] == 'Частина систем недоступна'
+    assert data['headline'] == 'Сервіс не працює'
+    assert 'Сповіщення не надходять' in data['subtitle']
     comp = next(c for c in data['components'] if c['key'] == 'alerts')
     assert comp['days'][-1]['state'] == 'down'
 
@@ -327,7 +346,8 @@ def test_grace_status_shows_as_degraded():
         with patch('web.status.HEALTHCHECKS_API', 'test-key'):
             data = _collect_status()
 
-    assert data['headline'] == 'Спостерігаються збої в роботі'
+    assert data['headline'] == 'Сервіс не працює'
+    assert 'Сповіщення не надходять' in data['subtitle']
 
 
 def test_paused_check_reads_as_maintenance():
@@ -337,7 +357,8 @@ def test_paused_check_reads_as_maintenance():
         with patch('web.status.HEALTHCHECKS_API', 'test-key'):
             data = _collect_status()
 
-    assert data['headline'] == 'Планові технічні роботи'
+    assert data['headline'] == 'Планові роботи'
+    assert 'Тривають планові технічні роботи.' in data['subtitle']
 
 
 # --- чесність замість вигаданих ста відсотків ------------------------------
@@ -401,21 +422,26 @@ def test_unmatched_component_stays_nodata_even_with_start_date(monkeypatch):
 
 def test_unreachable_api_falls_back_to_last_good(_quiet_redis):
     """Впав healthchecks.io - показуємо старий знімок із поміткою, а не «все добре»."""
-    snapshot = {'headline': 'Усі системи працюють', 'updated_at': '22 серпня, 10:00'}
+    snapshot = {
+        'headline': 'Усе працює',
+        'subtitle': 'Останню тривогу отримано о 21:04.',
+        'updated_at': '22 серпня, 10:00',
+    }
     _quiet_redis.get.side_effect = lambda key: (
         json.dumps(snapshot) if key == web_status.LAST_GOOD_KEY else None
     )
 
     data = get_status_data()
     assert data['stale'] is True
-    assert data['headline'] == 'Усі системи працюють'
+    assert data['headline'] == 'Усе працює'
 
 
 def test_empty_cache_reports_unknown(_quiet_redis):
     _quiet_redis.get.return_value = None
 
     data = get_status_data()
-    assert data['headline'] == 'Немає даних про стан'
+    assert data['headline'] == 'Стан невідомий'
+    assert data['subtitle'] == 'Моніторинг не відповідає'
     assert data['overall_uptime'] is None
     assert data['unknown'] is True
     assert all(c['uptime'] is None for c in data['components'])
@@ -425,7 +451,7 @@ def test_unreachable_redis_reports_unknown(_quiet_redis):
     _quiet_redis.get.side_effect = ConnectionError('redis down')
 
     data = get_status_data()
-    assert data['headline'] == 'Немає даних про стан'
+    assert data['headline'] == 'Стан невідомий'
 
 
 def test_unknown_components_do_not_share_one_days_list():
@@ -459,7 +485,7 @@ def test_get_status_data_never_calls_the_network(_quiet_redis):
     _quiet_redis.get.return_value = None
 
     with patch('requests.get', side_effect=AssertionError('network in request path')):
-        assert get_status_data()['headline'] == 'Немає даних про стан'
+        assert get_status_data()['headline'] == 'Стан невідомий'
 
 
 # --- два провайдери в одному знімку ----------------------------------------
@@ -612,15 +638,27 @@ def test_plural_days(count, word):
 
 def test_format_day_title():
     assert format_day_title('2026-05-25', 'ok') == '25 травня — без збоїв'
-    assert format_day_title('2026-05-25', 'down') == '25 травня — недоступно'
+    assert format_day_title('2026-05-25', 'minor') == '25 травня — незначні збої'
+    assert format_day_title('2026-05-25', 'major') == '25 травня — помітні збої'
+    assert format_day_title('2026-05-25', 'down') == '25 травня — тривалі збої'
+    assert format_day_title('2026-05-25', 'mnt') == '25 травня — планові роботи'
     assert format_day_title('not-a-date', 'nodata') == 'немає даних'
 
 
 def test_summarize_days_counts_states():
-    days = [{'date': '2026-05-25', 'state': 'ok'}] * 88 + [{'date': '2026-05-26', 'state': 'down'}] * 2
+    days = (
+        [{'date': '2026-05-25', 'state': 'ok'}] * 80
+        + [{'date': '2026-05-26', 'state': 'minor'}] * 4
+        + [{'date': '2026-05-27', 'state': 'major'}] * 3
+        + [{'date': '2026-05-28', 'state': 'down'}] * 2
+        + [{'date': '2026-05-29', 'state': 'mnt'}] * 1
+    )
     summary = summarize_days(days)
-    assert '88 днів без збоїв' in summary
-    assert '2 дні недоступно' in summary
+    assert '80 днів без збоїв' in summary
+    assert '4 дні з незначними збоями' in summary
+    assert '3 дні з помітними збоями' in summary
+    assert '2 дні з тривалими збоями' in summary
+    assert '1 день планові роботи' in summary
 
 
 def test_summarize_empty_days():
@@ -756,7 +794,8 @@ def test_headline_is_unknown_when_every_check_is_silent():
         with patch('web.status.HEALTHCHECKS_API', 'test-key'):
             data = _collect_status()
 
-    assert data['headline'] == 'Немає даних про стан'
+    assert data['headline'] == 'Стан невідомий'
+    assert data['subtitle'] == 'Моніторинг не відповідає'
 
 
 # --- збої довкола -----------------------------------------------------------
@@ -828,5 +867,265 @@ def test_corrupt_cache_entry_is_skipped(_quiet_redis, caplog):
     with caplog.at_level('WARNING'):
         data = get_status_data()
 
-    assert data['headline'] == 'Немає даних про стан'
+    assert data['headline'] == 'Стан невідомий'
     assert 'not valid JSON' in caplog.text
+
+
+# --- нові тести заголовків, підзаголовків та порогів ------------------------
+
+def test_headline_all_working_with_today_alert(_quiet_redis):
+    now = datetime(2026, 8, 23, 22, 0, tzinfo=KYIV_TZ)
+    alert_time = datetime(2026, 8, 23, 21, 4, tzinfo=KYIV_TZ)
+    _quiet_redis.get.side_effect = lambda k: str(int(alert_time.timestamp())) if k == "service:alerts:last_source_message_at" else None
+
+    components = [
+        {"key": "tg", "name": "Сповіщення в Telegram", "monitored": True, "state": "ok"},
+        {"key": "alerts", "name": "Отримання тривог", "monitored": True, "state": "ok"},
+        {"key": "map", "name": "Мапа", "monitored": True, "state": "ok"},
+        {"key": "api", "name": "API (для розробників)", "monitored": True, "state": "ok"},
+    ]
+
+    last_alert_dt = web_status._get_last_alert_time()
+    headline, subtitle = web_status._headline_and_subtitle(components, last_alert_dt, now)
+    assert headline == "Сповіщення працюють"
+    assert subtitle == "Останнє сповіщення — сьогодні о 21:04. Відтоді тривог не було."
+
+
+def test_headline_all_working_with_yesterday_alert():
+    now = datetime(2026, 8, 23, 10, 0, tzinfo=KYIV_TZ)
+    alert_time = datetime(2026, 8, 22, 21, 4, tzinfo=KYIV_TZ)
+
+    components = [
+        {"key": "tg", "monitored": True, "state": "ok"},
+        {"key": "alerts", "monitored": True, "state": "ok"},
+    ]
+
+    headline, subtitle = web_status._headline_and_subtitle(components, alert_time, now)
+    assert headline == "Сповіщення працюють"
+    assert subtitle == "Останнє сповіщення — 22 серпня о 21:04. Відтоді тривог не було."
+
+
+def test_headline_all_working_without_alert():
+    now = datetime(2026, 8, 23, 10, 0, tzinfo=KYIV_TZ)
+    components = [{"key": "tg", "monitored": True, "state": "ok"}]
+
+    headline, subtitle = web_status._headline_and_subtitle(components, None, now)
+    assert headline == "Сповіщення працюють"
+    assert subtitle == "Сповіщення в Telegram надходять як зазвичай. Відтоді тривог не було."
+
+
+def test_headline_partial_failure_map_down():
+    now = datetime(2026, 8, 23, 22, 0, tzinfo=KYIV_TZ)
+    outage_start = datetime(2026, 8, 23, 21, 40, tzinfo=KYIV_TZ)
+
+    components = [
+        {"key": "tg", "monitored": True, "state": "ok"},
+        {"key": "alerts", "monitored": True, "state": "ok"},
+        {"key": "map", "monitored": True, "state": "down", "outage_since": outage_start.isoformat()},
+        {"key": "api", "monitored": True, "state": "ok"},
+    ]
+
+    headline, subtitle = web_status._headline_and_subtitle(components, None, now)
+    assert headline == "Сповіщення працюють, мапа — ні"
+    assert subtitle == "Мапа недоступна з 21:40. Сповіщення в Telegram надходять як зазвичай."
+
+
+def test_headline_partial_failure_api_down():
+    now = datetime(2026, 8, 23, 22, 0, tzinfo=KYIV_TZ)
+    outage_start = datetime(2026, 8, 23, 21, 40, tzinfo=KYIV_TZ)
+
+    components = [
+        {"key": "tg", "monitored": True, "state": "ok"},
+        {"key": "alerts", "monitored": True, "state": "ok"},
+        {"key": "map", "monitored": True, "state": "ok"},
+        {"key": "api", "monitored": True, "state": "down", "outage_since": outage_start.isoformat()},
+    ]
+
+    headline, subtitle = web_status._headline_and_subtitle(components, None, now)
+    assert headline == "Сповіщення працюють, API — ні"
+    assert subtitle == "API недоступний з 21:40. Сповіщення в Telegram надходять як зазвичай."
+
+
+def test_headline_partial_failure_both_map_and_api_down():
+    now = datetime(2026, 8, 23, 22, 0, tzinfo=KYIV_TZ)
+    outage_start = datetime(2026, 8, 23, 21, 40, tzinfo=KYIV_TZ)
+
+    components = [
+        {"key": "tg", "monitored": True, "state": "ok"},
+        {"key": "alerts", "monitored": True, "state": "ok"},
+        {"key": "map", "monitored": True, "state": "down", "outage_since": outage_start.isoformat()},
+        {"key": "api", "monitored": True, "state": "minor", "outage_since": outage_start.isoformat()},
+    ]
+
+    headline, subtitle = web_status._headline_and_subtitle(components, None, now)
+    assert headline == "Сповіщення працюють, мапа й API — ні"
+    assert subtitle == "Мапа та API недоступні з 21:40. Сповіщення в Telegram надходять як зазвичай."
+
+
+def test_headline_service_down_when_alerts_or_tg_failing():
+    now = datetime(2026, 8, 23, 22, 0, tzinfo=KYIV_TZ)
+    outage_start = datetime(2026, 8, 23, 21, 40, tzinfo=KYIV_TZ)
+
+    # 1. alerts failing
+    components = [
+        {"key": "tg", "monitored": True, "state": "ok"},
+        {"key": "alerts", "monitored": True, "state": "down", "outage_since": outage_start.isoformat()},
+        {"key": "map", "monitored": True, "state": "ok"},
+        {"key": "api", "monitored": True, "state": "ok"},
+    ]
+    headline, subtitle = web_status._headline_and_subtitle(components, None, now)
+    assert headline == "Сервіс не працює"
+    assert subtitle == "Сповіщення не надходять з 21:40. Перевіряйте офіційний канал вашої області."
+
+    # 2. tg failing
+    components[1]["state"] = "ok"
+    components[0]["state"] = "down"
+    components[0]["outage_since"] = outage_start.isoformat()
+    headline, subtitle = web_status._headline_and_subtitle(components, None, now)
+    assert headline == "Сервіс не працює"
+    assert subtitle == "Сповіщення не надходять з 21:40. Перевіряйте офіційний канал вашої області."
+
+
+def test_headline_maintenance():
+    now = datetime(2026, 8, 23, 22, 0, tzinfo=KYIV_TZ)
+    components = [
+        {"key": "tg", "monitored": True, "state": "ok"},
+        {"key": "alerts", "monitored": True, "state": "mnt"},
+    ]
+    headline, subtitle = web_status._headline_and_subtitle(components, None, now)
+    assert headline == "Планові роботи"
+    assert subtitle == "Тривають планові технічні роботи."
+
+
+def test_daily_proportion_thresholds_exact():
+    now = datetime.now(KYIV_TZ).replace(hour=12, minute=0, second=0, microsecond=0)
+
+    # 0s downtime -> ok
+    comp_ok, _, _ = _build_component(_spec('alerts'), _probe([]), now, {})
+    assert _days_ago(comp_ok, 0) == 'ok'
+
+    # 800s downtime (<= 864s) -> minor
+    flips_800s = [
+        (now - timedelta(days=1, seconds=800), 0),
+        (now - timedelta(days=1), 1),
+    ]
+    comp_minor, _, _ = _build_component(_spec('alerts'), _probe(flips_800s), now, {})
+    assert _days_ago(comp_minor, 1) == 'minor'
+
+    # 2000s downtime (864s < 2000s <= 4320s) -> major
+    flips_2000s = [
+        (now - timedelta(days=2, seconds=2000), 0),
+        (now - timedelta(days=2), 1),
+    ]
+    comp_major, _, _ = _build_component(_spec('alerts'), _probe(flips_2000s), now, {})
+    assert _days_ago(comp_major, 2) == 'major'
+
+    # 5000s downtime (> 4320s) -> down
+    flips_5000s = [
+        (now - timedelta(days=3, seconds=5000), 0),
+        (now - timedelta(days=3), 1),
+    ]
+    comp_down, _, _ = _build_component(_spec('alerts'), _probe(flips_5000s), now, {})
+    assert _days_ago(comp_down, 3) == 'down'
+
+    # mnt live overrides computed downtime
+    comp_mnt, _, _ = _build_component(_spec('alerts'), _probe(flips_5000s, live='mnt'), now, {})
+    assert _days_ago(comp_mnt, 0) == 'mnt'
+
+
+def test_status_helpers_edge_cases(_quiet_redis, caplog):
+    now = datetime(2026, 8, 23, 22, 0, tzinfo=KYIV_TZ)
+    past_date = datetime(2026, 8, 20, 15, 30, tzinfo=KYIV_TZ)
+
+    # 1. _format_since_time on past date and None
+    assert web_status._format_since_time(None, now) == ""
+    assert web_status._format_since_time(past_date, now) == " з 20 серпня, 15:30"
+
+    # 2. _get_last_alert_time exception handling
+    _quiet_redis.get.side_effect = ConnectionError("redis error")
+    with caplog.at_level("WARNING"):
+        assert web_status._get_last_alert_time() is None
+    assert "Redis unreachable" in caplog.text
+
+    # 3. _headline fallback without now argument
+    comp_ok = [{"key": "tg", "monitored": True, "state": "ok"}]
+    assert web_status._headline(comp_ok) == "Сповіщення працюють"
+
+    # 4. _get_outage_dt invalid timestamp handling
+    comp_invalid_os = [
+        {"key": "tg", "monitored": True, "state": "ok"},
+        {"key": "alerts", "monitored": True, "state": "ok"},
+        {"key": "map", "monitored": True, "state": "down", "outage_since": "invalid-iso"},
+    ]
+    hl, sub = web_status._headline_and_subtitle(comp_invalid_os, None, now)
+    assert hl == "Сповіщення працюють, мапа — ні"
+    assert sub == "Мапа недоступна. Сповіщення в Telegram надходять як зазвичай."
+
+    # 5. Outage since from flips when live is down but history is not known
+    flip_time = now - timedelta(minutes=5)
+    comp_flips, _, _ = _build_component(
+        _spec('alerts'),
+        _probe([(flip_time, 0)], live="down", flips_ok=False),
+        now,
+        {},
+    )
+    assert comp_flips["outage_since"] == flip_time.isoformat()
+
+
+def test_status_route_report_cta_rendering(client, _quiet_redis):
+    # 1. Normal state: shows inviting prompt and report button
+    snapshot_ok = {
+        "headline": "Сповіщення працюють",
+        "subtitle": "Останнє сповіщення — сьогодні о 21:04. Відтоді тривог не було.",
+        "updated_at": "24 серпня, 00:01 EEST",
+        "stale": False,
+        "overall_uptime": 100.0,
+        "period_days": 90,
+        "period_days_word": "днів",
+        "components": [
+            {"key": "tg", "name": "Сповіщення в Telegram", "monitored": True, "uptime": 100.0, "state": "ok", "days": []}
+        ],
+    }
+    _quiet_redis.get.side_effect = lambda k: json.dumps(snapshot_ok) if k == web_status.CACHE_KEY else None
+    html_ok = client.get('/status').get_data(as_text=True)
+    assert 'Не отримали сповіщення? Щось працює не так?' in html_ok
+    assert 'Повідомити про збій' in html_ok
+
+    # 2. Incident state: shows notice about known outage and secondary report link
+    snapshot_incident = {
+        "headline": "Сповіщення працюють, мапа — ні",
+        "subtitle": "Мапа недоступна з 21:40. Сповіщення в Telegram надходять як зазвичай.",
+        "updated_at": "24 серпня, 00:01 EEST",
+        "stale": False,
+        "overall_uptime": 99.0,
+        "period_days": 90,
+        "period_days_word": "днів",
+        "components": [
+            {"key": "map", "name": "Мапа", "monitored": True, "uptime": 98.0, "state": "down", "days": []}
+        ],
+    }
+    _quiet_redis.get.side_effect = lambda k: json.dumps(snapshot_incident) if k == web_status.CACHE_KEY else None
+    html_incident = client.get('/status').get_data(as_text=True)
+    assert 'Ми знаємо про цей збій і працюємо над ним.' in html_incident
+    assert 'Помітили інший збій —' in html_incident
+    assert 'розкажіть нам' in html_incident
+
+
+@pytest.mark.parametrize("scenario,expected_headline", [
+    ("ok", "Сповіщення працюють"),
+    ("map_down", "Сповіщення працюють, мапа — ні"),
+    ("map_api_down", "Сповіщення працюють, мапа й API — ні"),
+    ("service_down", "Сервіс не працює"),
+    ("mnt", "Планові роботи"),
+    ("unknown", "Стан невідомий"),
+])
+def test_mock_scenarios(scenario, expected_headline, client):
+    data = get_status_data(mock_scenario=scenario)
+    assert data["headline"] == expected_headline
+    res = client.get(f"/status?mock={scenario}")
+    assert res.status_code == 200
+    assert expected_headline in res.get_data(as_text=True)
+
+
+
+

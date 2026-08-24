@@ -75,9 +75,15 @@ LAST_GOOD_TTL = 86400  # seconds
 REQUEST_TIMEOUT = 5  # seconds
 
 WINDOW_DAYS = 90
-# Коротка яма - це "збої", а не "недоступно": хвилинний промах пінга не варто
-# малювати тим самим кольором, що й півдня тиші.
-DEGRADED_THRESHOLD = 1200  # seconds
+# Пороги простою за добу:
+# 🟢 Без збоїв: 0 с
+# 🟡 Незначні збої: до 1% доби (< 14.4 хв ~ 15 хв, <= 864 с)
+# 🟠 Помітні збої: 1–5% доби (15 хв – 1.2 год, 864 с < t <= 4320 с)
+# 🔴 Тривалі збої: > 5% доби (> 1.2 год, > 4320 с)
+# 🔵 Планові роботи: стан mnt (перебиває все)
+# ⚪ Немає даних: стан nodata
+THRESHOLD_MINOR = 864   # seconds (1% of 86400)
+THRESHOLD_MAJOR = 4320  # seconds (5% of 86400)
 
 HC_API_BASE = "https://healthchecks.io/api/v3"
 
@@ -99,36 +105,30 @@ UK_MONTHS = [
 
 DAY_WORDS = {
     "ok": "без збоїв",
+    "minor": "незначні збої",
+    "major": "помітні збої",
+    "down": "тривалі збої",
     "mnt": "планові роботи",
-    "deg": "збої",
-    "down": "недоступно",
     "nodata": "немає даних",
 }
 
 # Наскільки погана доба. Потрібно там, де за неї сперечаються два джерела:
 # порахована з флипів історія і поточний статус чека.
-SEVERITY = {"ok": 0, "deg": 1, "down": 2}
+SEVERITY = {"ok": 0, "minor": 1, "major": 2, "down": 3}
 
 HEALTHCHECKS = "healthchecks"
 UPTIMEROBOT = "uptimerobot"
 
-# Кожен компонент стверджує щось своє, і жоден не дублює сусіда.
-#
-# Мапа й API дивляться ззовні (UptimeRobot): чи відкривається сайт у відвідувача
-# й чи віддає ендпойнт справжній JSON. Внутрішній пінг цього не знає - процес
-# може бути живий, поки хост недосяжний.
-#
-# Потік тривог і Сповіщення - два кінці ланцюга зсередини (healthchecks.io): чи
-# пости з джерела доходять до нас і чи наші бродкасти виходять у канали мережі.
-# Ламаються вони незалежно, тож і чеки різні.
-#
-# Порядок важливий: компоненти розбирають чеки згори вниз, і забраний чек більше
-# нікому не дістанеться.
+# Порядок і назви компонентів:
+# 1. Сповіщення в Telegram (healthchecks.io)
+# 2. Отримання тривог (healthchecks.io)
+# 3. Мапа (UptimeRobot)
+# 4. API (для розробників) (UptimeRobot)
 COMPONENTS_SPEC = [
-    {"key": "map", "name": "Мапа", "source": UPTIMEROBOT},
-    {"key": "api", "name": "API", "source": UPTIMEROBOT},
-    {"key": "alerts", "name": "Потік тривог", "source": HEALTHCHECKS},
     {"key": "tg", "name": "Сповіщення в Telegram", "source": HEALTHCHECKS},
+    {"key": "alerts", "name": "Отримання тривог", "source": HEALTHCHECKS},
+    {"key": "map", "name": "Мапа", "source": UPTIMEROBOT},
+    {"key": "api", "name": "API (для розробників)", "source": UPTIMEROBOT},
 ]
 
 
@@ -147,8 +147,8 @@ def _plural_days(count: int) -> str:
 
 
 def _format_kyiv_date(dt: datetime) -> str:
-    """Format datetime as '22 серпня, 14:32'."""
-    return f"{dt.day} {UK_MONTHS[dt.month]}, {dt.strftime('%H:%M')}"
+    """Format datetime as '22 серпня, 14:32 EEST'."""
+    return f"{dt.day} {UK_MONTHS[dt.month]}, {dt.strftime('%H:%M')} EEST"
 
 
 def format_day_title(iso_date: str, state: str) -> str:
@@ -170,8 +170,9 @@ def summarize_days(days: List[Dict[str, str]]) -> str:
     counts = Counter(day.get("state", "nodata") for day in days)
     order = (
         ("ok", "без збоїв"),
-        ("deg", "зі збоями"),
-        ("down", "недоступно"),
+        ("minor", "з незначними збоями"),
+        ("major", "з помітними збоями"),
+        ("down", "з тривалими збоями"),
         ("mnt", "планові роботи"),
         ("nodata", "без даних"),
     )
@@ -323,7 +324,7 @@ def _live_state(check: Optional[Dict[str, Any]]) -> Optional[str]:
         return "nodata"
     return {
         "up": "ok",
-        "grace": "deg",
+        "grace": "minor",
         "down": "down",
         "paused": "mnt",
         "new": "nodata",
@@ -505,8 +506,10 @@ def _build_component(
 
         if down <= 0:
             state = "ok"
-        elif down < DEGRADED_THRESHOLD:
-            state = "deg"
+        elif down <= THRESHOLD_MINOR:
+            state = "minor"
+        elif down <= THRESHOLD_MAJOR:
+            state = "major"
         else:
             state = "down"
         days.append({"date": day.isoformat(), "state": state})
@@ -517,9 +520,12 @@ def _build_component(
     # зовсім - і тоді це єдине, що ми можемо чесно сказати про сьогодні.
     if live is not None and days:
         computed = days[-1]["state"]
-        if live in ("mnt", "nodata") or computed in ("nodata", "mnt"):
-            days[-1]["state"] = live
-        elif SEVERITY[live] > SEVERITY[computed]:
+        if live == "mnt" or computed == "mnt":
+            days[-1]["state"] = "mnt"
+        elif live == "nodata" or computed == "nodata":
+            if computed == "nodata":
+                days[-1]["state"] = live
+        elif SEVERITY.get(live, 0) > SEVERITY.get(computed, 0):
             # За добу могло статись гірше, ніж коїться просто зараз; беремо гірше.
             days[-1]["state"] = live
 
@@ -532,6 +538,15 @@ def _build_component(
     else:
         uptime_pct = None
 
+    outage_since: Optional[datetime] = None
+    if intervals and intervals[-1][1] >= now:
+        outage_since = intervals[-1][0]
+    elif live in ("down", "major", "minor"):
+        if flips and flips[-1][1] == 0:
+            outage_since = flips[-1][0]
+        else:
+            outage_since = now
+
     component = {
         "key": spec["key"],
         "name": spec["name"],
@@ -540,21 +555,121 @@ def _build_component(
         "tracked_days": tracked_days,
         "monitored": probe["present"],
         "state": days[-1]["state"] if days else "nodata",
+        "outage_since": outage_since.isoformat() if outage_since else None,
     }
     return component, tracked_seconds, down_seconds
 
 
-def _headline(components: List[Dict[str, Any]]) -> str:
-    states = [c["state"] for c in components if c["monitored"]]
-    if not states or all(state == "nodata" for state in states):
-        return "Немає даних про стан"
-    if "down" in states:
-        return "Частина систем недоступна"
-    if "deg" in states:
-        return "Спостерігаються збої в роботі"
-    if "mnt" in states:
-        return "Планові технічні роботи"
-    return "Усі системи працюють"
+def _get_last_alert_time() -> Optional[datetime]:
+    """Час останньої отриманої тривоги з Redis."""
+    try:
+        val = redis_client.get("service:alerts:last_source_message_at")
+        if val:
+            ts = float(val)
+            return datetime.fromtimestamp(ts, tz=KYIV_TZ)
+    except Exception:
+        log.warning("Redis unreachable when getting last alert time", exc_info=True)
+    return None
+
+
+def _format_since_time(dt: Optional[datetime], now: datetime) -> str:
+    """Форматування часу початку збою: « з 21:40» або « з 22 серпня, 21:40»."""
+    if dt is None:
+        return ""
+    if dt.date() == now.date():
+        return f" з {dt.strftime('%H:%M')}"
+    return f" з {dt.day} {UK_MONTHS[dt.month]}, {dt.strftime('%H:%M')}"
+
+
+def _headline_and_subtitle(
+    components: List[Dict[str, Any]],
+    last_alert_dt: Optional[datetime],
+    now: datetime,
+) -> Tuple[str, str]:
+    """Визначення головного заголовка та підзаголовка сторінки за станом компонентів.
+
+    1. Стан невідомий - якщо моніторинг мовчить / немає даних.
+    2. Сервіс не працює - коли ліг потік тривог або розсилка (alerts або tg).
+    3. Частковий збій - щось зламано (map або api), але тривоги та розсилка працюють.
+    4. Планові роботи - планові технічні роботи на компонентах.
+    5. Усе працює - всі системи в нормі, підзаголовок про останню тривогу.
+    """
+    monitored = [c for c in components if c.get("monitored")]
+    if not monitored or all(c.get("state") == "nodata" for c in monitored):
+        return "Стан невідомий", "Моніторинг не відповідає"
+
+    by_key = {c["key"]: c for c in components}
+
+    def _is_failing(c: Optional[Dict[str, Any]]) -> bool:
+        if not c or not c.get("monitored"):
+            return False
+        return c.get("state") in ("down", "major", "minor")
+
+    def _get_outage_dt(c: Dict[str, Any]) -> Optional[datetime]:
+        os = c.get("outage_since")
+        if os:
+            try:
+                return datetime.fromisoformat(os)
+            except Exception:
+                pass
+        return None
+
+    # 1. Сервіс не працює: alerts (Отримання тривог) або tg (Сповіщення в Telegram)
+    core_failing = [by_key[k] for k in ("alerts", "tg") if _is_failing(by_key.get(k))]
+    if core_failing:
+        outage_dts = [_get_outage_dt(c) for c in core_failing]
+        valid_dts = [dt for dt in outage_dts if dt is not None]
+        earliest_dt = min(valid_dts) if valid_dts else None
+        time_str = _format_since_time(earliest_dt, now)
+        sub = f"Сповіщення не надходять{time_str}. Перевіряйте офіційний канал вашої області."
+        return "Сервіс не працює", sub
+
+    # 2. Частковий збій: map (Мапа) або api (API (для розробників)) збоять, але alerts та tg працюють
+    aux_failing = [by_key[k] for k in ("map", "api") if _is_failing(by_key.get(k))]
+    if aux_failing:
+        failing_keys = {c["key"] for c in aux_failing}
+        outage_dts = [_get_outage_dt(c) for c in aux_failing]
+        valid_dts = [dt for dt in outage_dts if dt is not None]
+        earliest_dt = min(valid_dts) if valid_dts else None
+        time_str = _format_since_time(earliest_dt, now)
+
+        if "map" in failing_keys and "api" in failing_keys:
+            headline = "Сповіщення працюють, мапа й API — ні"
+            name_part = f"Мапа та API недоступні{time_str}"
+        elif "map" in failing_keys:
+            headline = "Сповіщення працюють, мапа — ні"
+            name_part = f"Мапа недоступна{time_str}"
+        else:
+            headline = "Сповіщення працюють, API — ні"
+            name_part = f"API недоступний{time_str}"
+
+        sub = f"{name_part}. Сповіщення в Telegram надходять як зазвичай."
+        return headline, sub
+
+    # 3. Планові роботи
+    if any(c.get("state") == "mnt" for c in monitored):
+        return "Планові роботи", "Тривають планові технічні роботи."
+
+    # 4. Сповіщення працюють
+    if last_alert_dt:
+        if last_alert_dt.date() == now.date():
+            date_str = "сьогодні"
+        else:
+            date_str = f"{last_alert_dt.day} {UK_MONTHS[last_alert_dt.month]}"
+        sub = f"Останнє сповіщення — {date_str} о {last_alert_dt.strftime('%H:%M')}. Відтоді тривог не було."
+    else:
+        sub = "Сповіщення в Telegram надходять як зазвичай. Відтоді тривог не було."
+    return "Сповіщення працюють", sub
+
+
+def _headline(
+    components: List[Dict[str, Any]],
+    last_alert_dt: Optional[datetime] = None,
+    now: Optional[datetime] = None,
+) -> str:
+    if now is None:
+        now = datetime.now(KYIV_TZ)
+    return _headline_and_subtitle(components, last_alert_dt, now)[0]
 
 
 def _blank_probe() -> Dict[str, Any]:
@@ -665,10 +780,14 @@ def _collect_status() -> Optional[Dict[str, Any]]:
 
     period_days = max_tracked_days if 0 < max_tracked_days < WINDOW_DAYS else WINDOW_DAYS
 
+    last_alert_dt = _get_last_alert_time()
+    headline, subtitle = _headline_and_subtitle(components, last_alert_dt, now)
+
     return {
         "updated_at": _format_kyiv_date(now),
         "fetched_at": now.isoformat(),
-        "headline": _headline(components),
+        "headline": headline,
+        "subtitle": subtitle,
         "overall_uptime": overall,
         "period_days": period_days,
         "period_days_word": _plural_days(period_days),
@@ -687,7 +806,8 @@ def _unknown_status_data() -> Dict[str, Any]:
     return {
         "updated_at": _format_kyiv_date(now),
         "fetched_at": None,
-        "headline": "Немає даних про стан",
+        "headline": "Стан невідомий",
+        "subtitle": "Моніторинг не відповідає",
         "overall_uptime": None,
         "period_days": WINDOW_DAYS,
         "period_days_word": _plural_days(WINDOW_DAYS),
@@ -703,6 +823,7 @@ def _unknown_status_data() -> Dict[str, Any]:
                 "tracked_days": 0,
                 "monitored": False,
                 "state": "nodata",
+                "outage_since": None,
             }
             for spec in COMPONENTS_SPEC
         ],
@@ -737,8 +858,137 @@ def refresh_status_cache() -> Optional[Dict[str, Any]]:
     return data
 
 
-def get_status_data() -> Dict[str, Any]:
+def _generate_mock_status(scenario: str) -> Dict[str, Any]:
+    now = datetime.now(KYIV_TZ)
+    days_dates = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(WINDOW_DAYS - 1, -1, -1)]
+
+    def _make_days(today_state: str) -> List[Dict[str, str]]:
+        res = []
+        for i, d in enumerate(days_dates):
+            if i == len(days_dates) - 1:
+                st = today_state
+            elif i % 25 == 7:
+                st = "minor"
+            elif i % 40 == 15:
+                st = "major"
+            else:
+                st = "ok"
+            res.append({"date": d, "state": st})
+        return res
+
+    scenario = (scenario or "").lower()
+    updated_at = _format_kyiv_date(now)
+
+    if scenario in ("map_down", "map"):
+        components = [
+            {"key": "tg", "name": "Сповіщення в Telegram", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+            {"key": "alerts", "name": "Отримання тривог", "uptime": 99.98, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+            {"key": "map", "name": "Мапа", "uptime": 97.50, "tracked_days": 90, "monitored": True, "state": "down", "outage_since": (now - timedelta(minutes=40)).isoformat(), "days": _make_days("down")},
+            {"key": "api", "name": "API (для розробників)", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+        ]
+        headline, subtitle = _headline_and_subtitle(components, None, now)
+        return {
+            "headline": headline,
+            "subtitle": subtitle,
+            "components": components,
+            "overall_uptime": 99.37,
+            "updated_at": updated_at,
+            "period_days": 90,
+            "period_days_word": "днів",
+            "stale": False,
+            "unknown": False,
+        }
+
+    if scenario in ("map_api_down", "aux_down", "partial"):
+        components = [
+            {"key": "tg", "name": "Сповіщення в Telegram", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+            {"key": "alerts", "name": "Отримання тривог", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+            {"key": "map", "name": "Мапа", "uptime": 97.20, "tracked_days": 90, "monitored": True, "state": "down", "outage_since": (now - timedelta(minutes=40)).isoformat(), "days": _make_days("down")},
+            {"key": "api", "name": "API (для розробників)", "uptime": 98.40, "tracked_days": 90, "monitored": True, "state": "minor", "outage_since": (now - timedelta(minutes=40)).isoformat(), "days": _make_days("minor")},
+        ]
+        headline, subtitle = _headline_and_subtitle(components, None, now)
+        return {
+            "headline": headline,
+            "subtitle": subtitle,
+            "components": components,
+            "overall_uptime": 98.90,
+            "updated_at": updated_at,
+            "period_days": 90,
+            "period_days_word": "днів",
+            "stale": False,
+            "unknown": False,
+        }
+
+    if scenario in ("service_down", "down", "alerts_down", "tg_down"):
+        components = [
+            {"key": "tg", "name": "Сповіщення в Telegram", "uptime": 96.50, "tracked_days": 90, "monitored": True, "state": "down", "outage_since": (now - timedelta(minutes=35)).isoformat(), "days": _make_days("down")},
+            {"key": "alerts", "name": "Отримання тривог", "uptime": 95.80, "tracked_days": 90, "monitored": True, "state": "down", "outage_since": (now - timedelta(minutes=40)).isoformat(), "days": _make_days("down")},
+            {"key": "map", "name": "Мапа", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+            {"key": "api", "name": "API (для розробників)", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+        ]
+        headline, subtitle = _headline_and_subtitle(components, None, now)
+        return {
+            "headline": headline,
+            "subtitle": subtitle,
+            "components": components,
+            "overall_uptime": 98.08,
+            "updated_at": updated_at,
+            "period_days": 90,
+            "period_days_word": "днів",
+            "stale": False,
+            "unknown": False,
+        }
+
+    if scenario in ("mnt", "maintenance"):
+        components = [
+            {"key": "tg", "name": "Сповіщення в Telegram", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "mnt", "outage_since": None, "days": _make_days("mnt")},
+            {"key": "alerts", "name": "Отримання тривог", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "mnt", "outage_since": None, "days": _make_days("mnt")},
+            {"key": "map", "name": "Мапа", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+            {"key": "api", "name": "API (для розробників)", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+        ]
+        headline, subtitle = _headline_and_subtitle(components, None, now)
+        return {
+            "headline": headline,
+            "subtitle": subtitle,
+            "components": components,
+            "overall_uptime": 100.0,
+            "updated_at": updated_at,
+            "period_days": 90,
+            "period_days_word": "днів",
+            "stale": False,
+            "unknown": False,
+        }
+
+    if scenario in ("unknown", "nodata"):
+        return _unknown_status_data()
+
+    # default / ok
+    last_alert_dt = now - timedelta(minutes=15)
+    components = [
+        {"key": "tg", "name": "Сповіщення в Telegram", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+        {"key": "alerts", "name": "Отримання тривог", "uptime": 99.98, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+        {"key": "map", "name": "Мапа", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+        {"key": "api", "name": "API (для розробників)", "uptime": 100.0, "tracked_days": 90, "monitored": True, "state": "ok", "outage_since": None, "days": _make_days("ok")},
+    ]
+    headline, subtitle = _headline_and_subtitle(components, last_alert_dt, now)
+    return {
+        "headline": headline,
+        "subtitle": subtitle,
+        "components": components,
+        "overall_uptime": 99.99,
+        "updated_at": updated_at,
+        "period_days": 90,
+        "period_days_word": "днів",
+        "stale": False,
+        "unknown": False,
+    }
+
+
+def get_status_data(mock_scenario: Optional[str] = None) -> Dict[str, Any]:
     """Дані для сторінки стану. Тільки читання кеша - жодних походів у мережу."""
+    if mock_scenario:
+        return _generate_mock_status(mock_scenario)
+
     for key, is_stale in ((CACHE_KEY, False), (LAST_GOOD_KEY, True)):
         try:
             cached = redis_client.get(key)

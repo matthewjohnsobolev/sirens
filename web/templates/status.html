@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Стан сервісу / Сирени</title>
+<title>Стан сирен — Сирени</title>
 <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,17 +15,11 @@
   <main>
     <div class="top">
       <span><a href="/" title="Сирени">Стан сервісу</a></span>
-      <span>{% if stale %}дані станом на {% endif %}{{ updated_at }}</span>
+      <span>{% if stale %}{% endif %}{{ updated_at }}</span>
     </div>
 
     <h1 class="state">{{ headline }}</h1>
-    <p class="state-sub">
-      {%- if overall_uptime is none -%}
-        Дані про доступність відсутні
-      {%- else -%}
-        Доступність за {{ period_days }} {{ period_days_word }} — {{ '%.2f'|format(overall_uptime)|replace('.', ',') }}&nbsp;%
-      {%- endif -%}
-    </p>
+    <p class="state-sub">{{ subtitle }} {% if "— ні" in headline or headline == "Сервіс не працює" %}Ми знаємо про цей збій і працюємо над ним. Помітили інший збій — <a href="/issue">розкажіть нам</a>{% else %}Не отримали сповіщення? Щось працює не так? — <a href="/issue">Повідомити про збій</a>{% endif %}</p>
 
     <div class="list" id="list">
       {%- for comp in components %}
@@ -59,14 +53,18 @@
     </div>
 
     <div class="key">
-      <span><i style="background:var(--day-ok)"></i>Працює</span>
+      <span><i style="background:var(--day-ok)"></i>Без збоїв</span>
+      <span><i style="background:var(--day-minor)"></i>Незначні збої</span>
+      <span><i style="background:var(--day-major)"></i>Помітні збої</span>
+      <span><i style="background:var(--day-down)"></i>Тривалі збої</span>
       <span><i style="background:var(--day-mnt)"></i>Планові роботи</span>
-      <span><i style="background:var(--day-deg)"></i>Збої</span>
-      <span><i style="background:var(--day-down)"></i>Недоступно</span>
       <span><i style="background:var(--day-nodata)"></i>Немає даних</span>
     </div>
   </main>
 
-  <p class="copy">© 2026 «Сирени» · <a href="/">Мапа</a> · <a href="/issue">Повідомити про збій</a></p>
+  <div class="foot">
+    <p class="foot-links"><a href="/">Мапа тривог</a> · <a href="/issue">Повідомити про помилку</a></p>
+    <p class="copy">© 2026 «Сирени»</p>
+  </div>
 </body>
 </html>

@@ -410,7 +410,7 @@ def test_form_fields_are_named_the_way_the_server_reads_them(client, app):
     assert 'name="message"' in html and 'name="contact"' in html
     assert 'name="exact_date"' in html and 'name="exact_time"' in html
     assert 'name="comment"' not in html and 'name="tg"' not in html
-    assert 'maxlength="250"' in html
+    assert 'maxlength="1000"' in html
 
     js = (Path(app.static_folder) / 'js' / 'issue.js').read_text(encoding='utf-8')
     assert "formData.append('message'" in js
@@ -713,7 +713,7 @@ def test_unknown_category_is_rejected(client, report_deps):
     ({'category': 'Хакер'}, 'Оберіть категорію помилки.'),
     ({'sub_option': 'Щось своє'}, 'Оберіть, будь ласка, що саме сталося.'),
     ({'time': '3 доби'}, 'Оберіть, будь ласка, коли це сталося.'),
-    ({'message': 'я' * 251}, 'Коментар не може бути довшим за 250 символів.'),
+    ({'message': 'я' * 1001}, 'Коментар не може бути довшим за 1000 символів.'),
 ])
 def test_rejection_messages(app, overrides, expected):
     """The wording lives in the validator, not the page: the form renders only

@@ -113,7 +113,7 @@ def test_status_route(client):
     response = client.get('/status')
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert 'Стан сирен' in html
+    assert 'Стан сервісу' in html
     assert 'EEST' in html
     assert 'Повідомити про помилку' in html
     assert '© 2026 «Сирени»' in html

@@ -55,6 +55,11 @@ CATEGORIES = (
                 'name': 'Прийшов відбій, хоча тривога тривала',
                 'en': 'All-clear sent while the alert was still on',
             },
+            {
+                'key': 'duplicate',
+                'name': 'Сповіщення прийшло двічі поспіль',
+                'en': 'Notification arrived twice in a row',
+            },
         ),
     },
     {

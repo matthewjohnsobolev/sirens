@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Повідомити про збій / Сирени</title>
+<title>Повідомити про збій — Сирени</title>
 <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -65,7 +65,7 @@
       </fieldset>
 
       <fieldset class="block" id="block-time">
-        <legend class="label" id="label-time">Коли це сталося <span class="opt-mark">— необов'язково</span></legend>
+        <legend class="label" id="label-time">Коли це сталося</legend>
         <div class="opts" id="opts-time"></div>
         <div class="time-picker" id="time-picker-wrap">
           <div class="datetime-grid">
@@ -85,7 +85,7 @@
       </fieldset>
 
       <div class="block" id="block-city">
-        <label class="label" for="city" id="label-city">Місто <span class="opt-mark">— необов'язково</span></label>
+        <label class="label" for="city" id="label-city">Місто</label>
         <div class="combo" id="combo-city">
           <input class="input" id="city" name="city" placeholder="Наприклад, Харків"
                  autocomplete="off" role="combobox" aria-expanded="false"
@@ -102,7 +102,7 @@
 
       <div class="block" id="block-comment">
         <label class="label" for="comment">Коментар <span class="opt-mark">— необов'язково</span></label>
-        <textarea class="textarea" id="comment" name="message" maxlength="250"
+        <textarea class="textarea" id="comment" name="message" maxlength="1000"
                   placeholder="Що сталося і приблизно коли"></textarea>
         <p class="err">Опишіть, будь ласка, що сталося — без цього ми не знатимемо, що шукати.</p>
       </div>
@@ -117,8 +117,10 @@
     </form>
 
   </div>
-
-  <p class="copy">© 2026 «Сирени»</p>
+  <div class="foot">
+    <p class="foot-links"><a href="/">Мапа тривог</a> · <a href="/status">Стан сервісу</a></p>
+    <p class="copy">© 2026 «Сирени»</p>
+  </div>
 </div>
 </body>
 </html>

@@ -115,35 +115,35 @@ function updateTimePickerVisibility(){
   const isCustom = (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час');
   timePickerWrap.classList.toggle('open', isCustom);
   if (!isCustom) {
-    if (bTime) bTime.classList.remove('picker-active');
+    if (bTime) bTime.classList.remove('picker-invalid');
     if (exactDate) {
       exactDate.value = '';
-      exactDate.classList.remove('active');
+      exactDate.classList.remove('invalid');
     }
     if (exactTime) {
       exactTime.value = '';
-      exactTime.classList.remove('active');
+      exactTime.classList.remove('invalid');
     }
   }
 }
 
 function updateTabUI(){
   if (tab === 'alerts') {
-    if (labelCity) labelCity.innerHTML = 'Місто <span class="opt-mark">— необов\'язково</span>';
+    if (labelCity) labelCity.textContent = 'Місто';
     if (city) {
       city.placeholder = 'Наприклад, Харків';
       city.setAttribute('aria-label', 'Місто');
     }
     if (errCity) errCity.textContent = 'Вкажіть, будь ласка, місто — без нього ми не знайдемо збій.';
   } else if (tab === 'map') {
-    if (labelCity) labelCity.innerHTML = 'Район <span class="opt-mark">— необов\'язково</span>';
+    if (labelCity) labelCity.textContent = 'Район';
     if (city) {
       city.placeholder = 'Наприклад, Бучанський район';
       city.setAttribute('aria-label', 'Район');
     }
     if (errCity) errCity.textContent = 'Вкажіть, будь ласка, район — без нього ми не знайдемо збій.';
   } else {
-    if (labelCity) labelCity.innerHTML = 'Місто або район <span class="opt-mark">— необов\'язково</span>';
+    if (labelCity) labelCity.textContent = 'Місто або район';
     if (city) {
       city.placeholder = 'Наприклад, Харків або Бучанський район';
       city.setAttribute('aria-label', 'Місто або район');
@@ -216,19 +216,19 @@ if (optsTime) {
       timeChoice = val;
       radio.checked = true;
       if (bTime) {
-        bTime.classList.remove('picker-active', 'picker-invalid', 'invalid');
+        bTime.classList.remove('picker-invalid', 'invalid');
       }
+      if (exactDate) exactDate.classList.remove('invalid');
+      if (exactTime) exactTime.classList.remove('invalid');
       selectedDate = new Date();
       selectedTimeStr = getDefaultTimeStr(selectedDate);
       if (exactDate) {
         exactDate.value = '';
         exactDate.placeholder = formatUkrainianDate(selectedDate);
-        exactDate.classList.remove('active');
       }
       if (exactTime) {
         exactTime.value = '';
         exactTime.placeholder = formatUkrainianTime(selectedTimeStr, selectedDate);
-        exactTime.classList.remove('active');
       }
       if (pickerDate) pickerDate.value = getDefaultDateStr(selectedDate);
       if (pickerTime) pickerTime.value = selectedTimeStr;
@@ -241,24 +241,26 @@ if (optsTime) {
     const isCustom = (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час');
     if (isCustom) {
       if (bTime) {
-        bTime.classList.remove('picker-active', 'picker-invalid');
+        bTime.classList.remove('picker-invalid');
       }
+      if (exactDate) exactDate.classList.remove('invalid');
+      if (exactTime) exactTime.classList.remove('invalid');
       selectedDate = new Date();
       selectedTimeStr = getDefaultTimeStr(selectedDate);
       if (exactDate) {
         exactDate.value = '';
         exactDate.placeholder = formatUkrainianDate(selectedDate);
-        exactDate.classList.remove('active');
       }
       if (exactTime) {
         exactTime.value = '';
         exactTime.placeholder = formatUkrainianTime(selectedTimeStr, selectedDate);
-        exactTime.classList.remove('active');
       }
       if (pickerDate) pickerDate.value = getDefaultDateStr(selectedDate);
       if (pickerTime) pickerTime.value = selectedTimeStr;
     } else {
-      if (bTime) bTime.classList.remove('picker-active', 'picker-invalid');
+      if (bTime) bTime.classList.remove('picker-invalid');
+      if (exactDate) exactDate.classList.remove('invalid');
+      if (exactTime) exactTime.classList.remove('invalid');
     }
     if (bTime) bTime.classList.remove('invalid');
     renderTime();
@@ -269,10 +271,7 @@ if (exactDate) {
   exactDate.addEventListener('click', e => {
     e.preventDefault();
     timeChoice = 'Вибрати дату і час';
-    if (bTime) {
-      bTime.classList.add('picker-active');
-      bTime.classList.remove('invalid', 'picker-invalid');
-    }
+    exactDate.focus();
     openDatePicker();
   });
 }
@@ -281,10 +280,7 @@ if (exactTime) {
   exactTime.addEventListener('click', e => {
     e.preventDefault();
     timeChoice = 'Вибрати дату і час';
-    if (bTime) {
-      bTime.classList.add('picker-active');
-      bTime.classList.remove('invalid', 'picker-invalid');
-    }
+    exactTime.focus();
     openTimePicker();
   });
 }
@@ -296,11 +292,13 @@ if (pickerDate) {
     }
     if (exactDate) {
       exactDate.value = formatUkrainianDate(selectedDate);
-      exactDate.classList.add('active');
+      exactDate.classList.remove('invalid');
     }
-    if (bTime) {
-      bTime.classList.add('picker-active');
-      bTime.classList.remove('invalid', 'picker-invalid');
+    const hasTime = exactTime && !!exactTime.value.trim();
+    if (hasTime) {
+      if (bTime) bTime.classList.remove('invalid', 'picker-invalid');
+    } else if (bTime && bTime.classList.contains('invalid')) {
+      if (errTime) errTime.textContent = 'Вкажіть, будь ласка, час.';
     }
   });
 }
@@ -312,11 +310,13 @@ if (pickerTime) {
     }
     if (exactTime) {
       exactTime.value = formatUkrainianTime(selectedTimeStr, selectedDate);
-      exactTime.classList.add('active');
+      exactTime.classList.remove('invalid');
     }
-    if (bTime) {
-      bTime.classList.add('picker-active');
-      bTime.classList.remove('invalid', 'picker-invalid');
+    const hasDate = exactDate && !!exactDate.value.trim();
+    if (hasDate) {
+      if (bTime) bTime.classList.remove('invalid', 'picker-invalid');
+    } else if (bTime && bTime.classList.contains('invalid')) {
+      if (errTime) errTime.textContent = 'Вкажіть, будь ласка, дату.';
     }
   });
 }
@@ -351,12 +351,15 @@ function select(i){
   comboClose();
   /* помилки попереднього розділу не переносяться на новий */
   bIssue.classList.remove('invalid');
-  if (bTime) bTime.classList.remove('invalid');
+  if (bTime) bTime.classList.remove('invalid', 'picker-invalid');
+  if (exactDate) exactDate.classList.remove('invalid');
+  if (exactTime) exactTime.classList.remove('invalid');
   bCity.classList.remove('invalid');
   bComment.classList.remove('invalid');
   updateTabUI();
   syncInputs();
   render();
+  checkCommentOverflow();
 }
 
 comment.addEventListener('input', () => bComment.classList.remove('invalid'));
@@ -575,7 +578,7 @@ document.addEventListener('pointerdown', e => {
   if(!combo.contains(e.target)) comboClose();
 });
 
-const COMMENT_MAX = 250;
+const COMMENT_MAX = 1000;
 const errComment = bComment.querySelector('.err');
 
 function checkCommentOverflow() {
@@ -640,23 +643,34 @@ form.addEventListener('submit', async (e) => {
   const noIssue = !isOtherTab && (choice[tab] === null || choice[tab] === undefined);
   
   let noTime = false;
-  let missingExactTime = false;
+  let missingDate = false;
+  let missingTime = false;
+  let isCustomTimeSelected = false;
+
   if (!isOtherTab) {
     if (!timeChoice) {
       noTime = true;
     } else if (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час') {
+      isCustomTimeSelected = true;
       const hasDate = exactDate ? !!exactDate.value.trim() : false;
       const hasTime = exactTime ? !!exactTime.value.trim() : false;
-      if (!hasDate || !hasTime) {
+      if (!hasDate) missingDate = true;
+      if (!hasTime) missingTime = true;
+      if (missingDate || missingTime) {
         noTime = true;
-        missingExactTime = true;
       }
     }
   }
 
   if (errTime) {
-    if (missingExactTime) {
-      errTime.textContent = 'Вкажіть, будь ласка, дату і час.';
+    if (isCustomTimeSelected) {
+      if (missingDate && missingTime) {
+        errTime.textContent = 'Вкажіть, будь ласка, дату і час.';
+      } else if (missingDate) {
+        errTime.textContent = 'Вкажіть, будь ласка, дату.';
+      } else if (missingTime) {
+        errTime.textContent = 'Вкажіть, будь ласка, час.';
+      }
     } else {
       errTime.textContent = 'Оберіть, будь ласка, коли це сталося.';
     }
@@ -668,7 +682,13 @@ form.addEventListener('submit', async (e) => {
   bIssue.classList.toggle('invalid', noIssue);
   if (bTime) {
     bTime.classList.toggle('invalid', noTime);
-    bTime.classList.toggle('picker-invalid', missingExactTime);
+    bTime.classList.toggle('picker-invalid', isCustomTimeSelected && noTime);
+  }
+  if (exactDate) {
+    exactDate.classList.toggle('invalid', isCustomTimeSelected && missingDate);
+  }
+  if (exactTime) {
+    exactTime.classList.toggle('invalid', isCustomTimeSelected && missingTime);
   }
   bComment.classList.toggle('invalid', noComment);
   if (errComment) {
@@ -676,15 +696,15 @@ form.addEventListener('submit', async (e) => {
   }
   bCity.classList.toggle('invalid', noLocation);
 
-  if(noIssue || noTime || noComment || noLocation){
+  if (noIssue || noTime || noComment || noLocation) {
     let first = null;
     if (noIssue) {
       first = opts.querySelector('input');
     } else if (noTime) {
-      if (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час') {
-        if (exactDate && !exactDate.value.trim()) {
+      if (isCustomTimeSelected) {
+        if (missingDate) {
           first = exactDate;
-        } else if (exactTime && !exactTime.value.trim()) {
+        } else if (missingTime) {
           first = exactTime;
         } else {
           first = exactDate || exactTime;
@@ -711,9 +731,9 @@ form.addEventListener('submit', async (e) => {
   formData.append('sub_option', choice[tab] !== null ? (SETS[tab][choice[tab]] || '') : '');
   
   const isCustomTime = (timeChoice === 'Вибрати дату і час' || timeChoice === 'Вибрати час');
-  const chosenTime = isCustomTime
+  const chosenTime = isOtherTab ? '' : (isCustomTime
     ? `${exactDate ? exactDate.value.trim() : ''} ${exactTime ? exactTime.value.trim() : ''}`.trim()
-    : (timeChoice || '');
+    : (timeChoice || ''));
   if (chosenTime) {
     formData.append('time', chosenTime);
     if (isCustomTime) {
@@ -722,12 +742,14 @@ form.addEventListener('submit', async (e) => {
     }
   }
 
-  const locVal = city.value.trim();
-  if (tab === 'map') {
-    formData.append('district', locVal);
-    formData.append('city', locVal);
-  } else {
-    formData.append('city', locVal);
+  const locVal = isOtherTab ? '' : city.value.trim();
+  if (locVal) {
+    if (tab === 'map') {
+      formData.append('district', locVal);
+      formData.append('city', locVal);
+    } else {
+      formData.append('city', locVal);
+    }
   }
 
   formData.append('message', comment.value.trim());
@@ -783,18 +805,19 @@ function resetForm(){
   if (exactDate) {
     exactDate.value = '';
     exactDate.placeholder = formatUkrainianDate(selectedDate);
-    exactDate.classList.remove('active');
+    exactDate.classList.remove('invalid');
   }
   if (exactTime) {
     exactTime.value = '';
     exactTime.placeholder = formatUkrainianTime(selectedTimeStr, selectedDate);
-    exactTime.classList.remove('active');
+    exactTime.classList.remove('invalid');
   }
   if (pickerDate) pickerDate.value = '';
   if (pickerTime) pickerTime.value = '';
   renderTime();
   bIssue.classList.remove('invalid');
-  if (bTime) bTime.classList.remove('invalid', 'picker-active', 'picker-invalid');
+  if (bTime) bTime.classList.remove('invalid', 'picker-invalid');
+  if (errTime) errTime.textContent = 'Оберіть, будь ласка, коли це сталося.';
   bCity.classList.remove('invalid');
   bComment.classList.remove('invalid');
   if (errComment) errComment.textContent = 'Опишіть, будь ласка, що сталося — без цього ми не знатимемо, що шукати.';

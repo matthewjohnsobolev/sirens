@@ -63,7 +63,7 @@ REPORT_FIELD_LIMITS = {
     'exact_time': 50,
     'exact_date': 50,
     'exact_datetime': 50,
-    'message': 250,
+    'message': 1000,
     'contact': 100,
 }
 # Submissions per window, per client IP - not accepted reports: the slot is
@@ -207,7 +207,7 @@ def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
 
     message = (form.get('message') or '').strip()
     if len(message) > REPORT_FIELD_LIMITS['message']:
-        return {}, 'Коментар не може бути довшим за 250 символів.'
+        return {}, f'Коментар не може бути довшим за {REPORT_FIELD_LIMITS["message"]} символів.'
 
     # An answer has to belong to the category it arrived with. Otherwise Sentry
     # collects wording the form never offered, and a breakdown by failure type

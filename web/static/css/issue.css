@@ -99,16 +99,16 @@ body{
 #block-comment{order:4}
 #block-tg{order:5}
 .submit{order:6}
-body.tab-other #block-issue{display:none}
+body.tab-other #block-issue,
+body.tab-other #block-time,
+body.tab-other #block-city{display:none}
 body.tab-other #block-comment{order:1}
-body.tab-other #block-time{order:2}
-body.tab-other #block-city{order:3}
-/* У «Іншому» коментар - єдине джерело подробиць, тож він обов'язковий, а місто та час стають необов'язковими */
 body.tab-other #block-comment .opt-mark{display:none}
-#block-city .opt-mark{display:none}
-body.tab-other #block-city .opt-mark{display:inline}
-#block-time .opt-mark{display:none}
-body.tab-other #block-time .opt-mark{display:inline}
+body.tab-other .textarea{
+  min-height:240px;
+  height:240px;
+  max-height:240px;
+}
 
 .time-picker{
   margin-top:var(--gap-tight);
@@ -133,17 +133,10 @@ body.tab-other #block-time .opt-mark{display:inline}
   cursor:pointer;
   user-select:none;
 }
-.input-datetime.active,
 .input-datetime:focus{
+  outline:0;
   border-color:var(--ink);
   box-shadow:inset 0 0 0 1px var(--ink);
-}
-#block-time.picker-active #opts-time .opt input:checked + span{
-  border-color:var(--hairline);
-  box-shadow:none;
-}
-#block-time.picker-active #opts-time .opt span:hover{
-  border-color:var(--hairline-hover);
 }
 .picker-hidden{
   position:absolute;
@@ -262,6 +255,7 @@ body.tab-other #block-time .opt-mark{display:inline}
   font-family:var(--font-mono, 'JetBrains Mono', monospace);
   font-size:15px;
   letter-spacing:.01em;
+  text-align:center;
   cursor:pointer;
   user-select:none;
 }
@@ -276,15 +270,11 @@ body.tab-other #block-time .opt-mark{display:inline}
   font-size:15px;
   font-weight:400;
   color:var(--placeholder);
+  text-align:center;
   opacity:1;
 }
 .input:hover,.textarea:hover{border-color:var(--hairline-hover)}
 .input:focus,.textarea:focus{outline:0;border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
-.input.input-datetime.active,
-.input-datetime.active{
-  border-color:var(--ink);
-  box-shadow:inset 0 0 0 1px var(--ink);
-}
 
 /* Рядок під блоком - одне місце для двох станів: спокійне пояснення сірим
    і повідомлення про незаповнене поле червоним. Однакові кегль, відступ
@@ -303,18 +293,45 @@ body.tab-other #block-time .opt-mark{display:inline}
 .block.invalid .textarea,
 .block.invalid .opt span{border-color:var(--explosion);box-shadow:inset 0 0 0 1px var(--explosion)}
 
-#block-time.picker-invalid .opts .opt span,
-#block-time.picker-invalid .opts .opt input:checked + span{
+/* Правила валідації для блоку часу:
+   - Якщо блок помилковий взагалі (не обрано варіант часу), червоніють радіокнопки,
+     а поля дати/часу залишаються зі звичайною рамкою.
+   - Якщо обрано «Вибрати дату і час», але не заповнено (.picker-invalid), обрана
+     радіокнопка лишається чорною, а червоніє тільки те поле (.input-datetime.invalid),
+     яке не було заповнене. */
+#block-time.invalid .input-datetime{
   border-color:var(--hairline);
   box-shadow:none;
 }
-#block-time.picker-invalid .input-datetime{
-  border-color:var(--explosion);
-  box-shadow:inset 0 0 0 1px var(--explosion);
+#block-time.invalid .input-datetime:hover{
+  border-color:var(--hairline-hover);
 }
-#block-time.picker-invalid .input-datetime.active{
+#block-time.invalid .input-datetime:focus{
+  outline:0;
   border-color:var(--ink);
   box-shadow:inset 0 0 0 1px var(--ink);
+}
+#block-time.picker-invalid .opts .opt span{
+  border-color:var(--hairline);
+  box-shadow:none;
+}
+#block-time.picker-invalid .opts .opt span:hover{
+  border-color:var(--hairline-hover);
+}
+#block-time.picker-invalid .opts .opt input:checked + span{
+  border-color:var(--ink);
+  box-shadow:inset 0 0 0 1px var(--ink);
+}
+.input.input-datetime.invalid,
+.input-datetime.invalid{
+  border-color:var(--explosion) !important;
+  box-shadow:inset 0 0 0 1px var(--explosion) !important;
+}
+.input.input-datetime.invalid:focus,
+.input-datetime.invalid:focus{
+  outline:0;
+  border-color:var(--ink) !important;
+  box-shadow:inset 0 0 0 1px var(--ink) !important;
 }
 
 /* Автодоповнення міста. Нативний <datalist> малює системний список, який не
@@ -490,11 +507,51 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
 .notice--error .notice-icon-error{display:block}
 .notice-text{padding:12px 16px 12px 0;line-height:1.35}
 
-/* Підвал - той самий рядок, що на сторінці 404 */
+/* Підвал */
+.foot{
+  margin:var(--gap-section) 0 0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+}
+
+.foot-links{
+  margin:0;
+  font-family:var(--font-mono);
+  font-size:13px;
+  line-height:1.5;
+  font-weight:400;
+  color:var(--ink-muted);
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  text-align:center;
+  margin-right:-.06em;
+}
+
+.foot-links a{
+  color:inherit;
+  text-decoration:underline;
+  text-underline-offset:3px;
+  transition:color .15s ease;
+  padding:2px 0;
+}
+
+.foot-links a:hover{
+  color:var(--ink);
+}
+
 .copy{
-  margin:var(--gap-section) 0 0;text-align:center;
-  font-family:var(--font-mono);font-size:var(--text-footer);font-weight:500;
-  color:var(--ink-muted);letter-spacing:.14em;text-transform:uppercase;margin-right:-.14em;
+  margin:0;
+  font-family:var(--font-mono);
+  font-size:13px;
+  line-height:1.5;
+  font-weight:400;
+  color:var(--ink-muted);
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  text-align:center;
+  margin-right:-.06em;
 }
 
 /* ==========================================================================
@@ -508,6 +565,10 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
     top:auto;
     bottom:calc(100% + 6px);
     box-shadow:0 -3px 14px rgba(0,0,0,0.15);
+  }
+  .copy, .foot-links{
+    letter-spacing:.04em;
+    margin-right:-.04em;
   }
 }
 
@@ -546,6 +607,11 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
   .block.invalid .input,
   .block.invalid .textarea,
   .block.invalid .opt span{border-color:var(--explosion)}
+  #block-time.invalid .input-datetime{border-color:var(--hairline)}
+  #block-time.picker-invalid .opts .opt span{border-color:var(--hairline)}
+  #block-time.picker-invalid .opts .opt input:checked + span{border-color:var(--ink)}
+  .input.input-datetime.invalid,
+  .input-datetime.invalid{border-color:var(--explosion) !important}
 }
 
 /* Перевага стосується руху, а не будь-якої зміни стану: згасанням і зміною

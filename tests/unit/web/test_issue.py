@@ -125,6 +125,9 @@ def test_lookups_cover_every_wording_the_form_can_send():
     assert issue.OPTION_INFO['Сповіщення прийшло із запізненням'] == {
         'key': 'late', 'en': 'Notification arrived late',
     }
+    assert issue.OPTION_INFO['Сповіщення прийшло двічі поспіль'] == {
+        'key': 'duplicate', 'en': 'Notification arrived twice in a row',
+    }
     assert issue.OPTION_INFO['Мапа не відкривається зовсім'] == {
         'key': 'map_not_opening', 'en': 'Map does not open at all',
     }

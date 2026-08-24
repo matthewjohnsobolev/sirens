@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Стан сирен — Сирени</title>
+<title>Стан сервісу | Сирени</title>
 <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,7 +19,8 @@
     </div>
 
     <h1 class="state">{{ headline }}</h1>
-    <p class="state-sub">{{ subtitle }} {% if "— ні" in headline or headline == "Сервіс не працює" %}Ми знаємо про цей збій і працюємо над ним. Помітили інший збій — <a href="/issue">розкажіть нам</a>{% else %}Не отримали сповіщення? Щось працює не так? — <a href="/issue">Повідомити про збій</a>{% endif %}</p>
+    <p class="state-sub">{{ subtitle }}</p>
+    <p class="state-report">{% if "— ні" in headline or headline == "Сервіс не працює" %}Ми знаємо про цей збій і працюємо над ним. Помітили інший збій — <a href="/issue">розкажіть нам</a>{% else %}Не отримали сповіщення? Щось працює не так? — <a href="/issue">Повідомити про збій</a>{% endif %}</p>
 
     <div class="list" id="list">
       {%- for comp in components %}

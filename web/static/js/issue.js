@@ -48,9 +48,26 @@ const bComment       = document.getElementById('block-comment');
 const inputCat       = document.getElementById('input-category');
 const inputSub       = document.getElementById('input-sub-option');
 
-/* Обраний варіант кожного розділу окремо */
+/* Ізольований стан кожного розділу */
+function createEmptyTabState() {
+  const now = new Date();
+  return {
+    choice: null,
+    timeChoice: null,
+    exactDate: '',
+    exactTime: '',
+    pickerDate: '',
+    pickerTime: '',
+    selectedDate: now,
+    selectedTimeStr: getDefaultTimeStr(now),
+    location: '',
+    comment: '',
+    tg: '',
+  };
+}
+
+const tabState = Object.fromEntries(Object.keys(SETS).map(id => [id, createEmptyTabState()]));
 const choice = Object.fromEntries(Object.keys(SETS).map(id => [id, null]));
-const locationByTab = Object.fromEntries(Object.keys(SETS).map(id => [id, '']));
 let timeChoice = null;
 
 const UK_MONTHS = ['січ.', 'лют.', 'берез.', 'квіт.', 'трав.', 'черв.', 'лип.', 'серп.', 'верес.', 'жовт.', 'листоп.', 'груд.'];
@@ -128,24 +145,30 @@ function updateTimePickerVisibility(){
 }
 
 function updateTabUI(){
+  if (comment) {
+    comment.placeholder = isOther()
+      ? 'Опишіть, будь ласка, що саме сталося'
+      : 'Якщо хочете додати щось ще';
+  }
+
   if (tab === 'alerts') {
     if (labelCity) labelCity.textContent = 'Місто';
     if (city) {
-      city.placeholder = 'Наприклад, Харків';
+      city.placeholder = 'Наприклад, Чернігів';
       city.setAttribute('aria-label', 'Місто');
     }
     if (errCity) errCity.textContent = 'Вкажіть, будь ласка, місто — без нього ми не знайдемо збій.';
   } else if (tab === 'map') {
     if (labelCity) labelCity.textContent = 'Район';
     if (city) {
-      city.placeholder = 'Наприклад, Бучанський район';
+      city.placeholder = 'Наприклад, Чернігівський район';
       city.setAttribute('aria-label', 'Район');
     }
     if (errCity) errCity.textContent = 'Вкажіть, будь ласка, район — без нього ми не знайдемо збій.';
   } else {
     if (labelCity) labelCity.textContent = 'Місто або район';
     if (city) {
-      city.placeholder = 'Наприклад, Харків або Бучанський район';
+      city.placeholder = 'Наприклад, Чернігів або Чернігівський район';
       city.setAttribute('aria-label', 'Місто або район');
     }
     if (errCity) errCity.textContent = 'Вкажіть, будь ласка, місто або район.';
@@ -332,10 +355,60 @@ tabs.forEach((b, i) => {
   });
 });
 
-function select(i){
-  if (city && tab) {
-    locationByTab[tab] = city.value;
+function saveTabState(t) {
+  if (!t || !tabState[t]) return;
+  const s = tabState[t];
+  s.choice = choice[t];
+  s.timeChoice = timeChoice;
+  s.exactDate = exactDate ? exactDate.value : '';
+  s.exactTime = exactTime ? exactTime.value : '';
+  s.pickerDate = pickerDate ? pickerDate.value : '';
+  s.pickerTime = pickerTime ? pickerTime.value : '';
+  s.selectedDate = selectedDate;
+  s.selectedTimeStr = selectedTimeStr;
+  s.location = city ? city.value : '';
+  s.comment = comment ? comment.value : '';
+  s.tg = tg ? tg.value : '';
+}
+
+function restoreTabState(t) {
+  const s = tabState[t];
+  if (!s) return;
+  choice[t] = s.choice;
+  timeChoice = s.timeChoice;
+  selectedDate = s.selectedDate || new Date();
+  selectedTimeStr = s.selectedTimeStr || getDefaultTimeStr(selectedDate);
+
+  if (exactDate) {
+    exactDate.value = s.exactDate || '';
+    exactDate.placeholder = formatUkrainianDate(selectedDate);
+    exactDate.classList.remove('invalid');
   }
+  if (exactTime) {
+    exactTime.value = s.exactTime || '';
+    exactTime.placeholder = formatUkrainianTime(selectedTimeStr, selectedDate);
+    exactTime.classList.remove('invalid');
+  }
+  if (pickerDate) {
+    pickerDate.value = s.pickerDate || (s.timeChoice === 'Вибрати дату і час' || s.timeChoice === 'Вибрати час' ? getDefaultDateStr(selectedDate) : '');
+  }
+  if (pickerTime) {
+    pickerTime.value = s.pickerTime || (s.timeChoice === 'Вибрати дату і час' || s.timeChoice === 'Вибрати час' ? selectedTimeStr : '');
+  }
+  if (city) {
+    city.value = s.location || '';
+  }
+  if (comment) {
+    comment.value = s.comment || '';
+  }
+  if (tg) {
+    tg.value = s.tg || '';
+  }
+}
+
+function select(i){
+  saveTabState(tab);
+
   tabs.forEach((x, j) => {
     x.setAttribute('aria-checked', String(j === i));
     x.tabIndex = j === i ? 0 : -1;
@@ -344,25 +417,25 @@ function select(i){
     segSlider.style.transform = `translateX(${i * 100}%)`;
   }
   tab = tabs[i].dataset.tab;
+  restoreTabState(tab);
   document.body.classList.toggle('tab-other', isOther());
-  if (city) {
-    city.value = locationByTab[tab] || '';
-  }
   comboClose();
+
   /* помилки попереднього розділу не переносяться на новий */
   bIssue.classList.remove('invalid');
   if (bTime) bTime.classList.remove('invalid', 'picker-invalid');
   if (exactDate) exactDate.classList.remove('invalid');
   if (exactTime) exactTime.classList.remove('invalid');
+  if (errTime) errTime.textContent = 'Оберіть, будь ласка, коли це сталося.';
   bCity.classList.remove('invalid');
   bComment.classList.remove('invalid');
+  if (errComment) errComment.textContent = 'Опишіть, будь ласка, що сталося — без цього ми не знатимемо, що шукати.';
+
   updateTabUI();
   syncInputs();
   render();
   checkCommentOverflow();
 }
-
-comment.addEventListener('input', () => bComment.classList.remove('invalid'));
 
 /* --- Смуга прокрутки ------------------------------------------------------
    iOS Safari не малює тієї смуги, що решта браузерів: ::-webkit-scrollbar він
@@ -531,13 +604,13 @@ function comboHighlight(i){
 function comboPick(i){
   if(i < 0 || i >= comboItems.length) return;
   city.value = comboItems[i];
-  if (tab) locationByTab[tab] = city.value;
+  if (tab && tabState[tab]) tabState[tab].location = city.value;
   bCity.classList.remove('invalid');
   comboClose();
 }
 
 city.addEventListener('input', () => {
-  if (tab) locationByTab[tab] = city.value;
+  if (tab && tabState[tab]) tabState[tab].location = city.value;
   bCity.classList.remove('invalid');
   comboRender(city.value);
 });
@@ -629,8 +702,15 @@ comment.addEventListener('paste', () => {
 });
 
 comment.addEventListener('input', () => {
+  if (tab && tabState[tab]) tabState[tab].comment = comment.value;
   checkCommentOverflow();
 });
+
+if (tg) {
+  tg.addEventListener('input', () => {
+    if (tab && tabState[tab]) tabState[tab].tg = tg.value;
+  });
+}
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -796,12 +876,16 @@ const MSG = {
 
 function resetForm(){
   form.reset();
+  Object.keys(tabState).forEach(k => {
+    tabState[k] = createEmptyTabState();
+  });
   Object.keys(choice).forEach(k => choice[k] = null);
-  Object.keys(locationByTab).forEach(k => locationByTab[k] = '');
-  if (city) city.value = '';
   timeChoice = null;
   selectedDate = new Date();
-  selectedTimeStr = getDefaultTimeStr();
+  selectedTimeStr = getDefaultTimeStr(selectedDate);
+  if (city) city.value = '';
+  if (comment) comment.value = '';
+  if (tg) tg.value = '';
   if (exactDate) {
     exactDate.value = '';
     exactDate.placeholder = formatUkrainianDate(selectedDate);

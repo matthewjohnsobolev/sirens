@@ -72,6 +72,13 @@ R2_ENDPOINT = os.getenv('CLOUDFLARE_R2_ENDPOINT') or os.getenv('R2_ENDPOINT', ''
 if not R2_ENDPOINT and CLOUDFLARE_ACCOUNT_ID:
     R2_ENDPOINT = f"https://{CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
+# Cloudflare KV for Status Page telemetry:
+CLOUDFLARE_API_TOKEN = os.getenv('CLOUDFLARE_API_TOKEN') or os.getenv('CLOUDFLARE_KV_API_TOKEN', '')
+CLOUDFLARE_KV_STATUS_NAMESPACE_ID = (
+    os.getenv('CLOUDFLARE_KV_STATUS_NAMESPACE_ID')
+    or os.getenv('CLOUDFLARE_KV_NAMESPACE_ID', '')
+)
+
 
 # Optional GitHub PAT to trigger workflow_dispatch for dashboard build
 GITHUB_PAT = os.getenv('GITHUB_PAT', '')

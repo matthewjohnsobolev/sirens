@@ -5,6 +5,28 @@ export interface Env {
     UPTIMEROBOT_SIRENS_WEB_API?: string;
     UPTIMEROBOT_SIRENS_API_API?: string;
     STATUS_START_DATE?: string;
+    STATUS_KV?: KVNamespace;
+    SIRENS_TELEMETRY?: KVNamespace;
+    "sirens-telemetry"?: KVNamespace;
+}
+
+export interface TelemetryAlert {
+    type: string;
+    region?: string;
+    district?: string;
+    district_name?: string;
+    timestamp: string;
+    message_id?: number | null;
+    message_link?: string | null;
+}
+
+export interface TelemetryData {
+    last_broadcast_at?: string | null;
+    last_alert?: TelemetryAlert | null;
+    last_source_message_at?: string | null;
+    active_alerts_count?: number;
+    source_connected?: boolean;
+    updated_at?: string;
 }
 
 export const COMPONENTS_SPEC = [
@@ -13,6 +35,18 @@ export const COMPONENTS_SPEC = [
     { key: "map", name: "Мапа тривог", source: "uptimerobot" },
     { key: "api", name: "API", source: "uptimerobot" },
 ];
+
+export async function fetchTelemetry(env: Env): Promise<TelemetryData | null> {
+    const kv = env.STATUS_KV || env.SIRENS_TELEMETRY || env["sirens-telemetry"];
+    if (!kv) return null;
+    try {
+        const data = await kv.get<TelemetryData>("telemetry:latest", "json");
+        return data;
+    } catch (e) {
+        console.warn("Failed to fetch telemetry from KV:", e);
+        return null;
+    }
+}
 
 export async function fetchHealthchecks(env: Env) {
     if (!env.HEALTHCHECKS_API) return [];

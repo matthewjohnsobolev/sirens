@@ -1,4 +1,4 @@
-import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot } from "./api";
+import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry } from "./api";
 import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts } from "./helpers";
 
 const WINDOW_HOURS = 24;
@@ -54,6 +54,9 @@ function getDownIntervals(flips: {timestamp: Date, up: number}[], windowStart: D
 export async function computeStatusData(env: Env) {
     const now = new Date();
     const nowKyiv = getKyivParts(now);
+
+    // Fetch telemetry from Cloudflare KV
+    const telemetry = await fetchTelemetry(env);
 
     // We anchor 72 hours to the start of the current hour
     const currentHourStart = getHourStart(now);
@@ -283,7 +286,20 @@ export async function computeStatusData(env: Env) {
     const coreFailing = components.filter(c => (c.key === "alerts" || c.key === "tg") && ["down", "major", "minor"].includes(c.state) && c.monitored);
     const auxFailing = components.filter(c => (c.key === "map" || c.key === "api") && ["down", "major", "minor"].includes(c.state) && c.monitored);
 
-    let lastAlertDt = probes['alerts']?.last_ping ? new Date(probes['alerts'].last_ping) : null;
+    let lastAlertDt: Date | null = null;
+    let lastAlertDistrict: string | null = null;
+    if (telemetry?.last_alert?.timestamp) {
+        const parsed = new Date(telemetry.last_alert.timestamp);
+        if (!isNaN(parsed.getTime())) {
+            lastAlertDt = parsed;
+            lastAlertDistrict = telemetry.last_alert.district_name || null;
+        }
+    } else if (telemetry?.last_broadcast_at) {
+        const parsed = new Date(telemetry.last_broadcast_at);
+        if (!isNaN(parsed.getTime())) {
+            lastAlertDt = parsed;
+        }
+    }
 
     if (!monitored.length || monitored.every(c => c.state === "nodata")) {
         headline = "Стан невідомий";
@@ -319,7 +335,10 @@ export async function computeStatusData(env: Env) {
             const dateStr = isToday ? "сьогодні" : `${p.day} ${UK_MONTHS[p.month]}`;
             const hh = p.hour.toString().padStart(2, '0');
             const mm = p.minute.toString().padStart(2, '0');
-            subtitle = `Останнє сповіщення — ${dateStr} о ${hh}:${mm}. Відтоді тривог не було.`;
+            const districtSuffix = lastAlertDistrict ? ` (${lastAlertDistrict})` : "";
+            subtitle = `Останнє сповіщення — ${dateStr} о ${hh}:${mm}${districtSuffix}. Відтоді тривог не було.`;
+        } else {
+            subtitle = "Сповіщення в Telegram надходять як зазвичай.";
         }
     }
 
@@ -327,6 +346,7 @@ export async function computeStatusData(env: Env) {
         headline,
         subtitle,
         components,
+        telemetry,
         hour_title: formatHourTitle,
         hours_summary: summarizeHours
     };

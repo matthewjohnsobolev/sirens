@@ -8,5 +8,8 @@ HEALTHCHECKS_SLUG_ALERTS_BROADCAST = "sirens-alerts-broadcast"
 # These should be overridden in production/local .dev.vars
 # HEALTHCHECKS_API = "your-read-only-key"
 # UPTIMEROBOT_SIRENS_WEB_API = "your-key"
-# UPTIMEROBOT_SIRENS_API_API = "your-key"
 STATUS_START_DATE = "2023-01-01"
+
+[[kv_namespaces]]
+binding = "STATUS_KV"
+id = "b5d43aca2b594634a6247f043e7b0f17"

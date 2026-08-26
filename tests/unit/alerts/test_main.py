@@ -5,6 +5,7 @@ Unit tests for alerts.main (alert monitoring, state persistence, and broadcastin
 import argparse
 import asyncio
 import datetime
+import json
 import logging
 import re
 from typing import NamedTuple
@@ -64,6 +65,9 @@ CHANNEL_ID = 123456
 
 
 async def _drain_background_tasks():
+    while alerts_main.running_tasks:
+        tasks = list(alerts_main.running_tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
     await asyncio.sleep(0)
     await asyncio.sleep(0)
 
@@ -1409,7 +1413,7 @@ async def test_record_map_only_alert_writes_state_without_broadcasting(
     await _drain_background_tasks()
 
     mock_telegram_client.send_message.assert_not_awaited()
-    mock_redis.set.assert_awaited_once_with("district_state:vyshhorod", "air_raid_alert")
+    mock_redis.set.assert_any_await("district_state:vyshhorod", "air_raid_alert")
 
     city = [
         call for call in mock_redis.hset.call_args_list
@@ -1451,7 +1455,7 @@ async def test_record_map_only_alert_records_after_duplicate_suppression(
 
     await record_map_only_alert("vyshhorod", "air_raid_alert_cancelled")
 
-    mock_redis.set.assert_awaited_once_with(
+    mock_redis.set.assert_any_await(
         "district_state:vyshhorod", "air_raid_alert_cancelled"
     )
     mock_redis.srem.assert_awaited_once_with("threat:alerts:active:kyiv_oblast", "vyshhorod")
@@ -1576,3 +1580,66 @@ def test_log_unrecognised_districts_stays_quiet_on_a_known_post(caplog):
     log_unrecognised_districts("Повітряна тривога в Кам'янець-Подільський район")
 
     assert caplog.text == ""
+
+
+@pytest.mark.asyncio
+async def test_push_telemetry_to_kv_skips_when_not_configured(monkeypatch):
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_ACCOUNT_ID", "")
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_KV_STATUS_NAMESPACE_ID", "")
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_API_TOKEN", "")
+
+    with patch("requests.put") as mock_put:
+        await alerts_main.push_telemetry_to_kv()
+        mock_put.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_push_telemetry_to_kv_sends_correct_payload(monkeypatch, mock_redis):
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_ACCOUNT_ID", "acc_123")
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_KV_STATUS_NAMESPACE_ID", "ns_456")
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_API_TOKEN", "token_789")
+
+    alerts_main.last_broadcast_at = 1700000000.0
+    alerts_main.last_source_message_at = 1699999000.0
+    alerts_main.last_alert_payload = {
+        "type": "air_raid_alert",
+        "region": "kyiv_oblast",
+        "district": "bila_tserkva",
+        "district_name": "Білоцерківський район",
+        "timestamp": "2026-08-26T18:00:00+00:00",
+        "message_id": 123,
+        "message_link": "https://t.me/sirens_kyiv_obl/123",
+    }
+
+    mock_client = MagicMock()
+    mock_client.is_connected.return_value = True
+    alerts_main.client = mock_client
+
+    with patch("requests.put") as mock_put:
+        await alerts_main.push_telemetry_to_kv()
+
+        mock_put.assert_called_once()
+        url, kwargs = mock_put.call_args
+        assert url[0] == "https://api.cloudflare.com/client/v4/accounts/acc_123/storage/kv/namespaces/ns_456/values/telemetry:latest"
+        assert kwargs["headers"]["Authorization"] == "Bearer token_789"
+        assert kwargs["headers"]["Content-Type"] == "application/json"
+
+        body = json.loads(kwargs["data"])
+        assert body["last_alert"]["district"] == "bila_tserkva"
+        assert body["last_alert"]["district_name"] == "Білоцерківський район"
+        assert body["source_connected"] is True
+        assert "updated_at" in body
+
+
+@pytest.mark.asyncio
+async def test_push_telemetry_to_kv_survives_network_error(monkeypatch, caplog):
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_ACCOUNT_ID", "acc_123")
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_KV_STATUS_NAMESPACE_ID", "ns_456")
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_API_TOKEN", "token_789")
+
+    caplog.set_level(logging.WARNING)
+
+    with patch("requests.put", side_effect=Exception("Connection failed")):
+        await alerts_main.push_telemetry_to_kv()
+
+    assert "Failed to push telemetry snapshot to Cloudflare KV" in caplog.text

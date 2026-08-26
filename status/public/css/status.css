@@ -220,7 +220,7 @@ body {
 .notice-desc {
   margin: 0;
   padding: 0 2px;
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 400;
   line-height: 1.5;
   color: var(--ink-muted);
@@ -228,8 +228,8 @@ body {
 
 .notice-desc .mono-time {
   font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 400;
+  font-size: var(--text-ui);
+  font-weight: 500;
   letter-spacing: .01em;
   color: var(--ink);
 }
@@ -263,7 +263,7 @@ body {
 
 .comp-val {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 500;
   color: var(--ink);
   letter-spacing: .02em;
@@ -274,7 +274,7 @@ body {
 
 .comp[data-monitored="false"] .comp-val {
   font-family: var(--font);
-  font-size: 12px;
+  font-size: var(--text-ui);
   font-weight: 400;
   color: var(--ink-muted);
 }
@@ -346,7 +346,7 @@ body {
   justify-content: space-between;
   margin-top: var(--gap-tight);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-footer);
   font-weight: 500;
   color: var(--ink-muted);
   letter-spacing: .04em;
@@ -365,7 +365,7 @@ body {
 
 .card-action-text {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 400;
   color: var(--ink-muted);
   line-height: 1.45;
@@ -421,7 +421,7 @@ body {
   border: 1px solid var(--hairline-dark);
   color: var(--ink);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-footer);
   font-weight: 500;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -468,7 +468,7 @@ body {
 .tip-time {
   color: var(--ink);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-footer);
   font-weight: 500;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -483,7 +483,7 @@ body {
   gap: 6px;
   color: var(--ink);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-footer);
   font-weight: 500;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -533,7 +533,7 @@ body {
 
 .foot-main {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px 16px;
@@ -552,7 +552,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 500;
 }
 
@@ -582,8 +582,8 @@ body {
 
 .foot-disclaimer p {
   margin: 0;
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: var(--text-footer);
+  line-height: 1.55;
   color: var(--ink-muted);
 }
 
@@ -629,49 +629,53 @@ body {
   }
 
   .foot {
-    margin-top: clamp(36px, 8vw, 48px);
+    margin-top: clamp(28px, 7vw, 36px);
+    display: flex;
+    flex-direction: column;
     text-align: center;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
   }
 
   .foot-main {
-    flex-direction: column-reverse;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
+    display: contents;
   }
 
   .foot-nav {
+    order: 1;
     justify-content: center;
-    gap: 10px;
+    gap: 8px;
+    width: 100%;
   }
 
   .foot-nav a {
-    padding: 4px 6px;
+    padding: 2px 0;
     text-underline-offset: 3px;
   }
 
   .foot-disclaimer {
+    order: 2;
     text-align: center;
     width: 100%;
     max-width: 420px;
     margin: 0 auto;
-    padding-top: 16px;
+    padding-top: 12px;
   }
 
   .foot-disclaimer p {
     line-height: 1.55;
     text-wrap: balance;
   }
+
+  .foot-copy {
+    order: 3;
+    width: 100%;
+    text-align: center;
+    padding-top: 2px;
+  }
 }
 
 @media (max-width: 420px) {
-  .card h1 {
-    font-size: 19px;
-  }
-
   .comp-head {
     gap: 8px;
   }

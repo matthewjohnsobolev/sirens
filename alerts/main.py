@@ -38,6 +38,7 @@ from telethon.tl.types import (
 
 from alerts import cli
 from config import (
+    BROADCAST_CITIES,
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_API_TOKEN,
     CLOUDFLARE_KV_STATUS_NAMESPACE_ID,
@@ -193,6 +194,75 @@ def district_label(district_key: str) -> str:
     return conf.get('display_name') or conf['name']
 
 
+LOCATION_LOCATIVE = {
+    'bilatserkva':    'у Білій Церкві',
+    'bucha':          'у Бучі',
+    'cherkasy':       'у Черкасах',
+    'chernihiv':      'у Чернігові',
+    'chernivtsi':     'у Чернівцях',
+    'dnipro':         'у Дніпрі',
+    'fastiv':         'у Фастові',
+    'ivanofrankivsk': 'в Івано-Франківську',
+    'izmail':         'в Ізмаїлі',
+    'kamianske':      "у Кам'янському",
+    'kharkiv':        'у Харкові',
+    'kherson':        'у Херсоні',
+    'khmelnytskyi':   'у Хмельницькому',
+    'kovel':          'у Ковелі',
+    'kremenchuk':     'у Кременчуці',
+    'kropyvnytskyi':  'у Кропивницькому',
+    'kryvyirih':      'у Кривому Розі',
+    'kyiv':           'у Києві',
+    'lutsk':          'у Луцьку',
+    'lviv':           'у Львові',
+    'mykolaiv':       'у Миколаєві',
+    'nikopol':        'у Нікополі',
+    'odesa':          'в Одесі',
+    'pervomaisk':     'у Первомайську',
+    'poltava':        'у Полтаві',
+    'rivne':          'у Рівному',
+    'sumy':           'у Сумах',
+    'ternopil':       'у Тернополі',
+    'uman':           'в Умані',
+    'uzhhorod':       'в Ужгороді',
+    'vinnytsia':      'у Вінниці',
+    'zaporizhzhia':   'у Запоріжжі',
+    'zhytomyr':       'у Житомирі',
+    'zolotonosha':    'у Золотоноші',
+    'zvenyhorodka':   'у Звенигородці',
+    'boryspil':       'у Борисполі',
+    'brovary':        'у Броварах',
+    'vyshhorod':      'у Вишгороді',
+    'obukhiv':        'в Обухові',
+}
+
+
+def city_or_district_name(district_key: str) -> str:
+    """Українська назва міста (якщо для нього є канал розсилки) або району для статус-сторінки."""
+    if district_key in BROADCAST_CITIES:
+        return BROADCAST_CITIES[district_key]
+    conf = DISTRICT_CONFIG.get(district_key)
+    if conf:
+        return conf.get('city') or conf.get('name') or district_key
+    return district_key.capitalize()
+
+
+def location_locative(district_key: str) -> str:
+    """Форма місцевого відмінка ('у Києві', 'у Білій Церкві', 'у Бучі')."""
+    if district_key in LOCATION_LOCATIVE:
+        return LOCATION_LOCATIVE[district_key]
+    conf = DISTRICT_CONFIG.get(district_key, {})
+    name = conf.get('name', '')
+    if name.endswith(" район"):
+        base = name[:-6]
+        adj = (base[:-2] + "ому") if (base.endswith("ий") or base.endswith("ій")) else base
+        prep = "в" if name[0].lower() in "аеєиіїоуюя" else "у"
+        return f"{prep} {adj} районі"
+    city = conf.get('city') or conf.get('display_name') or district_key
+    prep = "в" if city[0].lower() in "аеєиіїоуюя" else "у"
+    return f"{prep} {city}"
+
+
 def log_alert_received(region: str, alert_type: str):
     display_name = district_label(region)
     
@@ -283,11 +353,15 @@ async def _record_alert_state(
     now_utc_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     source = message_link or DEFAULT_SOURCE
 
+    loc_name = city_or_district_name(district_key)
+    loc_title = location_locative(district_key)
     last_alert_payload = {
         "type": alert_type,
         "region": oblast_key,
         "district": district_key,
-        "district_name": district_label(district_key),
+        "district_name": loc_name,
+        "city_name": loc_name,
+        "location_title": loc_title,
         "timestamp": now_utc_iso,
         "message_id": message_id,
         "message_link": message_link,
@@ -752,11 +826,15 @@ async def _prime_monitoring_state(source_channel) -> None:
                         if dt.tzinfo else dt.replace(tzinfo=datetime.timezone.utc).isoformat()
                     )
                     d_key = row["district_key"] or ""
+                    loc_name = city_or_district_name(d_key) if d_key else ""
+                    loc_title = location_locative(d_key) if d_key else ""
                     last_alert_payload = {
                         "type": row["type"],
                         "region": row["oblast_key"],
                         "district": d_key,
-                        "district_name": district_label(d_key) if d_key else "",
+                        "district_name": loc_name,
+                        "city_name": loc_name,
+                        "location_title": loc_title,
                         "timestamp": dt_iso,
                         "message_id": row["message_id"],
                         "message_link": row["message_link"],

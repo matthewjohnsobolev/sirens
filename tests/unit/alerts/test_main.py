@@ -1643,3 +1643,26 @@ async def test_push_telemetry_to_kv_survives_network_error(monkeypatch, caplog):
         await alerts_main.push_telemetry_to_kv()
 
     assert "Failed to push telemetry snapshot to Cloudflare KV" in caplog.text
+
+
+def test_city_or_district_name_returns_city_for_broadcast_channels():
+    assert alerts_main.city_or_district_name("bilatserkva") == "Біла Церква"
+    assert alerts_main.city_or_district_name("bucha") == "Буча"
+    assert alerts_main.city_or_district_name("kyiv") == "Київ"
+    assert alerts_main.city_or_district_name("lviv") == "Львів"
+    assert alerts_main.city_or_district_name("nikopol") == "Нікополь"
+
+
+def test_city_or_district_name_falls_back_to_district_for_map_only():
+    assert alerts_main.city_or_district_name("vyshhorod") == "Вишгородський район"
+    assert alerts_main.city_or_district_name("boryspil") == "Бориспільський район"
+
+
+def test_location_locative_formats_proper_ukrainian_cases():
+    assert alerts_main.location_locative("bilatserkva") == "у Білій Церкві"
+    assert alerts_main.location_locative("bucha") == "у Бучі"
+    assert alerts_main.location_locative("kyiv") == "у Києві"
+    assert alerts_main.location_locative("lviv") == "у Львові"
+    assert alerts_main.location_locative("odesa") == "в Одесі"
+    assert alerts_main.location_locative("vyshhorod") == "у Вишгороді"
+    assert alerts_main.location_locative("obukhiv") == "в Обухові"

@@ -1,5 +1,5 @@
 import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry } from "./api";
-import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts } from "./helpers";
+import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts, formatLocationLocative } from "./helpers";
 
 const WINDOW_HOURS = 24;
 const THRESHOLD_MAJOR = 900; // seconds (15 minutes in an hour: long outage / тривалі збої)
@@ -287,12 +287,12 @@ export async function computeStatusData(env: Env) {
     const auxFailing = components.filter(c => (c.key === "map" || c.key === "api") && ["down", "major", "minor"].includes(c.state) && c.monitored);
 
     let lastAlertDt: Date | null = null;
-    let lastAlertDistrict: string | null = null;
+    let lastAlertLocation: string | null = null;
     if (telemetry?.last_alert?.timestamp) {
         const parsed = new Date(telemetry.last_alert.timestamp);
         if (!isNaN(parsed.getTime())) {
             lastAlertDt = parsed;
-            lastAlertDistrict = telemetry.last_alert.district_name || null;
+            lastAlertLocation = telemetry.last_alert.city_name || telemetry.last_alert.district_name || null;
         }
     } else if (telemetry?.last_broadcast_at) {
         const parsed = new Date(telemetry.last_broadcast_at);
@@ -335,8 +335,13 @@ export async function computeStatusData(env: Env) {
             const dateStr = isToday ? "сьогодні" : `${p.day} ${UK_MONTHS[p.month]}`;
             const hh = p.hour.toString().padStart(2, '0');
             const mm = p.minute.toString().padStart(2, '0');
-            const districtSuffix = lastAlertDistrict ? ` (${lastAlertDistrict})` : "";
-            subtitle = `Останнє сповіщення — ${dateStr} о ${hh}:${mm}${districtSuffix}. Відтоді тривог не було.`;
+            const locPhrase = formatLocationLocative(
+                telemetry?.last_alert?.district,
+                telemetry?.last_alert?.city_name || telemetry?.last_alert?.district_name,
+                (telemetry?.last_alert as any)?.location_title
+            );
+            const locSuffix = locPhrase ? ` ${locPhrase}` : "";
+            subtitle = `Останнє сповіщення — ${dateStr} о ${hh}:${mm}${locSuffix}. Відтоді тривог не було.`;
         } else {
             subtitle = "Сповіщення в Telegram надходять як зазвичай.";
         }

@@ -12,6 +12,78 @@ export const STATUS_WORDS: Record<string, string> = {
     "nodata": "немає даних",
 };
 
+export const LOCATION_LOCATIVE: Record<string, string> = {
+    // Міста з каналами розсилки
+    "bilatserkva": "у Білій Церкві",
+    "bucha": "у Бучі",
+    "cherkasy": "у Черкасах",
+    "chernihiv": "у Чернігові",
+    "chernivtsi": "у Чернівцях",
+    "dnipro": "у Дніпрі",
+    "fastiv": "у Фастові",
+    "ivanofrankivsk": "в Івано-Франківську",
+    "izmail": "в Ізмаїлі",
+    "kamianske": "у Кам'янському",
+    "kharkiv": "у Харкові",
+    "kherson": "у Херсоні",
+    "khmelnytskyi": "у Хмельницькому",
+    "kovel": "у Ковелі",
+    "kremenchuk": "у Кременчуці",
+    "kropyvnytskyi": "у Кропивницькому",
+    "kryvyirih": "у Кривому Розі",
+    "kyiv": "у Києві",
+    "lutsk": "у Луцьку",
+    "lviv": "у Львові",
+    "mykolaiv": "у Миколаєві",
+    "nikopol": "у Нікополі",
+    "odesa": "в Одесі",
+    "pervomaisk": "у Первомайську",
+    "poltava": "у Полтаві",
+    "rivne": "у Рівному",
+    "sumy": "у Сумах",
+    "ternopil": "у Тернополі",
+    "uman": "в Умані",
+    "uzhhorod": "в Ужгороді",
+    "vinnytsia": "у Вінниці",
+    "zaporizhzhia": "у Запоріжжі",
+    "zhytomyr": "у Житомирі",
+    "zolotonosha": "у Золотоноші",
+    "zvenyhorodka": "у Звенигородці",
+
+    // Райони Київщини та міст
+    "boryspil": "у Борисполі",
+    "brovary": "у Броварах",
+    "vyshhorod": "у Вишгороді",
+    "obukhiv": "в Обухові",
+};
+
+export function formatLocationLocative(
+    districtKey?: string | null,
+    locationName?: string | null,
+    customLocative?: string | null
+): string {
+    if (customLocative) {
+        return customLocative.startsWith("у ") || customLocative.startsWith("в ") ? customLocative : `у ${customLocative}`;
+    }
+    const cleanKey = districtKey ? districtKey.toLowerCase().replace(/[-_]/g, "") : "";
+    if (cleanKey && LOCATION_LOCATIVE[cleanKey]) {
+        return LOCATION_LOCATIVE[cleanKey];
+    }
+    if (!locationName) return "";
+    const trimmed = locationName.trim();
+    if (trimmed.endsWith(" район")) {
+        const base = trimmed.slice(0, -6);
+        let adj = base;
+        if (base.endsWith("ий") || base.endsWith("ій")) {
+            adj = base.slice(0, -2) + "ому";
+        }
+        const prep = /^[аеєиіїоуюя]/i.test(trimmed) ? "в" : "у";
+        return `${prep} ${adj} районі`;
+    }
+    const prep = /^[аеєиіїоуюя]/i.test(trimmed) ? "в" : "у";
+    return `${prep} ${trimmed}`;
+}
+
 const kyivFormatter = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Kyiv",
     year: "numeric",

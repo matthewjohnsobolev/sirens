@@ -15,6 +15,8 @@ export interface TelemetryAlert {
     region?: string;
     district?: string;
     district_name?: string;
+    city_name?: string;
+    location_title?: string;
     timestamp: string;
     message_id?: number | null;
     message_link?: string | null;

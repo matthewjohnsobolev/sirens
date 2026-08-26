@@ -113,7 +113,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
     let headline = "Сповіщення працюють";
     const lastAlertHour = ((nowKyiv.hour - 4 + 24) % 24).toString().padStart(2, "0");
     const lastAlertMin = "12";
-    let subtitle = `Останнє сповіщення — сьогодні о ${lastAlertHour}:${lastAlertMin}. Відтоді тривог не було.`;
+    let subtitle = `Останнє сповіщення — сьогодні о ${lastAlertHour}:${lastAlertMin} (Білоцерківський район). Відтоді тривог не було.`;
 
     const outageTimeStr = `з ${((nowKyiv.hour - 2 + 24) % 24).toString().padStart(2, "0")}:00`;
 
@@ -134,10 +134,29 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         subtitle = "Тривають планові технічні роботи.";
     }
 
+    const mockLastAlertIso = new Date(now.getTime() - 4 * 3600 * 1000).toISOString();
+    const telemetry = {
+        last_broadcast_at: mockLastAlertIso,
+        last_alert: {
+            type: "air_raid_alert",
+            region: "kyiv_oblast",
+            district: "bila_tserkva",
+            district_name: "Білоцерківський район",
+            timestamp: mockLastAlertIso,
+            message_id: 12345,
+            message_link: "https://t.me/sirens_kyiv_obl/12345"
+        },
+        last_source_message_at: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
+        active_alerts_count: 0,
+        source_connected: true,
+        updated_at: now.toISOString()
+    };
+
     return {
         headline,
         subtitle,
         components,
+        telemetry,
         hour_title: formatHourTitle,
         hours_summary: summarizeHours
     };

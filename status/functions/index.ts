@@ -48,12 +48,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
     const url = new URL(request.url);
     const mockParam = url.searchParams.get("mock");
-    const hasConfiguredKeys = Boolean(env.HEALTHCHECKS_API || env.UPTIMEROBOT_SIRENS_WEB_API || env.UPTIMEROBOT_SIRENS_API_API);
 
-    // If explicit ?mock= is requested, or if running locally with no API keys configured
-    if (mockParam || !hasConfiguredKeys) {
-        const scenario = mockParam || "ok";
-        const mockData = getMockStatusData(scenario, new Date());
+    // If explicit ?mock= is requested
+    if (mockParam) {
+        const mockData = getMockStatusData(mockParam, new Date());
         const html = renderHtml(mockData);
         return new Response(html, {
             headers: {

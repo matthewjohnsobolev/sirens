@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler pages dev public",
+    "dev:remote": "wrangler pages dev public --remote",
     "deploy": "wrangler pages deploy public --project-name sirens-status",
     "typecheck": "tsc --noEmit"
   },

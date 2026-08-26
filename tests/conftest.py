@@ -13,6 +13,10 @@ for _external in (
     # Те саме для другого провайдера.
     "UPTIMEROBOT_SIRENS_WEB_API",
     "UPTIMEROBOT_SIRENS_API_API",
+    # Cloudflare KV
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_KV_API_TOKEN",
+    "CLOUDFLARE_KV_STATUS_NAMESPACE_ID",
 ):
     os.environ[_external] = ""
 
@@ -34,6 +38,8 @@ def _neutralize_external_secrets(monkeypatch):
     monkeypatch.setattr(alerts_main, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL_ALERTS_SOURCE", "", raising=False)
     monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL_ALERTS_BROADCAST", "", raising=False)
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_API_TOKEN", "", raising=False)
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_KV_STATUS_NAMESPACE_ID", "", raising=False)
     monkeypatch.setattr(bi_main, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(bi_main, "R2_ACCESS_KEY_ID", "", raising=False)
     monkeypatch.setattr(bi_main, "R2_SECRET_ACCESS_KEY", "", raising=False)

@@ -38,6 +38,16 @@ def test_config_cloudflare_r2_keys_and_bucket(monkeypatch):
     assert config.R2_ENDPOINT == "https://cf.r2.endpoint"
 
 
+def test_config_cloudflare_kv_keys(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-api-token-test")
+    monkeypatch.setenv("CLOUDFLARE_KV_STATUS_NAMESPACE_ID", "cf-kv-namespace-id")
+
+    importlib.reload(config)
+
+    assert config.CLOUDFLARE_API_TOKEN == "cf-api-token-test"
+    assert config.CLOUDFLARE_KV_STATUS_NAMESPACE_ID == "cf-kv-namespace-id"
+
+
 
 def test_config_github_repo_normalization(monkeypatch):
     monkeypatch.setenv("GITHUB_REPO", "https://github.com/matthewjohnsobolev/sirens/")

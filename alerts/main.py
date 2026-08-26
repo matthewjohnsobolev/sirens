@@ -7,6 +7,7 @@ and broadcasts them to Sirens network channels.
 
 import asyncio
 import datetime
+import json
 import logging
 import os
 import re
@@ -37,6 +38,9 @@ from telethon.tl.types import (
 
 from alerts import cli
 from config import (
+    CLOUDFLARE_ACCOUNT_ID,
+    CLOUDFLARE_API_TOKEN,
+    CLOUDFLARE_KV_STATUS_NAMESPACE_ID,
     DATABASE_URL,
     DISTRICT_CONFIG,
     HEALTHCHECKS_PING_URL_ALERTS_SOURCE,
@@ -88,6 +92,7 @@ client: TelegramClient = None
 # після рестарту ще-тиха черга дасть одну повторну подію, і це радше добре.
 last_source_message_at: Optional[float] = None
 last_broadcast_at: Optional[float] = None
+last_alert_payload: Optional[dict] = None
 source_silence_reported: bool = False
 broadcast_silence_reported: bool = False
 
@@ -268,14 +273,32 @@ async def _record_alert_state(
     message_id: Optional[int] = None,
     message_link: Optional[str] = None,
 ):
+    global last_alert_payload
+
     district_key = region
     oblast_key = DISTRICT_CONFIG.get(region, {}).get('oblast', region)
     now = datetime.datetime.now()
     current_time = now.strftime("%H:%M")
     now_epoch = str(int(time.time()))
+    now_utc_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     source = message_link or DEFAULT_SOURCE
 
+    last_alert_payload = {
+        "type": alert_type,
+        "region": oblast_key,
+        "district": district_key,
+        "district_name": district_label(district_key),
+        "timestamp": now_utc_iso,
+        "message_id": message_id,
+        "message_link": message_link,
+    }
+
     if redis_client:
+        try:
+            await redis_client.set(LAST_ALERT_INFO_KEY, json.dumps(last_alert_payload))
+        except Exception:
+            log.warning("Failed to store last alert info in Redis", exc_info=True)
+
         try:
             # Район без каналу тримає свій стан під власним ключем: дедуп
             # мусить працювати й там, де фото каналу міняти нічому.
@@ -334,6 +357,8 @@ async def _record_alert_state(
                 )
         except Exception:
             log.exception("Failed to update Redis state for %s", district_key)
+
+    spawn_tracked_task(push_telemetry_to_kv(), f"Push telemetry for {district_key}")
 
     if pg_pool:
         try:
@@ -560,6 +585,79 @@ def log_unrecognised_districts(message_text: str) -> None:
 
 LAST_SOURCE_MESSAGE_KEY = "service:alerts:last_source_message_at"
 LAST_BROADCAST_AT_KEY = "service:alerts:last_broadcast_at"
+LAST_ALERT_INFO_KEY = "service:alerts:last_alert_info"
+
+
+async def push_telemetry_to_kv() -> None:
+    """Пуш знімка телеметрії стану в Cloudflare KV для сторінки стану.
+
+    Виконується безпечно у фоні: якщо параметри Cloudflare не налаштовані
+    або виникла помилка мережі, процес не блокується і не падає.
+    """
+    if not (CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_KV_STATUS_NAMESPACE_ID and CLOUDFLARE_API_TOKEN):
+        return
+
+    try:
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+        last_bcast_iso = (
+            datetime.datetime.fromtimestamp(last_broadcast_at, tz=datetime.timezone.utc).isoformat()
+            if last_broadcast_at is not None else None
+        )
+        last_src_iso = (
+            datetime.datetime.fromtimestamp(last_source_message_at, tz=datetime.timezone.utc).isoformat()
+            if last_source_message_at is not None else None
+        )
+
+        active_count = 0
+        if redis_client:
+            try:
+                oblasts_seen = set()
+                for conf in DISTRICT_CONFIG.values():
+                    o_key = conf.get('oblast')
+                    if o_key and o_key not in oblasts_seen:
+                        oblasts_seen.add(o_key)
+                        cnt = await redis_client.scard(f"threat:alerts:active:{o_key}")
+                        active_count += int(cnt or 0)
+            except Exception:
+                pass
+
+        source_connected = False
+        if client:
+            try:
+                conn_val = client.is_connected()
+                if asyncio.iscoroutine(conn_val):
+                    source_connected = bool(await conn_val)
+                else:
+                    source_connected = bool(conn_val)
+            except Exception:
+                pass
+
+        payload = {
+            "last_broadcast_at": last_bcast_iso,
+            "last_alert": last_alert_payload,
+            "last_source_message_at": last_src_iso,
+            "active_alerts_count": active_count,
+            "source_connected": source_connected,
+            "updated_at": now_dt.isoformat(),
+        }
+
+        url = (
+            f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}"
+            f"/storage/kv/namespaces/{CLOUDFLARE_KV_STATUS_NAMESPACE_ID}/values/telemetry:latest"
+        )
+        headers = {
+            "Authorization": f"Bearer {CLOUDFLARE_API_TOKEN}",
+            "Content-Type": "application/json",
+        }
+
+        def _do_put():
+            res = requests.put(url, data=json.dumps(payload), headers=headers, timeout=5)
+            res.raise_for_status()
+
+        await asyncio.to_thread(_do_put)
+        log.debug("Telemetry snapshot pushed to Cloudflare KV successfully")
+    except Exception:
+        log.warning("Failed to push telemetry snapshot to Cloudflare KV", exc_info=True)
 
 
 async def record_source_message(moment: Optional[datetime.datetime] = None) -> None:
@@ -596,13 +694,13 @@ async def record_broadcast(succeeded: bool) -> None:
     now_ts = time.time()
     last_broadcast_at = now_ts
 
-    if not redis_client:
-        return
+    if redis_client:
+        try:
+            await redis_client.set(LAST_BROADCAST_AT_KEY, str(int(now_ts)))
+        except Exception:
+            log.warning("Failed to store the broadcast timestamp in Redis", exc_info=True)
 
-    try:
-        await redis_client.set(LAST_BROADCAST_AT_KEY, str(int(now_ts)))
-    except Exception:
-        log.warning("Failed to store the broadcast timestamp in Redis", exc_info=True)
+    spawn_tracked_task(push_telemetry_to_kv(), "Telemetry sync on broadcast")
 
 
 async def _prime_monitoring_state(source_channel) -> None:
@@ -616,7 +714,7 @@ async def _prime_monitoring_state(source_channel) -> None:
     Мітку виходу (last_broadcast_at) так само відновлюємо з Redis, а коли там
     порожньо - беремо «зараз», щоб годинник стартував з моменту підняття процесу.
     """
-    global last_broadcast_at, last_source_message_at
+    global last_broadcast_at, last_source_message_at, last_alert_payload
 
     stored_source_seen_at = None
     stored_broadcast_at = None
@@ -624,6 +722,9 @@ async def _prime_monitoring_state(source_channel) -> None:
         try:
             raw_seen_at = await redis_client.get(LAST_SOURCE_MESSAGE_KEY)
             raw_bcast_at = await redis_client.get(LAST_BROADCAST_AT_KEY)
+            raw_alert_json = await redis_client.get(LAST_ALERT_INFO_KEY)
+            if raw_alert_json:
+                last_alert_payload = json.loads(raw_alert_json)
         except Exception:
             log.warning("Redis unreachable while restoring monitoring state", exc_info=True)
         else:
@@ -636,6 +737,33 @@ async def _prime_monitoring_state(source_channel) -> None:
             except (TypeError, ValueError):
                 log.warning("Stored broadcast timestamp is malformed: %r", raw_bcast_at)
 
+    if not last_alert_payload and pg_pool:
+        try:
+            async with pg_pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    """SELECT datetime, district_key, oblast_key, type, message_id, message_link
+                       FROM alert_history
+                       ORDER BY datetime DESC LIMIT 1"""
+                )
+                if row:
+                    dt = row["datetime"]
+                    dt_iso = (
+                        dt.astimezone(datetime.timezone.utc).isoformat()
+                        if dt.tzinfo else dt.replace(tzinfo=datetime.timezone.utc).isoformat()
+                    )
+                    d_key = row["district_key"] or ""
+                    last_alert_payload = {
+                        "type": row["type"],
+                        "region": row["oblast_key"],
+                        "district": d_key,
+                        "district_name": district_label(d_key) if d_key else "",
+                        "timestamp": dt_iso,
+                        "message_id": row["message_id"],
+                        "message_link": row["message_link"],
+                    }
+        except Exception:
+            log.warning("Failed to restore last_alert_info from PostgreSQL", exc_info=True)
+
     if stored_broadcast_at is not None:
         last_broadcast_at = stored_broadcast_at
     else:
@@ -643,19 +771,20 @@ async def _prime_monitoring_state(source_channel) -> None:
 
     if stored_source_seen_at is not None:
         last_source_message_at = stored_source_seen_at
-        return
+    else:
+        moment = None
+        try:
+            messages = await client.get_messages(source_channel, limit=1)
+            moment = getattr(messages[0], "date", None) if messages else None
+        except Exception:
+            log.warning("Could not read the last source message from Telegram", exc_info=True)
 
-    moment = None
-    try:
-        messages = await client.get_messages(source_channel, limit=1)
-        moment = getattr(messages[0], "date", None) if messages else None
-    except Exception:
-        log.warning("Could not read the last source message from Telegram", exc_info=True)
+        if moment is None:
+            log.warning("Starting the silence clock from now: the last source post is unknown")
 
-    if moment is None:
-        log.warning("Starting the silence clock from now: the last source post is unknown")
+        await record_source_message(moment)
 
-    await record_source_message(moment)
+    spawn_tracked_task(push_telemetry_to_kv(), "Initial telemetry sync on start")
 
 
 def build_message_handler(region_channels: dict):
@@ -837,6 +966,8 @@ async def _broadcast_watchdog_loop(client: TelegramClient) -> None:
             await asyncio.to_thread(_ping_tg_healthcheck, "/fail")
         else:
             await asyncio.to_thread(_ping_tg_healthcheck)
+
+        spawn_tracked_task(push_telemetry_to_kv(), "Periodic telemetry sync")
 
 
 async def main():

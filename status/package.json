@@ -1,0 +1,17 @@
+{
+  "name": "sirens-status",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public --project-name sirens-status",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240512.0",
+    "wrangler": "^3.56.0",
+    "typescript": "^5.4.5"
+  }
+}

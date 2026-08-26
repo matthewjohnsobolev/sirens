@@ -11,19 +11,15 @@ import requests
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
-from flask import Flask, current_app, render_template, jsonify, request, url_for, Response
+from flask import Flask, current_app, render_template, jsonify, request, url_for, Response, redirect
 
 from config import (
     LOGS_PATH, SENTRY_DSN, HEALTHCHECKS_PING_URL_WEB, HEALTHCHECKS_API, VERSION
 )
-from web import uptime
 from web.db import get_all_threats_data, ensure_pg_tables, redis_client
 from web.issue import (
     CATEGORIES as ISSUE_CATEGORIES, CATEGORY_ALIASES, CATEGORY_INFO,
     OPTION_INFO, OPTIONS_BY_CATEGORY, TIME_INFO, TIME_NAMES, page_config
-)
-from web.status import (
-    format_day_title, get_status_data, refresh_status_cache, summarize_days
 )
 
 
@@ -45,13 +41,6 @@ HEALTHCHECK_PING_INTERVAL = 60  # seconds; pair with a ~3min period on the healt
 HEALTHCHECK_PING_TIMEOUT = 10  # seconds
 HEALTHCHECK_LOCK_KEY = "healthcheck:web:ping-leader"
 HEALTHCHECK_LOCK_TTL = 50  # seconds; must stay below the interval so each cycle can re-elect
-
-# Сторінка стану читає лише кеш, а наповнює його цей потік. Лідер обирається так
-# само, як для пінга: інакше троє gunicorn-воркерів ходили б у healthchecks.io
-# втричі частіше, ніж треба, і втрьох упирались би в його ліміт запитів.
-STATUS_REFRESH_INTERVAL = 60  # seconds; matches CACHE_TTL in web/status.py
-STATUS_LOCK_KEY = "healthcheck:status:refresh-leader"
-STATUS_LOCK_TTL = 50  # seconds; below the interval so each cycle can re-elect
 
 # What the page asks, and which answers count as answers, lives in
 # web/issue.py. The limits below cap what one submission may put into a Sentry
@@ -95,10 +84,6 @@ def _claim_ping_slot() -> bool:
     return _claim_slot(HEALTHCHECK_LOCK_KEY, HEALTHCHECK_LOCK_TTL)
 
 
-def _claim_status_slot() -> bool:
-    return _claim_slot(STATUS_LOCK_KEY, STATUS_LOCK_TTL)
-
-
 def _healthcheck_loop() -> None:
     while True:
         time.sleep(HEALTHCHECK_PING_INTERVAL)
@@ -109,34 +94,12 @@ def _healthcheck_loop() -> None:
             log.warning("Redis unreachable; skipping healthcheck ping", exc_info=True)
 
 
-def _status_refresh_loop() -> None:
-    # Перший обхід - одразу: інакше кожен рестарт залишав би сторінку без даних
-    # на цілу хвилину саме тоді, коли її найімовірніше відкриють.
-    while True:
-        try:
-            if _claim_status_slot():
-                refresh_status_cache()
-        except Exception:
-            log.warning("Redis unreachable; skipping status refresh", exc_info=True)
-        time.sleep(STATUS_REFRESH_INTERVAL)
-
-
 def _start_healthcheck_thread() -> None:
     if not HEALTHCHECKS_PING_URL_WEB:
         log.warning("HEALTHCHECKS_PING_URL_WEB not set; skipping healthcheck pings")
         return
 
     threading.Thread(target=_healthcheck_loop, daemon=True, name="healthcheck-ping").start()
-
-
-def _start_status_thread() -> None:
-    # Провайдери незалежні: одного налаштованого досить, щоб сторінці було що
-    # показати - решта компонентів чесно лишиться без моніторингу.
-    if not (HEALTHCHECKS_API or uptime.is_configured()):
-        log.warning("No monitoring provider is configured; the status page will report no data")
-        return
-
-    threading.Thread(target=_status_refresh_loop, daemon=True, name="status-refresh").start()
 
 
 def index() -> str:
@@ -147,14 +110,8 @@ def api() -> Any:
     return jsonify(get_all_threats_data())
 
 
-def status() -> str:
-    mock = request.args.get('mock')
-    return render_template('status.html', **get_status_data(mock_scenario=mock))
-
-
-def api_status() -> Any:
-    mock = request.args.get('mock')
-    return jsonify(get_status_data(mock_scenario=mock))
+def status() -> Any:
+    return redirect("https://status.sirens.live", code=301)
 
 
 def _client_ip() -> str:
@@ -370,10 +327,6 @@ def issue() -> Any:
             'error.html',
             error_code=429,
             error_message='Забагато повідомлень',
-            error_description=(
-                'Ви надіслали кілька повідомлень поспіль. '
-                'Спробуйте ще раз за годину — попередні вже в роботі.'
-            ),
         ), 429
 
     report, error = _clean_report_form(request.form)
@@ -405,7 +358,6 @@ def handle_not_found(error: Exception) -> tuple[str, int]:
         'error.html',
         error_code=404,
         error_message='Сторінку не знайдено',
-        error_description='Можливо, в адресі є помилка або сторінку було перенесено.',
     ), 404
 
 
@@ -414,10 +366,6 @@ def handle_server_error(error: Exception) -> tuple[str, int]:
         'error.html',
         error_code=500,
         error_message='Щось зламалось у нас',
-        error_description=(
-            'Ми вже знаємо про проблему та працюємо над нею. '
-            'Спробуйте оновити сторінку трохи згодом.'
-        ),
     ), 500
 
 
@@ -447,9 +395,6 @@ def static_url(filename: str) -> str:
 def add_caching_headers(response: Response) -> Response:
     if request.path == '/api':
         response.headers['Cache-Control'] = 'public, max-age=2, s-maxage=2'
-    elif request.path == '/api/status':
-        # Дані оновлюються раз на хвилину, тож півхвилини на краю нічого не псують.
-        response.headers['Cache-Control'] = 'public, max-age=30, s-maxage=30'
     elif request.path.startswith('/static/') or request.path.endswith('.geojson'):
         response.headers['Cache-Control'] = 'public, max-age=2592000, immutable'
     elif request.method == 'GET' and response.status_code == 200:
@@ -496,16 +441,11 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
 
     app.after_request(add_caching_headers)
     app.jinja_env.globals['static_url'] = static_url
-    # Підписи смуг збираються в Python: українські назви місяців і відмінювання
-    # числівників живуть у web/status.py, а не в шаблоні.
-    app.jinja_env.globals['day_title'] = format_day_title
-    app.jinja_env.globals['days_summary'] = summarize_days
 
     app.add_url_rule('/', view_func=index)
     app.add_url_rule('/api', view_func=api, methods=['GET'])
     app.add_url_rule('/issue', view_func=issue, methods=['GET', 'POST'])
     app.add_url_rule('/status', view_func=status, methods=['GET'])
-    app.add_url_rule('/api/status', view_func=api_status, methods=['GET'])
 
     app.register_error_handler(404, handle_not_found)
     app.register_error_handler(500, handle_server_error)
@@ -515,7 +455,6 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
 
     if start_healthcheck:
         _start_healthcheck_thread()
-        _start_status_thread()
 
     return app
 

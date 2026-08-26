@@ -43,6 +43,21 @@ def test_stats_csv_route_not_found(client):
     assert client.get('/bi/stats.csv').status_code == 404
 
 
+def test_status_route_redirects_to_status_subdomain(client):
+    response = client.get('/status')
+    assert response.status_code == 301
+    assert response.headers.get('Location') == 'https://status.sirens.live'
+
+
+def test_issue_footer_contains_status_link_and_disclaimer(client):
+    html = client.get('/issue').get_data(as_text=True)
+    assert 'https://status.sirens.live' in html
+    assert 'Стан системи' in html
+    assert 'Мапа тривог' in html
+    assert '«Сирени» — незалежний сервіс агрегації тривог.' in html
+    assert '© 2026 «Сирени»' in html
+
+
 # --------------------------------------------------------------------------
 # cache busting
 # --------------------------------------------------------------------------
@@ -1075,92 +1090,3 @@ def test_missing_dsn_is_announced_at_startup(caplog):
 
     assert "issue reports will not be delivered anywhere" in caplog.text
 
-
-def test_claim_status_slot_uses_atomic_set():
-    """Троє воркерів - один обхід healthchecks.io: інакше втрьох упремось у ліміт."""
-    with patch('web.server.redis_client') as mock_redis:
-        mock_redis.set.return_value = True
-
-        assert web_server._claim_status_slot() is True
-
-    _, kwargs = mock_redis.set.call_args
-    assert kwargs['nx'] is True
-    assert kwargs['ex'] == web_server.STATUS_LOCK_TTL
-    assert web_server.STATUS_LOCK_TTL < web_server.STATUS_REFRESH_INTERVAL
-
-
-def test_status_refresh_loop_refreshes_before_it_sleeps():
-    """Перший обхід - одразу: інакше після рестарту сторінка цілу хвилину
-    показувала б «немає даних»."""
-    with patch('web.server.time.sleep', side_effect=[StopIteration]), \
-         patch('web.server._claim_status_slot', return_value=True), \
-         patch('web.server.refresh_status_cache') as mock_refresh:
-        with pytest.raises(StopIteration):
-            web_server._status_refresh_loop()
-
-    mock_refresh.assert_called_once_with()
-
-
-def test_status_refresh_loop_skips_when_another_worker_leads():
-    with patch('web.server.time.sleep', side_effect=[StopIteration]), \
-         patch('web.server._claim_status_slot', return_value=False), \
-         patch('web.server.refresh_status_cache') as mock_refresh:
-        with pytest.raises(StopIteration):
-            web_server._status_refresh_loop()
-
-    mock_refresh.assert_not_called()
-
-
-def test_status_refresh_loop_survives_unreachable_redis(caplog):
-    caplog.set_level(logging.WARNING)
-
-    with patch('web.server.time.sleep', side_effect=[StopIteration]), \
-         patch('web.server._claim_status_slot', side_effect=ConnectionError('redis down')), \
-         patch('web.server.refresh_status_cache') as mock_refresh:
-        with pytest.raises(StopIteration):
-            web_server._status_refresh_loop()
-
-    mock_refresh.assert_not_called()
-    assert "Redis unreachable" in caplog.text
-
-
-def test_create_app_starts_status_thread_when_configured(monkeypatch):
-    monkeypatch.setattr(web_server, 'HEALTHCHECKS_API', 'test-key')
-
-    with patch('web.server.threading.Thread') as MockThread:
-        create_app(init_db=False, start_healthcheck=True)
-
-    names = {kwargs.get('name') for _args, kwargs in MockThread.call_args_list}
-    assert 'status-refresh' in names
-
-
-def test_create_app_starts_status_thread_for_uptime_alone(monkeypatch):
-    """Провайдери незалежні: одного налаштованого досить, щоб було що показати."""
-    monkeypatch.setattr(web_server, 'HEALTHCHECKS_API', '')
-    monkeypatch.setattr(
-        web_server.uptime, 'UPTIMEROBOT_SIRENS_WEB_API', 'ur-key'
-    )
-
-    with patch('web.server.threading.Thread') as MockThread:
-        create_app(init_db=False, start_healthcheck=True)
-
-    names = {kwargs.get('name') for _args, kwargs in MockThread.call_args_list}
-    assert 'status-refresh' in names
-
-
-def test_create_app_skips_status_thread_when_unconfigured(monkeypatch, caplog):
-    caplog.set_level(logging.WARNING)
-    monkeypatch.setattr(web_server, 'HEALTHCHECKS_API', '')
-
-    with patch('web.server.threading.Thread') as MockThread:
-        create_app(init_db=False, start_healthcheck=True)
-
-    names = {kwargs.get('name') for _args, kwargs in MockThread.call_args_list}
-    assert 'status-refresh' not in names
-    assert "No monitoring provider is configured" in caplog.text
-
-
-def test_api_status_is_cacheable_at_the_edge(client):
-    """Дані оновлюються раз на хвилину, тож край може потримати їх пів хвилини."""
-    response = client.get('/api/status')
-    assert response.headers.get('Cache-Control') == 'public, max-age=30, s-maxage=30'

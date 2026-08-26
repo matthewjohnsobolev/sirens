@@ -28,7 +28,7 @@ __pycache__/
 build/
 dist/
 
-# Node / Evidence dashboard
+# Node / Evidence dashboard / Status page
 node_modules/
 dashboard/.evidence/
 .wrangler/

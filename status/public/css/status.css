@@ -1,0 +1,739 @@
+/* ===========================================================================
+   status.css - сторінка стану системи («Стан системи»).
+
+   Кольори, шрифти, геометрія та рух строго підпорядковані дизайн-системі
+   та токенам продукту (tokens.css, issue.css).
+
+   РОЗМІРНА СИСТЕМА (4 кеглі, кожен зі своєю роллю):
+     20 / 700   заголовок картки (h1). Один на сторінку.
+     16 / 400   основний текст.
+     14         інтерфейс:
+                600 - заголовки компонентів, головний статус, CTA-кнопка;
+                500 - підписи, кнопки;
+                400 - пояснення, підзаголовок статусу.
+     11 / 500   моно, капс, розрядка .04em - час оновлення, шкали часу,
+                підказка-тултип, копірайт у підвалі.
+
+   ГЕОМЕТРІЯ:
+     Радіус = висота / 4 (для контролів 48px -> 12px).
+     Радіус картки = 14px (радіус контрола + 2, як у попапах).
+     Вкладений радіус = 8px (12px мінус 4px внутрішнього відступу).
+   =========================================================================== */
+
+:root {
+  /* --- Пастельні статуси ---------------------------------------------------
+     Колір несе значення, текст на ньому завжди чорний. Ті самі значення, що й у
+     таблетках попапа та формі збою (tokens.css). */
+  --status-green: #B9FFA8;        /* відбій / успіх / без збоїв */
+  --status-green-hover: #C8FFBB;
+  --status-orange: #FFCA9A;       /* тривога */
+  --status-orange-hover: #FFD5AE;
+  --status-red: #FFB7B7;          /* вибухи / помилка / тривалі збої */
+  --status-red-hover: #FFC3C3;
+  --status-blue: #BFF0FF;         /* планові технічні роботи */
+  --status-blue-hover: #D2F4FF;
+  --status-gray: #E8E8E8;         /* немає даних */
+  --status-gray-hover: #EEEEEE;
+
+  /* --- Насичені графічні індикатори аптайму (шкали / смужки / тултипи) -----
+     Контраст до білого тла картки (WCAG 2.1 AA Non-text Contrast >= 3.0:1) */
+  --status-green-bar: #2EAD1A;        /* відбій / нормальна робота (Hue 112°, 3.01:1) */
+  --status-orange-bar: #FF831A;       /* незначні / часткові збої < 15 хв (оранжевий) */
+  --status-red-bar: #FF1A1A;          /* тривалі збої >= 15 хв / не працює (червоний, 3.88:1) */
+  --status-blue-bar: #0284C7;         /* планові технічні роботи (4.10:1) */
+  --status-gray-bar: #D4D4D8;         /* немає даних */
+
+  /* --- Нейтралі ------------------------------------------------------------
+     Усі сірі чисті, без домішки синього чи зеленого - як на мапі. */
+  --ink: #000;
+  --ink-muted: #757575;           /* = хрестик закриття попапа Leaflet */
+  --hairline: #E8E8E8;            /* та ж сірість, що й таблетка "Немає даних" */
+  --hairline-hover: #D0D0D0;
+  --hairline-dark: #B0B0B0;       /* обводка вибраної смуги графіка та тултипа */
+  --surface: #fff;
+  --surface-hover: #F4F4F4;
+  --page: #F4F4F4;
+
+  /* --- Геометрія -----------------------------------------------------------
+     Радіус = висота / 4 (у формі 48 -> 12). */
+  --control-h: 48px;
+  --radius-control: 12px;
+  --radius-card: 14px;
+
+  /* --- Ритм ---------------------------------------------------------------- */
+  --gap-tight: 8px;
+  --gap-block: 24px;
+  --gap-section: 32px;
+
+  /* --- Типографіка --------------------------------------------------------- */
+  --font: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-title: 20px;
+  --text-body: 16px;
+  --text-ui: 14px;
+  --text-footer: 11px;
+
+  /* --- Тінь та рух --------------------------------------------------------- */
+  --motion: 0.15s ease;
+  --motion-fade: .14s ease-out;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+}
+
+body {
+  background: var(--page);
+  font-family: var(--font);
+  font-size: var(--text-body);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  padding-top: max(clamp(24px, 6vw, 56px), env(safe-area-inset-top));
+  padding-bottom: max(clamp(24px, 6vw, 56px), env(safe-area-inset-bottom));
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
+  min-height: 100vh;
+}
+
+.shell {
+  width: min(520px, 100%);
+  margin: 0 auto;
+}
+
+/* --- Логотип -------------------------------------------------------------- */
+.logo {
+  display: block;
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 24px;
+  text-decoration: none;
+}
+
+.logo:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 14px;
+}
+
+.logo img {
+  width: 60px;
+  height: 60px;
+  display: block;
+}
+
+/* --- Картка --------------------------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  padding: var(--gap-section) clamp(20px, 5vw, 32px);
+}
+
+.card h1 {
+  margin: 0 0 var(--gap-block);
+  text-align: center;
+  font-size: var(--text-title);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--ink);
+}
+
+/* --- Плашка-таблетка головного стану --------------------------------------
+   Геометрія сторінки (висота 48px, радіус 12px = висота / 4),
+   шрифти та типографіка синхронізовані з попапом мапи (oblasts.css, tokens.css):
+   - Квадратний блок іконки 48х48px, іконка 24х24px (половина висоти)
+   - Лейбл у центрі: Inter 14px / 500 (як .oblast-description-text)
+   - Час оновлення праворуч: JetBrains Mono 11px / 400, rgba(0,0,0,0.6) (як .oblast-description-time)
+   - Опис винесено під плашку */
+.notice {
+  margin: 0 0 var(--gap-block);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notice-pill {
+  width: 100%;
+  height: var(--control-h);
+  display: flex;
+  align-items: center;
+  padding: 0 16px 0 0;
+  border-radius: var(--radius-control);
+  border: none;
+  background-color: var(--status-green);
+  color: var(--ink);
+  transition: background-color var(--motion);
+  box-sizing: border-box;
+}
+
+.notice--ok .notice-pill      { background-color: var(--status-green); }
+.notice--ok .notice-pill:hover{ background-color: var(--status-green-hover); }
+
+.notice--warning .notice-pill { background-color: var(--status-orange); }
+.notice--warning .notice-pill:hover { background-color: var(--status-orange-hover); }
+
+.notice--error .notice-pill   { background-color: var(--status-red); }
+.notice--error .notice-pill:hover   { background-color: var(--status-red-hover); }
+
+.notice--mnt .notice-pill     { background-color: var(--status-blue); }
+.notice--mnt .notice-pill:hover     { background-color: var(--status-blue-hover); }
+
+.notice--nodata .notice-pill  { background-color: var(--status-gray); }
+.notice--nodata .notice-pill:hover  { background-color: var(--status-gray-hover); }
+
+.notice-icon {
+  flex: none;
+  width: var(--control-h);
+  height: var(--control-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+
+.notice-icon img {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.notice-headline {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font-family: var(--font);
+  font-size: var(--text-ui);
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -.01em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notice-desc {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.notice-desc .mono-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: .01em;
+  color: var(--ink);
+}
+
+/* --- Список компонентів --------------------------------------------------- */
+.list {
+  border-top: 1px solid var(--hairline);
+}
+
+.comp {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.comp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: var(--gap-tight);
+}
+
+.comp-name {
+  font-size: var(--text-ui);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.comp-val {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.comp[data-monitored="false"] .comp-val {
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.val-full {
+  display: inline;
+}
+
+.val-short {
+  display: none;
+}
+
+/* --- Графік 24 години (24 смуги) ------------------------------------------ */
+.bars {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  gap: 2px;
+  height: 34px;
+  align-items: stretch;
+  position: relative;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--status-green-bar);
+  cursor: pointer;
+  position: relative;
+  transition: transform var(--motion),
+              box-shadow var(--motion);
+  transform-origin: center bottom;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.bar:focus {
+  outline: none;
+}
+
+.bar[data-state="ok"]     { background: var(--status-green-bar); }
+.bar[data-state="minor"]  { background: var(--status-orange-bar); }
+.bar[data-state="major"]  { background: var(--status-red-bar); }
+.bar[data-state="down"]   { background: var(--status-red-bar); }
+.bar[data-state="mnt"]    { background: var(--status-blue-bar); }
+.bar[data-state="nodata"] { background: var(--status-gray-bar); }
+
+/* Активна/вибрана смужка плавно підіймається без деформації ширини та виділяється рамкою */
+.bar.is-active,
+.bar:focus-visible {
+  transform: translateY(-3px);
+  z-index: 5;
+  box-shadow: inset 0 0 0 1px var(--hairline-dark);
+  border-radius: 2px;
+  outline: none;
+}
+
+/* Якщо блок має активний елемент, інші елементи гарантовано не мають обводки та зсуву */
+.bars.has-active .bar:not(.is-active) {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--gap-tight);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* --- Блок дії під графіками ----------------------------------------------- */
+.card-action {
+  margin-top: var(--gap-block);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--gap-tight);
+}
+
+.card-action-text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-muted);
+  line-height: 1.45;
+}
+
+.btn-report {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: var(--control-h);
+  padding: 12px 24px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-control);
+  font-family: var(--font);
+  font-size: var(--text-ui);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color var(--motion),
+              background-color var(--motion),
+              transform var(--motion);
+  box-sizing: border-box;
+}
+
+.btn-report:hover {
+  border-color: var(--hairline-hover);
+  background: var(--page);
+  transform: translateY(-1px);
+}
+
+.btn-report:active {
+  background: var(--hairline);
+  transform: translateY(0);
+}
+
+.btn-report:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* --- Підказка-тултип (по ховеру / дотику / фокусу) ------------------------ */
+.tip {
+  position: fixed;
+  z-index: 9999;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-dark);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.09)) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.05));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity var(--motion-fade),
+              transform var(--motion-fade);
+}
+
+.tip.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tip-arrow {
+  position: absolute;
+  bottom: -5px;
+  left: var(--arrow-x, 50%);
+  transform: translateX(-50%);
+  width: 10px;
+  height: 6px;
+  display: block;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.tip.tip--below .tip-arrow {
+  bottom: auto;
+  top: -5px;
+  transform: translateX(-50%) rotate(180deg);
+}
+
+.tip-arrow path:first-child {
+  stroke: var(--hairline-dark);
+}
+
+.tip-time {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tip-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.tip-text {
+  color: var(--ink);
+  display: inline-block;
+  line-height: 1;
+}
+
+/* Ідеальний круглий індикатор, точно вицентруваний по осі Y */
+.tip-dot {
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  min-height: 6px;
+  max-width: 6px;
+  max-height: 6px;
+  border-radius: 50%;
+  aspect-ratio: 1 / 1;
+  display: inline-block;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+/* Системні чисті кольори індикаторів у тултипі (повністю збігаються з графіком) */
+.tip-dot[data-state="ok"]     { background: var(--status-green-bar); }
+.tip-dot[data-state="minor"]  { background: var(--status-orange-bar); }
+.tip-dot[data-state="major"]  { background: var(--status-red-bar); }
+.tip-dot[data-state="down"]   { background: var(--status-red-bar); }
+.tip-dot[data-state="mnt"]    { background: var(--status-blue-bar); }
+.tip-dot[data-state="nodata"] { background: var(--status-gray-bar); }
+
+.tip[hidden] {
+  display: none;
+}
+
+/* --- Підвал (Дворядна горизонтальна панель) ------------------------------ */
+.foot {
+  margin-top: var(--gap-section);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.foot-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.foot-copy {
+  font-family: var(--font-mono);
+  font-size: var(--text-footer);
+  font-weight: 500;
+  color: var(--ink-muted);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.foot-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.foot-nav a {
+  color: var(--ink-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--motion);
+  padding: 2px 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.foot-nav a:hover {
+  color: var(--ink);
+}
+
+.foot-sep {
+  color: var(--hairline-hover);
+  user-select: none;
+}
+
+.foot-disclaimer {
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+
+.foot-disclaimer p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+/* ==========================================================================
+   МОБІЛЬНА АДАПТАЦІЯ ТА ТАЧ-ЕРГОНОМІКА
+   ========================================================================== */
+
+@media (max-width: 600px) {
+  body {
+    padding-top: max(clamp(20px, 5vw, 36px), env(safe-area-inset-top));
+    padding-bottom: max(clamp(28px, 7vw, 48px), env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+
+  .card {
+    padding: 24px 16px;
+  }
+
+  .bars {
+    grid-template-columns: repeat(24, minmax(0, 1fr));
+    height: 32px;
+    gap: 1.5px;
+  }
+
+  .comp {
+    padding: 16px 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .val-full {
+    display: none;
+  }
+
+  .val-short {
+    display: inline;
+  }
+
+  .card-action,
+  .btn-report {
+    width: 100%;
+  }
+
+  .foot {
+    margin-top: clamp(36px, 8vw, 48px);
+    text-align: center;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .foot-main {
+    flex-direction: column-reverse;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .foot-nav {
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .foot-nav a {
+    padding: 4px 6px;
+    text-underline-offset: 3px;
+  }
+
+  .foot-disclaimer {
+    text-align: center;
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto;
+    padding-top: 16px;
+  }
+
+  .foot-disclaimer p {
+    line-height: 1.55;
+    text-wrap: balance;
+  }
+}
+
+@media (max-width: 420px) {
+  .card h1 {
+    font-size: 19px;
+  }
+
+  .comp-head {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 360px) {
+  body {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+
+  .card {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .bars {
+    gap: 1px;
+  }
+}
+
+/* --- Оптимізація тач-інтерфейсу (Touch / Pointer Coarse) ------------------ */
+@media (pointer: coarse) {
+  .bars {
+    /* Збільшуємо зону захоплення жесту по вертикалі без візуального розширення */
+    padding: 4px 0;
+    margin: -4px 0;
+  }
+
+  .bar {
+    border-radius: 1.5px;
+  }
+
+  .btn-report {
+    min-height: 48px;
+  }
+}
+
+@media (hover: none) {
+  .bar:hover:not(.is-active),
+  .bars:hover .bar:not(.is-active),
+  .bars.has-active .bar:not(.is-active) {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .btn-report:hover {
+    border-color: var(--hairline);
+    background: var(--surface);
+    transform: none;
+  }
+
+  .btn-report:active {
+    background: var(--hairline);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .tip,
+  .btn-report {
+    transition: none !important;
+    transform: none !important;
+  }
+}

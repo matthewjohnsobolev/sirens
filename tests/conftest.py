@@ -30,8 +30,6 @@ def _neutralize_external_secrets(monkeypatch):
     from alerts import main as alerts_main
     from bi import main as bi_main
     from web import server as web_server
-    from web import status as web_status
-    from web import uptime as web_uptime
 
     monkeypatch.setattr(alerts_main, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(alerts_main, "HEALTHCHECKS_PING_URL_ALERTS_SOURCE", "", raising=False)
@@ -43,9 +41,6 @@ def _neutralize_external_secrets(monkeypatch):
     monkeypatch.setattr(web_server, "SENTRY_DSN", "", raising=False)
     monkeypatch.setattr(web_server, "HEALTHCHECKS_PING_URL_WEB", "", raising=False)
     monkeypatch.setattr(web_server, "HEALTHCHECKS_API", "", raising=False)
-    monkeypatch.setattr(web_status, "HEALTHCHECKS_API", "", raising=False)
-    monkeypatch.setattr(web_uptime, "UPTIMEROBOT_SIRENS_WEB_API", "", raising=False)
-    monkeypatch.setattr(web_uptime, "UPTIMEROBOT_SIRENS_API_API", "", raising=False)
 
 
 

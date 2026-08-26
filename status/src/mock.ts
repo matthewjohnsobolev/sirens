@@ -113,7 +113,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
     let headline = "Сповіщення працюють";
     const lastAlertHour = ((nowKyiv.hour - 4 + 24) % 24).toString().padStart(2, "0");
     const lastAlertMin = "12";
-    let subtitle = `Останнє сповіщення — сьогодні о ${lastAlertHour}:${lastAlertMin} (Білоцерківський район). Відтоді тривог не було.`;
+    let subtitle = `Останнє сповіщення — сьогодні о ${lastAlertHour}:${lastAlertMin} у Білій Церкві. Відтоді тривог не було.`;
 
     const outageTimeStr = `з ${((nowKyiv.hour - 2 + 24) % 24).toString().padStart(2, "0")}:00`;
 
@@ -140,8 +140,9 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         last_alert: {
             type: "air_raid_alert",
             region: "kyiv_oblast",
-            district: "bila_tserkva",
-            district_name: "Білоцерківський район",
+            district: "bilatserkva",
+            district_name: "Біла Церква",
+            city_name: "Біла Церква",
             timestamp: mockLastAlertIso,
             message_id: 12345,
             message_link: "https://t.me/sirens_kyiv_obl/12345"

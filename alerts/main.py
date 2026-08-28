@@ -39,6 +39,7 @@ from telethon.tl.types import (
 from alerts import cli
 from config import (
     BROADCAST_CITIES,
+    BROADCAST_DISTRICTS,
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_API_TOKEN,
     CLOUDFLARE_KV_STATUS_NAMESPACE_ID,
@@ -104,18 +105,10 @@ CHANNEL_PHOTO_PATHS = {
     "threat_of_shelling_cancelled": f"{IMAGES_PATH}/air-raid-alert-cancelled.png",
 }
 
-# @username каналів кешуємо в пам'яті: він змінюється хіба що вручну, а без
-# кешу кожна тривога коштувала б зайвого resolve у Telegram.
 channel_usernames: dict[int, str] = {}
 
 
 def build_message_link(channel_id: int, message_id: int, username: Optional[str] = None) -> str:
-    """Публічне посилання на повідомлення в каналі.
-
-    Для каналу з @username це t.me/<username>/<id> - відкривається будь-ким.
-    Без нього лишається приватна форма t.me/c/<internal_id>/<id>, яку побачить
-    лише підписник каналу.
-    """
     if username:
         return f"https://t.me/{username}/{message_id}"
 
@@ -144,11 +137,6 @@ async def resolve_channel_username(channel_id: int) -> Optional[str]:
 
 
 async def broadcast_reference(channel_id: int, message) -> tuple[Optional[int], Optional[str]]:
-    """Ідентифікатор і посилання щойно надісланого повідомлення.
-
-    Або обидва значення, або жодного: посилання без id (як і навпаки) в історії
-    лише збивало б з пантелику.
-    """
     message_id = getattr(message, "id", None)
     if not isinstance(message_id, int):
         log.warning("Broadcast to channel %d returned no message id; link not stored", channel_id)
@@ -353,26 +341,28 @@ async def _record_alert_state(
     now_utc_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     source = message_link or DEFAULT_SOURCE
 
-    loc_name = city_or_district_name(district_key)
-    loc_title = location_locative(district_key)
-    last_alert_payload = {
-        "type": alert_type,
-        "region": oblast_key,
-        "district": district_key,
-        "district_name": loc_name,
-        "city_name": loc_name,
-        "location_title": loc_title,
-        "timestamp": now_utc_iso,
-        "message_id": message_id,
-        "message_link": message_link,
-    }
+    if channel_id is not None:
+        loc_name = city_or_district_name(district_key)
+        loc_title = location_locative(district_key)
+        last_alert_payload = {
+            "type": alert_type,
+            "region": oblast_key,
+            "district": district_key,
+            "district_name": loc_name,
+            "city_name": loc_name,
+            "location_title": loc_title,
+            "timestamp": now_utc_iso,
+            "message_id": message_id,
+            "message_link": message_link,
+        }
+
+        if redis_client:
+            try:
+                await redis_client.set(LAST_ALERT_INFO_KEY, json.dumps(last_alert_payload))
+            except Exception:
+                log.warning("Failed to store last alert info in Redis", exc_info=True)
 
     if redis_client:
-        try:
-            await redis_client.set(LAST_ALERT_INFO_KEY, json.dumps(last_alert_payload))
-        except Exception:
-            log.warning("Failed to store last alert info in Redis", exc_info=True)
-
         try:
             # Район без каналу тримає свій стан під власним ключем: дедуп
             # мусить працювати й там, де фото каналу міняти нічому.
@@ -798,7 +788,9 @@ async def _prime_monitoring_state(source_channel) -> None:
             raw_bcast_at = await redis_client.get(LAST_BROADCAST_AT_KEY)
             raw_alert_json = await redis_client.get(LAST_ALERT_INFO_KEY)
             if raw_alert_json:
-                last_alert_payload = json.loads(raw_alert_json)
+                data = json.loads(raw_alert_json)
+                if isinstance(data, dict) and data.get("district") in BROADCAST_DISTRICTS:
+                    last_alert_payload = data
         except Exception:
             log.warning("Redis unreachable while restoring monitoring state", exc_info=True)
         else:
@@ -817,6 +809,7 @@ async def _prime_monitoring_state(source_channel) -> None:
                 row = await conn.fetchrow(
                     """SELECT datetime, district_key, oblast_key, type, message_id, message_link
                        FROM alert_history
+                       WHERE channel_id IS NOT NULL
                        ORDER BY datetime DESC LIMIT 1"""
                 )
                 if row:

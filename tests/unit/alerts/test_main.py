@@ -1320,6 +1320,89 @@ async def test_prime_survives_unreachable_redis(mock_redis, mock_telegram_client
     assert alerts_main.last_source_message_at == 1_700_000_000.0
 
 
+@pytest.mark.asyncio
+async def test_prime_restores_last_alert_from_redis_for_broadcast_district(
+    mock_redis, mock_telegram_client
+):
+    saved_alert = {
+        "type": "air_raid_alert",
+        "region": "kyiv",
+        "district": "kyiv",
+        "district_name": "Київ",
+        "city_name": "Київ",
+        "location_title": "у Києві",
+        "timestamp": "2026-08-27T12:00:00+00:00",
+        "message_id": 100,
+        "message_link": "https://t.me/sirens_kyiv/100",
+    }
+    mock_redis.get.side_effect = lambda key: {
+        alerts_main.LAST_ALERT_INFO_KEY: json.dumps(saved_alert),
+    }.get(key)
+
+    alerts_main.last_alert_payload = None
+    await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
+
+    assert alerts_main.last_alert_payload == saved_alert
+
+
+@pytest.mark.asyncio
+async def test_prime_ignores_map_only_district_in_redis_and_falls_back_to_pg(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    _, mock_conn = mock_pg_pool
+    map_only_alert = {
+        "type": "air_raid_alert",
+        "region": "kyiv_oblast",
+        "district": "vyshhorod",
+        "district_name": "Вишгородський район",
+    }
+    mock_redis.get.side_effect = lambda key: {
+        alerts_main.LAST_ALERT_INFO_KEY: json.dumps(map_only_alert),
+    }.get(key)
+
+    posted_dt = datetime.datetime(2026, 8, 27, 10, 0, tzinfo=datetime.timezone.utc)
+    mock_conn.fetchrow.return_value = {
+        "datetime": posted_dt,
+        "district_key": "bilatserkva",
+        "oblast_key": "kyiv_oblast",
+        "type": "air_raid_alert",
+        "message_id": 555,
+        "message_link": "https://t.me/sirens_bc/555",
+    }
+
+    alerts_main.last_alert_payload = None
+    await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
+
+    sql = mock_conn.fetchrow.call_args[0][0]
+    assert "WHERE channel_id IS NOT NULL" in sql
+    assert alerts_main.last_alert_payload["district"] == "bilatserkva"
+    assert alerts_main.last_alert_payload["city_name"] == "Біла Церква"
+
+
+@pytest.mark.asyncio
+async def test_prime_pg_query_filters_only_broadcast_alerts(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    _, mock_conn = mock_pg_pool
+    mock_redis.get.return_value = None
+    posted_dt = datetime.datetime(2026, 8, 27, 11, 0)
+    mock_conn.fetchrow.return_value = {
+        "datetime": posted_dt,
+        "district_key": "kharkiv",
+        "oblast_key": "kharkiv_oblast",
+        "type": "air_raid_alert_cancelled",
+        "message_id": 777,
+        "message_link": "https://t.me/sirens_kh/777",
+    }
+
+    alerts_main.last_alert_payload = None
+    await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
+
+    assert alerts_main.last_alert_payload["district"] == "kharkiv"
+    assert alerts_main.last_alert_payload["city_name"] == "Харків"
+    assert alerts_main.last_alert_payload["location_title"] == "у Харкові"
+
+
 
 # --- Districts without a channel: map state only -----------------------------
 
@@ -1429,6 +1512,11 @@ async def test_record_map_only_alert_writes_state_without_broadcasting(
     assert params[7] == SOURCE_MESSAGE_ID
     assert params[8] == SOURCE_LINK
 
+    assert not any(
+        call.args and call.args[0] == alerts_main.LAST_ALERT_INFO_KEY
+        for call in mock_redis.set.call_args_list
+    )
+
     assert alerts_main.running_tasks == set()
 
 
@@ -1486,6 +1574,56 @@ async def test_record_map_only_alert_survives_a_redis_outage(
 
     assert "Redis unavailable for Вишгородський район" in caplog.text
     mock_conn.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_alert_updates_telemetry_payload_and_redis(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    alerts_main.last_alert_payload = None
+    with patch('alerts.main.process_channel_photo_update', new_callable=AsyncMock):
+        await send_alert(CHANNEL_ID, "bilatserkva", "air_raid_alert")
+        await _drain_background_tasks()
+
+    assert alerts_main.last_alert_payload is not None
+    assert alerts_main.last_alert_payload["district"] == "bilatserkva"
+    assert alerts_main.last_alert_payload["city_name"] == "Біла Церква"
+    assert alerts_main.last_alert_payload["location_title"] == "у Білій Церкві"
+    assert alerts_main.last_alert_payload["type"] == "air_raid_alert"
+
+    redis_alert_calls = [
+        call for call in mock_redis.set.call_args_list
+        if call.args and call.args[0] == alerts_main.LAST_ALERT_INFO_KEY
+    ]
+    assert len(redis_alert_calls) == 1
+    saved_data = json.loads(redis_alert_calls[0].args[1])
+    assert saved_data["district"] == "bilatserkva"
+    assert saved_data["city_name"] == "Біла Церква"
+
+
+@pytest.mark.asyncio
+async def test_record_map_only_alert_does_not_update_telemetry_payload_or_redis(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    initial_payload = {
+        "type": "air_raid_alert",
+        "region": "kyiv",
+        "district": "kyiv",
+        "district_name": "Київ",
+        "city_name": "Київ",
+        "location_title": "у Києві",
+        "timestamp": "2026-08-27T10:00:00+00:00",
+    }
+    alerts_main.last_alert_payload = initial_payload
+
+    await record_map_only_alert("vyshhorod", "air_raid_alert", SOURCE_MESSAGE_ID, SOURCE_LINK)
+    await _drain_background_tasks()
+
+    assert alerts_main.last_alert_payload == initial_payload
+    assert not any(
+        call.args and call.args[0] == alerts_main.LAST_ALERT_INFO_KEY
+        for call in mock_redis.set.call_args_list
+    )
 
 
 # --- match_districts ---------------------------------------------------------

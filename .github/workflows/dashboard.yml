@@ -1,4 +1,4 @@
-name: dashboard
+name: Dashboard
 
 # Builds the Evidence dashboard and syncs it into R2, where the sirens-bi Worker
 # serves it from. It downloads the consolidated raw CSV directly from R2,

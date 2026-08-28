@@ -152,7 +152,7 @@ def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
 
     message = (form.get("message") or "").strip()
     if len(message) > REPORT_FIELD_LIMITS["message"]:
-        return {}, f'Коментар не може бути довшим за {REPORT_FIELD_LIMITS["message"]} символів.'
+        return {}, f"Коментар не може бути довшим за {REPORT_FIELD_LIMITS['message']} символів."
 
     if options:
         if sub_option not in options:

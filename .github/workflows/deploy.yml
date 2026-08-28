@@ -1,5 +1,5 @@
-name: deploy
-
+name: Deploy
+ 
 # Runs deploy/deploy.sh on the production VPS over SSH once tests pass on main.
 #
 # Required secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_KNOWN_HOSTS
@@ -9,7 +9,7 @@ name: deploy
 
 on:
   workflow_run:
-    workflows: ["tests"]
+    workflows: ["Tests"]
     types: [completed]
     branches: [main]
   workflow_dispatch:

@@ -22,9 +22,6 @@ import pytest  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _neutralize_external_secrets(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
-    monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "0")
-
     from alerts import main as alerts_main
     from bi import main as bi_main
     from web import server as web_server

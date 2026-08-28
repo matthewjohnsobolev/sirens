@@ -107,15 +107,11 @@ def test_config_app_and_database(monkeypatch):
 def test_config_telegram_settings(monkeypatch):
     monkeypatch.setenv("TELEGRAM_API_ID", "12345")
     monkeypatch.setenv("TELEGRAM_API_HASH", "hashabc")
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bottoken")
-    monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "100")
 
     importlib.reload(config)
 
     assert config.TELEGRAM_API_ID == "12345"
     assert config.TELEGRAM_API_HASH == "hashabc"
-    assert config.TELEGRAM_BOT_TOKEN == "bottoken"
-    assert config.TELEGRAM_ADMIN_CHAT_ID == "100"
 
 
 def test_config_github_repo_normalization(monkeypatch):

@@ -298,7 +298,7 @@ async def main() -> int:
                 await pool.close()
     except EOFError:
         log.error(
-            "Telegram session '%s' is missing or expired; create it with " "./deploy/setup.sh %s",
+            "Telegram session '%s' is missing or expired; create it with ./deploy/setup.sh %s",
             SESSION_NAME,
             SESSION_NAME,
         )

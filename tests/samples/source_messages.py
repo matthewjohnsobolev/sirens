@@ -2,19 +2,15 @@ import re
 from dataclasses import dataclass
 
 ALERT_TEMPLATE = (
-    "🔴 {time} Повітряна тривога в {districts}\n"
-    "Слідкуйте за подальшими повідомленнями.\n"
-    "{hashtags}"
+    "🔴 {time} Повітряна тривога в {districts}\nСлідкуйте за подальшими повідомленнями.\n{hashtags}"
 )
 
 ALERT_CANCELLATION_TEMPLATE = (
-    "🟢 {time} Відбій тривоги в {districts}\n"
-    "Слідкуйте за подальшими повідомленнями.\n"
-    "{hashtags}"
+    "🟢 {time} Відбій тривоги в {districts}\nСлідкуйте за подальшими повідомленнями.\n{hashtags}"
 )
 
 PARTIAL_CANCELLATION_TEMPLATE = (
-    "🟡 {time} Відбій тривоги в {districts}\n" "{notice}\n" "{ongoing}\n" "{hashtags}"
+    "🟡 {time} Відбій тривоги в {districts}\n{notice}\n{ongoing}\n{hashtags}"
 )
 
 ONGOING_NOTICE = "Зверніть увагу, тривога ще триває у:"

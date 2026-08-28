@@ -5,11 +5,8 @@ compatibility_date = "2024-05-12"
 [vars]
 HEALTHCHECKS_SLUG_ALERTS_SOURCE = "sirens-alerts-source"
 HEALTHCHECKS_SLUG_ALERTS_BROADCAST = "sirens-alerts-broadcast"
-# These should be overridden in production/local .dev.vars
-# HEALTHCHECKS_API = "your-read-only-key"
-# UPTIMEROBOT_SIRENS_WEB_API = "your-key"
 STATUS_START_DATE = "2023-01-01"
 
 [[kv_namespaces]]
-binding = "STATUS_KV"
+binding = "TELEMETRY"
 id = "b5d43aca2b594634a6247f043e7b0f17"

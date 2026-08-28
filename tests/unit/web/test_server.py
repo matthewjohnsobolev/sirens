@@ -273,7 +273,6 @@ def test_create_app_skips_healthcheck_thread_when_disabled(monkeypatch):
     MockThread.assert_not_called()
 
 
-
 def test_unknown_url_renders_the_branded_404_page(client):
     response = client.get("/no-such-page")
     body = response.get_data(as_text=True)

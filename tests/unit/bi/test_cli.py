@@ -16,6 +16,9 @@ from domain import real_channels, test_channels
         (["run_bi.py", "--mode", "dev"], "dev"),
         (["run_bi.py", "-m", "prod"], "prod"),
         (["run_bi.py", "--mode", "prod"], "prod"),
+        (["run_bi.py", "-m", "production"], "prod"),
+        (["run_bi.py", "-m", "development"], "dev"),
+        (["run_bi.py", "-m", "PROD"], "prod"),
     ],
 )
 def test_get_args_parses_mode(argv, expected_mode):

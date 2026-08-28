@@ -1,4 +1,4 @@
-import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry } from "./api";
+import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry, healthchecksSlug, uptimeRobotKey } from "./api";
 import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts, formatLocationLocative } from "./helpers";
 
 const WINDOW_HOURS = 24;
@@ -67,7 +67,7 @@ export async function computeStatusData(env: Env) {
         const specs = COMPONENTS_SPEC.filter(c => c.source === "healthchecks");
         for (const spec of specs) {
             let found = null;
-            const override = spec.key === "alerts" ? env.HEALTHCHECKS_SLUG_ALERTS_SOURCE : env.HEALTHCHECKS_SLUG_ALERTS_BROADCAST;
+            const override = healthchecksSlug(env, spec.key);
             
             if (override) {
                 found = checksList.find((c: any) => c.slug?.toLowerCase() === override.toLowerCase());
@@ -106,7 +106,7 @@ export async function computeStatusData(env: Env) {
 
     const urSpecs = COMPONENTS_SPEC.filter(c => c.source === "uptimerobot");
     for (const spec of urSpecs) {
-        const apiKey = spec.key === "map" ? env.UPTIMEROBOT_SIRENS_WEB_API : env.UPTIMEROBOT_SIRENS_API_API;
+        const apiKey = uptimeRobotKey(env, spec.key);
         if (!apiKey) {
             probes[spec.key] = { present: false, live: null, flips: [], flips_ok: false, history_start: null, last_ping: null };
             continue;

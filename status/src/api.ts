@@ -1,13 +1,43 @@
+// Both spellings are declared on purpose: the names on the left are the ones
+// wrangler.toml and the .env now use, the ones on the right are what a Pages
+// project provisioned before the rename still has bound. Reads go through the
+// accessors below so neither half goes stale.
 export interface Env {
+    HEALTHCHECKS_API_KEY?: string;
     HEALTHCHECKS_API?: string;
+    HEALTHCHECKS_ALERTS_SOURCE_SLUG?: string;
     HEALTHCHECKS_SLUG_ALERTS_SOURCE?: string;
+    HEALTHCHECKS_ALERTS_BROADCAST_SLUG?: string;
     HEALTHCHECKS_SLUG_ALERTS_BROADCAST?: string;
+    UPTIMEROBOT_WEB_MONITOR_KEY?: string;
     UPTIMEROBOT_SIRENS_WEB_API?: string;
+    UPTIMEROBOT_API_MONITOR_KEY?: string;
     UPTIMEROBOT_SIRENS_API_API?: string;
     STATUS_START_DATE?: string;
+    TELEMETRY?: KVNamespace;
     STATUS_KV?: KVNamespace;
     SIRENS_TELEMETRY?: KVNamespace;
     "sirens-telemetry"?: KVNamespace;
+}
+
+export function telemetryKv(env: Env): KVNamespace | undefined {
+    return env.TELEMETRY || env.STATUS_KV || env.SIRENS_TELEMETRY || env["sirens-telemetry"];
+}
+
+export function healthchecksApiKey(env: Env): string | undefined {
+    return env.HEALTHCHECKS_API_KEY || env.HEALTHCHECKS_API;
+}
+
+export function healthchecksSlug(env: Env, componentKey: string): string | undefined {
+    return componentKey === "alerts"
+        ? env.HEALTHCHECKS_ALERTS_SOURCE_SLUG || env.HEALTHCHECKS_SLUG_ALERTS_SOURCE
+        : env.HEALTHCHECKS_ALERTS_BROADCAST_SLUG || env.HEALTHCHECKS_SLUG_ALERTS_BROADCAST;
+}
+
+export function uptimeRobotKey(env: Env, componentKey: string): string | undefined {
+    return componentKey === "map"
+        ? env.UPTIMEROBOT_WEB_MONITOR_KEY || env.UPTIMEROBOT_SIRENS_WEB_API
+        : env.UPTIMEROBOT_API_MONITOR_KEY || env.UPTIMEROBOT_SIRENS_API_API;
 }
 
 export interface TelemetryAlert {
@@ -39,7 +69,7 @@ export const COMPONENTS_SPEC = [
 ];
 
 export async function fetchTelemetry(env: Env): Promise<TelemetryData | null> {
-    const kv = env.STATUS_KV || env.SIRENS_TELEMETRY || env["sirens-telemetry"];
+    const kv = telemetryKv(env);
     if (!kv) return null;
     try {
         const data = await kv.get<TelemetryData>("telemetry:latest", "json");
@@ -51,11 +81,12 @@ export async function fetchTelemetry(env: Env): Promise<TelemetryData | null> {
 }
 
 export async function fetchHealthchecks(env: Env) {
-    if (!env.HEALTHCHECKS_API) return [];
+    const apiKey = healthchecksApiKey(env);
+    if (!apiKey) return [];
     
     try {
         const res = await fetch("https://healthchecks.io/api/v3/checks/", {
-            headers: { "X-Api-Key": env.HEALTHCHECKS_API }
+            headers: { "X-Api-Key": apiKey }
         });
         if (!res.ok) return null;
         const data = await res.json() as any;
@@ -68,7 +99,7 @@ export async function fetchHealthchecks(env: Env) {
 export async function fetchHealthcheckFlips(apiId: string, env: Env) {
     try {
         const res = await fetch(`https://healthchecks.io/api/v3/checks/${apiId}/flips/`, {
-            headers: { "X-Api-Key": env.HEALTHCHECKS_API! }
+            headers: { "X-Api-Key": healthchecksApiKey(env)! }
         });
         if (!res.ok) return null;
         const data = await res.json() as any;

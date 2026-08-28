@@ -14,6 +14,7 @@ from domain.geo import (
     APOSTROPHES,
     DISTRICT_CONFIG,
     DISTRICTS_BY_OBLAST,
+    LOCATION_LOCATIVE,
     OBLAST_TRIGGERS,
     apostrophe_variants,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "CITIES_LIST",
     "DISTRICT_CONFIG",
     "DISTRICTS_BY_OBLAST",
+    "LOCATION_LOCATIVE",
     "MESSAGES",
     "OBLAST_TRIGGERS",
     "REGION_CONFIG",

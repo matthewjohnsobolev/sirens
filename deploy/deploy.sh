@@ -15,10 +15,21 @@ step "Checking environment"
 [[ -f docker-compose.yml ]] || die "run this from the project directory"
 [[ -f .env ]] || die "no .env file (copy .env.example and fill it in)"
 
-for var in TELEGRAM_API_ID TELEGRAM_API_HASH; do
-    grep -Eq "^[[:space:]]*${var}=.+" .env || die "$var is not set in .env"
+set -a
+# shellcheck disable=SC1091
+source ./.env
+set +a
+
+# POSTGRES_* are what compose builds DATABASE_URL from. Missing, they used to
+# surface 90 seconds later as an unexplained "service is not responding".
+for var in TELEGRAM_API_ID TELEGRAM_API_HASH POSTGRES_USER POSTGRES_PASSWORD; do
+    [[ -n "${!var:-}" ]] || die "$var is not set in .env (see .env.example)"
 done
-grep -Eq '^[[:space:]]*(APP_ENV=(prod|production)|APP_MODE=prod)' .env || die "APP_ENV must be 'production' or 'prod' in .env"
+
+case "${APP_ENV:-}" in
+    prod|production) ;;
+    *) die "APP_ENV must be 'prod' (or 'production') in .env, got '${APP_ENV:-<unset>}'" ;;
+esac
 
 [[ -f "$SESSION_FILE" ]] || die "no Telegram session - run ./deploy/setup.sh first"
 

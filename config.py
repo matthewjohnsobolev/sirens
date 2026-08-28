@@ -11,7 +11,19 @@ VERSION = "1.1.0"
 
 load_dotenv()
 
-APP_ENV = os.getenv("APP_ENV", "development")
+# APP_ENV is both the 12-factor environment name and the run mode the workers
+# take on the command line (docker-compose passes it straight to `-m`), so the
+# long spellings have to collapse onto the two the CLI accepts.
+APP_ENV_ALIASES = {
+    "dev": "dev",
+    "development": "dev",
+    "prod": "prod",
+    "production": "prod",
+}
+_raw_app_env = os.getenv("APP_ENV", "").strip().lower() or "dev"
+if _raw_app_env not in APP_ENV_ALIASES:
+    raise ValueError(f"APP_ENV must be one of {sorted(APP_ENV_ALIASES)}, got {_raw_app_env!r}")
+APP_ENV = APP_ENV_ALIASES[_raw_app_env]
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://sirens:sirens@localhost:5432/sirens")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

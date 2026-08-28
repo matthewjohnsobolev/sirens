@@ -13,7 +13,6 @@ command -v docker >/dev/null || {
     exit 1
 }
 
-MODE="${MODE:-prod}"
 SESSION_FILE="data/sessions/bi.session"
 LOCK_FILE="logs/.bi.lock"
 
@@ -33,6 +32,10 @@ set -a
 # shellcheck disable=SC1091
 source ./.env
 set +a
+
+# Resolved after .env so the snapshot follows the same environment the workers
+# run in instead of hardcoding prod.
+MODE="${MODE:-${APP_ENV:-prod}}"
 
 [[ -f "$SESSION_FILE" ]] || die "no snapshot session - run ./deploy/setup.sh bi first"
 

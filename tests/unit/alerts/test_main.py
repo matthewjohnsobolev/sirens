@@ -1844,7 +1844,8 @@ async def test_request_telemetry_sync_cancels_previous_pending():
         assert not first_task.done()
 
         alerts_main.request_telemetry_sync(delay=0.02)
-        assert first_task.cancelled() or first_task.cancelling()
+        await asyncio.sleep(0)
+        assert first_task.cancelled()
 
         await asyncio.sleep(0.05)
         mock_push.assert_awaited_once()

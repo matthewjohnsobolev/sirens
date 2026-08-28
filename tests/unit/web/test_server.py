@@ -55,7 +55,7 @@ def test_issue_footer_contains_status_link_and_disclaimer(client):
     assert "https://status.sirens.live" in html
     assert "Стан системи" in html
     assert "Мапа тривог" in html
-    assert "«Сирени» — незалежний сервіс агрегації тривог." in html
+    assert "«Сирени» — незалежний агрегатор тривог." in html
     assert "© 2026 «Сирени»" in html
 
 

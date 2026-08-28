@@ -14,7 +14,6 @@ import re
 import sys
 import time
 from logging.handlers import RotatingFileHandler
-from typing import Optional
 
 import asyncpg
 import redis.asyncio as redis
@@ -38,25 +37,27 @@ from telethon.tl.types import (
 
 from alerts import cli
 from config import (
-    BROADCAST_CITIES,
-    BROADCAST_DISTRICTS,
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_API_TOKEN,
-    CLOUDFLARE_KV_STATUS_NAMESPACE_ID,
+    CLOUDFLARE_TELEMETRY_NAMESPACE_ID,
     DATABASE_URL,
-    DISTRICT_CONFIG,
-    HEALTHCHECKS_PING_URL_ALERTS_SOURCE,
-    HEALTHCHECKS_PING_URL_ALERTS_BROADCAST,
+    HEALTHCHECKS_ALERTS_BROADCAST_PING_URL,
+    HEALTHCHECKS_ALERTS_SOURCE_PING_URL,
     IMAGES_PATH,
     LOGS_PATH,
-    MESSAGES,
-    OBLAST_TRIGGERS,
     REDIS_URL,
     SENTRY_DSN,
     SESSION_PATH,
+    TELEGRAM_API_HASH,
+    TELEGRAM_API_ID,
     VERSION,
-    api_hash,
-    api_id,
+)
+from domain import (
+    BROADCAST_CITIES,
+    BROADCAST_DISTRICTS,
+    DISTRICT_CONFIG,
+    MESSAGES,
+    OBLAST_TRIGGERS,
 )
 from web.db import DEFAULT_SOURCE, ensure_pg_tables, rehydrate_state_from_db
 
@@ -81,20 +82,9 @@ redis_client = None
 pg_pool = None
 client: TelegramClient = None
 
-# Два кінці ланцюга, які ламаються незалежно один від одного.
-#
-# last_source_message_at - вхід: коли джерело озвалося востаннє. Redis тут
-# персистенція (рестарт воркера не має скидати годинник тиші), а не єдине
-# джерело правди, тож тримаємо дзеркало в пам'яті.
-#
-# last_broadcast_ok - вихід: чим скінчилась ОСТАННЯ спроба відправки. None
-# означає «спроб ще не було», і це не те саме, що «все добре».
-#
-# source_silence_reported - дедуп події в Sentry, свідомо лише в пам'яті:
-# після рестарту ще-тиха черга дасть одну повторну подію, і це радше добре.
-last_source_message_at: Optional[float] = None
-last_broadcast_at: Optional[float] = None
-last_alert_payload: Optional[dict] = None
+last_source_message_at: float | None = None
+last_broadcast_at: float | None = None
+last_alert_payload: dict | None = None
 source_silence_reported: bool = False
 broadcast_silence_reported: bool = False
 
@@ -108,7 +98,7 @@ CHANNEL_PHOTO_PATHS = {
 channel_usernames: dict[int, str] = {}
 
 
-def build_message_link(channel_id: int, message_id: int, username: Optional[str] = None) -> str:
+def build_message_link(channel_id: int, message_id: int, username: str | None = None) -> str:
     if username:
         return f"https://t.me/{username}/{message_id}"
 
@@ -117,7 +107,7 @@ def build_message_link(channel_id: int, message_id: int, username: Optional[str]
     return f"https://t.me/c/{internal_id}/{message_id}"
 
 
-async def resolve_channel_username(channel_id: int) -> Optional[str]:
+async def resolve_channel_username(channel_id: int) -> str | None:
     cached = channel_usernames.get(channel_id)
     if cached:
         return cached
@@ -136,7 +126,7 @@ async def resolve_channel_username(channel_id: int) -> Optional[str]:
     return username
 
 
-async def broadcast_reference(channel_id: int, message) -> tuple[Optional[int], Optional[str]]:
+async def broadcast_reference(channel_id: int, message) -> tuple[int | None, str | None]:
     message_id = getattr(message, "id", None)
     if not isinstance(message_id, int):
         log.warning("Broadcast to channel %d returned no message id; link not stored", channel_id)
@@ -146,7 +136,7 @@ async def broadcast_reference(channel_id: int, message) -> tuple[Optional[int], 
     return message_id, build_message_link(channel_id, message_id, username)
 
 
-async def source_reference(event) -> tuple[Optional[int], Optional[str]]:
+async def source_reference(event) -> tuple[int | None, str | None]:
     """Ідентифікатор і посилання на пост першоджерела.
 
     Для районів без власного каналу саме він стає джерелом стану: таблетка
@@ -179,49 +169,49 @@ def district_label(district_key: str) -> str:
     conf = DISTRICT_CONFIG.get(district_key)
     if not conf:
         return district_key.capitalize()
-    return conf.get('display_name') or conf['name']
+    return conf.get("display_name") or conf["name"]
 
 
 LOCATION_LOCATIVE = {
-    'bilatserkva':    'у Білій Церкві',
-    'bucha':          'у Бучі',
-    'cherkasy':       'у Черкасах',
-    'chernihiv':      'у Чернігові',
-    'chernivtsi':     'у Чернівцях',
-    'dnipro':         'у Дніпрі',
-    'fastiv':         'у Фастові',
-    'ivanofrankivsk': 'в Івано-Франківську',
-    'izmail':         'в Ізмаїлі',
-    'kamianske':      "у Кам'янському",
-    'kharkiv':        'у Харкові',
-    'kherson':        'у Херсоні',
-    'khmelnytskyi':   'у Хмельницькому',
-    'kovel':          'у Ковелі',
-    'kremenchuk':     'у Кременчуці',
-    'kropyvnytskyi':  'у Кропивницькому',
-    'kryvyirih':      'у Кривому Розі',
-    'kyiv':           'у Києві',
-    'lutsk':          'у Луцьку',
-    'lviv':           'у Львові',
-    'mykolaiv':       'у Миколаєві',
-    'nikopol':        'у Нікополі',
-    'odesa':          'в Одесі',
-    'pervomaisk':     'у Первомайську',
-    'poltava':        'у Полтаві',
-    'rivne':          'у Рівному',
-    'sumy':           'у Сумах',
-    'ternopil':       'у Тернополі',
-    'uman':           'в Умані',
-    'uzhhorod':       'в Ужгороді',
-    'vinnytsia':      'у Вінниці',
-    'zaporizhzhia':   'у Запоріжжі',
-    'zhytomyr':       'у Житомирі',
-    'zolotonosha':    'у Золотоноші',
-    'zvenyhorodka':   'у Звенигородці',
-    'boryspil':       'у Борисполі',
-    'brovary':        'у Броварах',
-    'vyshhorod':      'у Вишгороді',
-    'obukhiv':        'в Обухові',
+    "bilatserkva": "у Білій Церкві",
+    "bucha": "у Бучі",
+    "cherkasy": "у Черкасах",
+    "chernihiv": "у Чернігові",
+    "chernivtsi": "у Чернівцях",
+    "dnipro": "у Дніпрі",
+    "fastiv": "у Фастові",
+    "ivanofrankivsk": "в Івано-Франківську",
+    "izmail": "в Ізмаїлі",
+    "kamianske": "у Кам'янському",
+    "kharkiv": "у Харкові",
+    "kherson": "у Херсоні",
+    "khmelnytskyi": "у Хмельницькому",
+    "kovel": "у Ковелі",
+    "kremenchuk": "у Кременчуці",
+    "kropyvnytskyi": "у Кропивницькому",
+    "kryvyirih": "у Кривому Розі",
+    "kyiv": "у Києві",
+    "lutsk": "у Луцьку",
+    "lviv": "у Львові",
+    "mykolaiv": "у Миколаєві",
+    "nikopol": "у Нікополі",
+    "odesa": "в Одесі",
+    "pervomaisk": "у Первомайську",
+    "poltava": "у Полтаві",
+    "rivne": "у Рівному",
+    "sumy": "у Сумах",
+    "ternopil": "у Тернополі",
+    "uman": "в Умані",
+    "uzhhorod": "в Ужгороді",
+    "vinnytsia": "у Вінниці",
+    "zaporizhzhia": "у Запоріжжі",
+    "zhytomyr": "у Житомирі",
+    "zolotonosha": "у Золотоноші",
+    "zvenyhorodka": "у Звенигородці",
+    "boryspil": "у Борисполі",
+    "brovary": "у Броварах",
+    "vyshhorod": "у Вишгороді",
+    "obukhiv": "в Обухові",
 }
 
 
@@ -231,7 +221,7 @@ def city_or_district_name(district_key: str) -> str:
         return BROADCAST_CITIES[district_key]
     conf = DISTRICT_CONFIG.get(district_key)
     if conf:
-        return conf.get('city') or conf.get('name') or district_key
+        return conf.get("city") or conf.get("name") or district_key
     return district_key.capitalize()
 
 
@@ -240,26 +230,26 @@ def location_locative(district_key: str) -> str:
     if district_key in LOCATION_LOCATIVE:
         return LOCATION_LOCATIVE[district_key]
     conf = DISTRICT_CONFIG.get(district_key, {})
-    name = conf.get('name', '')
+    name = conf.get("name", "")
     if name.endswith(" район"):
         base = name[:-6]
         adj = (base[:-2] + "ому") if (base.endswith("ий") or base.endswith("ій")) else base
         prep = "в" if name[0].lower() in "аеєиіїоуюя" else "у"
         return f"{prep} {adj} районі"
-    city = conf.get('city') or conf.get('display_name') or district_key
+    city = conf.get("city") or conf.get("display_name") or district_key
     prep = "в" if city[0].lower() in "аеєиіїоуюя" else "у"
     return f"{prep} {city}"
 
 
 def log_alert_received(region: str, alert_type: str):
     display_name = district_label(region)
-    
+
     if alert_type == "air_raid_alert":
         log.info("Air raid alert received for %s", display_name)
     elif alert_type == "air_raid_alert_cancelled":
         log.info("Air raid alert cancellation received for %s", display_name)
     else:
-        log.info("%s received for %s", alert_type.replace('_', ' ').capitalize(), display_name)
+        log.info("%s received for %s", alert_type.replace("_", " ").capitalize(), display_name)
 
 
 async def update_channel_photo(channel_entity, file_path):
@@ -272,12 +262,19 @@ async def delete_photo_update_service_message(channel_entity, edit_result):
     for update in edit_result.updates:
         if isinstance(update, UpdateNewChannelMessage):
             message = update.message
-            if isinstance(message, MessageService) and isinstance(message.action, MessageActionChatEditPhoto):
+            if isinstance(message, MessageService) and isinstance(
+                message.action, MessageActionChatEditPhoto
+            ):
                 await client.delete_messages(entity=channel_entity, message_ids=[message.id])
-                log.debug("Service message %d deleted for channel %d", message.id, channel_entity.id)
+                log.debug(
+                    "Service message %d deleted for channel %d", message.id, channel_entity.id
+                )
                 return
-    
-    log.warning("Service message about photo update not found in API response for channel %d", channel_entity.id)
+
+    log.warning(
+        "Service message about photo update not found in API response for channel %d",
+        channel_entity.id,
+    )
 
 
 PHOTO_UPDATE_MAX_ATTEMPTS = 3
@@ -292,11 +289,15 @@ async def process_channel_photo_update(channel_id, region, alert_type):
     display_name = district_label(region)
 
     for attempt in range(1, PHOTO_UPDATE_MAX_ATTEMPTS + 1):
-        current_state = await redis_client.get(f"channel_state:{channel_id}") if redis_client else None
+        current_state = (
+            await redis_client.get(f"channel_state:{channel_id}") if redis_client else None
+        )
         if current_state != alert_type:
             log.warning(
                 "Photo update skipped for %s: state changed from %s to %s",
-                display_name, alert_type, current_state
+                display_name,
+                alert_type,
+                current_state,
             )
             return
 
@@ -308,33 +309,37 @@ async def process_channel_photo_update(channel_id, region, alert_type):
         except FloodWaitError as e:
             log.warning(
                 "Photo update rate-limited for %s (attempt %d/%d), retrying in %ds",
-                display_name, attempt, PHOTO_UPDATE_MAX_ATTEMPTS, e.seconds
+                display_name,
+                attempt,
+                PHOTO_UPDATE_MAX_ATTEMPTS,
+                e.seconds,
             )
             await asyncio.sleep(e.seconds)
         except Exception:
             log.exception(
                 "Error changing photo for %s (attempt %d/%d)",
-                display_name, attempt, PHOTO_UPDATE_MAX_ATTEMPTS
+                display_name,
+                attempt,
+                PHOTO_UPDATE_MAX_ATTEMPTS,
             )
             await asyncio.sleep(PHOTO_UPDATE_DELAY * (2 ** (attempt - 1)))
 
     log.error(
-        "Aborting photo update for %s after %d attempts",
-        display_name, PHOTO_UPDATE_MAX_ATTEMPTS
+        "Aborting photo update for %s after %d attempts", display_name, PHOTO_UPDATE_MAX_ATTEMPTS
     )
 
 
 async def _record_alert_state(
-    channel_id: Optional[int],
+    channel_id: int | None,
     region: str,
     alert_type: str,
-    message_id: Optional[int] = None,
-    message_link: Optional[str] = None,
+    message_id: int | None = None,
+    message_link: str | None = None,
 ):
     global last_alert_payload
 
     district_key = region
-    oblast_key = DISTRICT_CONFIG.get(region, {}).get('oblast', region)
+    oblast_key = DISTRICT_CONFIG.get(region, {}).get("oblast", region)
     now = datetime.datetime.now()
     current_time = now.strftime("%H:%M")
     now_epoch = str(int(time.time()))
@@ -364,16 +369,15 @@ async def _record_alert_state(
 
     if redis_client:
         try:
-            # Район без каналу тримає свій стан під власним ключем: дедуп
-            # мусить працювати й там, де фото каналу міняти нічому.
             state_key = (
-                f"channel_state:{channel_id}" if channel_id is not None
+                f"channel_state:{channel_id}"
+                if channel_id is not None
                 else f"district_state:{district_key}"
             )
             await redis_client.set(state_key, alert_type)
 
             if "shelling" in alert_type:
-                is_shelling_active = (alert_type == "threat_of_shelling")
+                is_shelling_active = alert_type == "threat_of_shelling"
                 status_str = "true" if is_shelling_active else "false"
                 await redis_client.hset(
                     f"threat:shellings:{district_key}",
@@ -382,10 +386,10 @@ async def _record_alert_state(
                         "time": current_time,
                         "source": source,
                         "updated_at": now_epoch,
-                    }
+                    },
                 )
             else:
-                is_alert_active = (alert_type == "air_raid_alert")
+                is_alert_active = alert_type == "air_raid_alert"
                 status_str = "true" if is_alert_active else "false"
                 await redis_client.hset(
                     f"threat:alerts:city:{district_key}",
@@ -395,7 +399,7 @@ async def _record_alert_state(
                         "source": source,
                         "type": alert_type,
                         "updated_at": now_epoch,
-                    }
+                    },
                 )
 
                 active_key = f"threat:alerts:active:{oblast_key}"
@@ -417,23 +421,30 @@ async def _record_alert_state(
                         "time": current_time,
                         "source": source,
                         "updated_at": now_epoch,
-                    }
+                    },
                 )
         except Exception:
             log.exception("Failed to update Redis state for %s", district_key)
 
-    spawn_tracked_task(push_telemetry_to_kv(), f"Push telemetry for {district_key}")
+    request_telemetry_sync()
 
     if pg_pool:
         try:
             async with pg_pool.acquire() as conn:
                 await conn.execute(
-                    """INSERT INTO alert_history 
+                    """INSERT INTO alert_history
                        (datetime, date, time, district_key, oblast_key, type,
-                        channel_id, message_id, message_link) 
+                        channel_id, message_id, message_link)
                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
-                    now, now.date(), current_time, district_key, oblast_key, alert_type,
-                    channel_id, message_id, message_link
+                    now,
+                    now.date(),
+                    current_time,
+                    district_key,
+                    oblast_key,
+                    alert_type,
+                    channel_id,
+                    message_id,
+                    message_link,
                 )
         except Exception as e:
             log.error("Failed to insert alert history into PG: %s", e)
@@ -452,14 +463,14 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
             previous_alert_type = await redis_client.get(f"channel_state:{channel_id}")
             if previous_alert_type == alert_type:
                 log.info(
-                    "Duplicate %s ignored for %s: already in this state",
-                    alert_type, display_name
+                    "Duplicate %s ignored for %s: already in this state", alert_type, display_name
                 )
                 return
         except Exception:
             log.exception(
                 "Redis unavailable for %s; broadcasting %s without dedup check",
-                display_name, alert_type
+                display_name,
+                alert_type,
             )
 
     send_succeeded = False
@@ -472,23 +483,23 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
         elif alert_type == "air_raid_alert_cancelled":
             log.info("Air raid alert cancellation sent to %s", display_name)
         else:
-            log.info("%s sent to %s", alert_type.replace('_', ' ').capitalize(), display_name)
+            log.info("%s sent to %s", alert_type.replace("_", " ").capitalize(), display_name)
     except Exception:
         if alert_type == "air_raid_alert":
             log.exception("Failed to send air raid alert to %s", display_name)
         elif alert_type == "air_raid_alert_cancelled":
             log.exception("Failed to send air raid alert cancellation to %s", display_name)
         else:
-            log.exception("Failed to send %s to %s", alert_type.replace('_', ' '), display_name)
+            log.exception("Failed to send %s to %s", alert_type.replace("_", " "), display_name)
 
     await record_broadcast(send_succeeded)
 
     if send_succeeded:
-        # Посилання на щойно надіслане повідомлення стає джерелом стану: саме
-        # воно відкривається з таблетки міста на карті.
         message_id, message_link = await broadcast_reference(channel_id, sent_message)
         await _record_alert_state(
-            channel_id, region, alert_type,
+            channel_id,
+            region,
+            alert_type,
             message_id=message_id,
             message_link=message_link,
         )
@@ -496,7 +507,7 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
         if CHANNEL_PHOTO_PATHS.get(alert_type):
             spawn_tracked_task(
                 process_channel_photo_update(channel_id, region, alert_type),
-                f"Photo update for {display_name}"
+                f"Photo update for {display_name}",
             )
         else:
             log.debug("No photo mapping for '%s', skipping photo update", alert_type)
@@ -505,8 +516,8 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
 async def record_map_only_alert(
     district_key: str,
     alert_type: str,
-    message_id: Optional[int] = None,
-    message_link: Optional[str] = None,
+    message_id: int | None = None,
+    message_link: str | None = None,
 ):
     """Район без каналу: стан лише для карти, без бродкасту.
 
@@ -524,23 +535,21 @@ async def record_map_only_alert(
         try:
             previous_alert_type = await redis_client.get(f"district_state:{district_key}")
             if previous_alert_type == alert_type:
-                log.info(
-                    "Duplicate %s ignored for %s: already in this state",
-                    alert_type, label
-                )
+                log.info("Duplicate %s ignored for %s: already in this state", alert_type, label)
                 return
         except Exception:
             log.exception(
-                "Redis unavailable for %s; recording %s without dedup check",
-                label, alert_type
+                "Redis unavailable for %s; recording %s without dedup check", label, alert_type
             )
 
     await _record_alert_state(
-        None, district_key, alert_type,
+        None,
+        district_key,
+        alert_type,
         message_id=message_id,
         message_link=message_link,
     )
-    log.info("%s recorded for %s (map only)", alert_type.replace('_', ' ').capitalize(), label)
+    log.info("%s recorded for %s (map only)", alert_type.replace("_", " ").capitalize(), label)
 
 
 ONGOING_NOTICE_RE = re.compile(r"^[^\n]*ще трива[^\n]*$", re.MULTILINE)
@@ -550,7 +559,7 @@ def strip_ongoing_notice(message_text: str) -> str:
     if not message_text:
         return ""
     notice = ONGOING_NOTICE_RE.search(message_text)
-    return message_text[:notice.start()] if notice else message_text
+    return message_text[: notice.start()] if notice else message_text
 
 
 def _trigger_pattern(trigger: str) -> re.Pattern:
@@ -564,7 +573,7 @@ def _trigger_pattern(trigger: str) -> re.Pattern:
 
 
 DISTRICT_PATTERNS = {
-    key: [_trigger_pattern(trigger) for trigger in conf['triggers']]
+    key: [_trigger_pattern(trigger) for trigger in conf["triggers"]]
     for key, conf in DISTRICT_CONFIG.items()
 }
 
@@ -576,10 +585,10 @@ OBLAST_PATTERNS = {
 DISTRICT_MENTION_RE = re.compile(r"[А-ЯІЇЄҐ][\w'\u2019-]*\s+район")
 
 
-def _alert_type_for(district_key: str, message_text: str) -> Optional[str]:
+def _alert_type_for(district_key: str, message_text: str) -> str | None:
     conf = DISTRICT_CONFIG.get(district_key, {})
 
-    for alert_type, keywords in conf.get('alert_triggers', {}).items():
+    for alert_type, keywords in conf.get("alert_triggers", {}).items():
         if any(keyword in message_text for keyword in keywords):
             return alert_type
 
@@ -604,7 +613,7 @@ def match_districts(message_text: str) -> dict[str, str]:
 
     matched: dict[str, str] = {}
     for district_key, conf in DISTRICT_CONFIG.items():
-        if not oblast_hit.get(conf['oblast']) and not any(
+        if not oblast_hit.get(conf["oblast"]) and not any(
             pattern.search(message_text) for pattern in DISTRICT_PATTERNS[district_key]
         ):
             continue
@@ -617,14 +626,10 @@ def match_districts(message_text: str) -> dict[str, str]:
 
 
 KNOWN_DISTRICT_TRIGGERS = frozenset(
-    trigger for conf in DISTRICT_CONFIG.values() for trigger in conf['triggers']
+    trigger for conf in DISTRICT_CONFIG.values() for trigger in conf["triggers"]
 )
 
 
-# Кожну незнайому назву повідомляємо один раз за життя процесу. Джерело регулярно
-# пише про райони, яких тут свідомо немає (Крим, Донеччина, Луганщина), тож без
-# цього кожна така тривога йшла б окремою подією в Sentry - і сигнал про справжнє
-# перейменування потонув би в цьому потоці.
 reported_unknown_districts: set[str] = set()
 
 
@@ -634,16 +639,17 @@ def log_unrecognised_districts(message_text: str) -> None:
     Без цього чергове перейменування району виглядає як тиша: карта просто не
     оновлюється, і дізнаємось ми про це від того, хто на неї дивився.
     """
-    unknown = {
-        " ".join(mention.split())
-        for mention in DISTRICT_MENTION_RE.findall(message_text)
-    } - KNOWN_DISTRICT_TRIGGERS - reported_unknown_districts
+    unknown = (
+        {" ".join(mention.split()) for mention in DISTRICT_MENTION_RE.findall(message_text)}
+        - KNOWN_DISTRICT_TRIGGERS
+        - reported_unknown_districts
+    )
 
     if unknown:
         reported_unknown_districts.update(unknown)
         log.warning(
             "Districts named in the source message but missing from config: %s",
-            ", ".join(sorted(unknown))
+            ", ".join(sorted(unknown)),
         )
 
 
@@ -658,18 +664,22 @@ async def push_telemetry_to_kv() -> None:
     Виконується безпечно у фоні: якщо параметри Cloudflare не налаштовані
     або виникла помилка мережі, процес не блокується і не падає.
     """
-    if not (CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_KV_STATUS_NAMESPACE_ID and CLOUDFLARE_API_TOKEN):
+    if not (CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_TELEMETRY_NAMESPACE_ID and CLOUDFLARE_API_TOKEN):
         return
 
     try:
         now_dt = datetime.datetime.now(datetime.timezone.utc)
         last_bcast_iso = (
             datetime.datetime.fromtimestamp(last_broadcast_at, tz=datetime.timezone.utc).isoformat()
-            if last_broadcast_at is not None else None
+            if last_broadcast_at is not None
+            else None
         )
         last_src_iso = (
-            datetime.datetime.fromtimestamp(last_source_message_at, tz=datetime.timezone.utc).isoformat()
-            if last_source_message_at is not None else None
+            datetime.datetime.fromtimestamp(
+                last_source_message_at, tz=datetime.timezone.utc
+            ).isoformat()
+            if last_source_message_at is not None
+            else None
         )
 
         active_count = 0
@@ -677,7 +687,7 @@ async def push_telemetry_to_kv() -> None:
             try:
                 oblasts_seen = set()
                 for conf in DISTRICT_CONFIG.values():
-                    o_key = conf.get('oblast')
+                    o_key = conf.get("oblast")
                     if o_key and o_key not in oblasts_seen:
                         oblasts_seen.add(o_key)
                         cnt = await redis_client.scard(f"threat:alerts:active:{o_key}")
@@ -707,7 +717,7 @@ async def push_telemetry_to_kv() -> None:
 
         url = (
             f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}"
-            f"/storage/kv/namespaces/{CLOUDFLARE_KV_STATUS_NAMESPACE_ID}/values/telemetry:latest"
+            f"/storage/kv/namespaces/{CLOUDFLARE_TELEMETRY_NAMESPACE_ID}/values/telemetry:latest"
         )
         headers = {
             "Authorization": f"Bearer {CLOUDFLARE_API_TOKEN}",
@@ -724,7 +734,51 @@ async def push_telemetry_to_kv() -> None:
         log.warning("Failed to push telemetry snapshot to Cloudflare KV", exc_info=True)
 
 
-async def record_source_message(moment: Optional[datetime.datetime] = None) -> None:
+TELEMETRY_SYNC_DELAY = 2.0
+_telemetry_sync_task: asyncio.Task | None = None
+
+
+async def _debounced_telemetry_push(delay: float) -> None:
+    try:
+        if delay > 0:
+            await asyncio.sleep(delay)
+        await push_telemetry_to_kv()
+    except asyncio.CancelledError:
+        pass
+
+
+def request_telemetry_sync(delay: float | None = None) -> asyncio.Task:
+    """Schedule a coalesced/debounced telemetry push to Cloudflare KV.
+
+    If multiple state changes happen in quick succession (e.g. 35 districts in one post),
+    only a single KV PUT request is executed after the burst settles.
+    """
+    global _telemetry_sync_task
+
+    actual_delay = TELEMETRY_SYNC_DELAY if delay is None else delay
+
+    if _telemetry_sync_task and not _telemetry_sync_task.done():
+        try:
+            loop = _telemetry_sync_task.get_loop()
+            if not loop.is_closed():
+                _telemetry_sync_task.cancel()
+        except Exception:
+            pass
+
+    task = asyncio.create_task(_debounced_telemetry_push(actual_delay))
+    _telemetry_sync_task = task
+    running_tasks.add(task)
+
+    def _on_done(finished: asyncio.Task):
+        running_tasks.discard(finished)
+        if not finished.cancelled() and finished.exception() is not None:
+            log.error("Telemetry sync task failed", exc_info=finished.exception())
+
+    task.add_done_callback(_on_done)
+    return task
+
+
+async def record_source_message(moment: datetime.datetime | None = None) -> None:
     """Запам'ятати, коли джерело озвалося востаннє.
 
     Час беремо з самого поста, а не з годинника воркера: якщо ми наздоганяємо
@@ -733,10 +787,7 @@ async def record_source_message(moment: Optional[datetime.datetime] = None) -> N
     """
     global last_source_message_at
 
-    seen_at = (
-        moment.timestamp() if isinstance(moment, datetime.datetime)
-        else time.time()
-    )
+    seen_at = moment.timestamp() if isinstance(moment, datetime.datetime) else time.time()
     last_source_message_at = seen_at
 
     if not redis_client:
@@ -764,7 +815,7 @@ async def record_broadcast(succeeded: bool) -> None:
         except Exception:
             log.warning("Failed to store the broadcast timestamp in Redis", exc_info=True)
 
-    spawn_tracked_task(push_telemetry_to_kv(), "Telemetry sync on broadcast")
+    request_telemetry_sync()
 
 
 async def _prime_monitoring_state(source_channel) -> None:
@@ -816,7 +867,8 @@ async def _prime_monitoring_state(source_channel) -> None:
                     dt = row["datetime"]
                     dt_iso = (
                         dt.astimezone(datetime.timezone.utc).isoformat()
-                        if dt.tzinfo else dt.replace(tzinfo=datetime.timezone.utc).isoformat()
+                        if dt.tzinfo
+                        else dt.replace(tzinfo=datetime.timezone.utc).isoformat()
                     )
                     d_key = row["district_key"] or ""
                     loc_name = city_or_district_name(d_key) if d_key else ""
@@ -860,12 +912,9 @@ async def _prime_monitoring_state(source_channel) -> None:
 
 def build_message_handler(region_channels: dict):
     async def handle_incoming_message(event):
-        # Будь-який пост у джерелі доводить, що ланцюг живий на вході: і
-        # з'єднання, і хендлер, і сам канал. Мітку ставимо до перевірок нижче,
-        # бо пост без тексту чи без збігу районів доводить це рівно так само.
         await record_source_message(getattr(event.message, "date", None))
 
-        if not event.message or not getattr(event.message, 'message', None):
+        if not event.message or not getattr(event.message, "message", None):
             return
 
         message_text = strip_ongoing_notice(event.message.message)
@@ -875,9 +924,7 @@ def build_message_handler(region_channels: dict):
         if not matched:
             return
 
-        # Пост джерела резолвимо лише за потреби: у районів із каналом джерелом
-        # стає власне повідомлення, і зайвий get_entity їм ні до чого.
-        source_ref: tuple[Optional[int], Optional[str]] = (None, None)
+        source_ref: tuple[int | None, str | None] = (None, None)
         if any(not region_channels.get(district_key) for district_key in matched):
             source_ref = await source_reference(event)
 
@@ -888,12 +935,12 @@ def build_message_handler(region_channels: dict):
             if channel_id:
                 spawn_tracked_task(
                     send_alert(channel_id, district_key, alert_type),
-                    f"Alert broadcast of {alert_type} to {district_key}"
+                    f"Alert broadcast of {alert_type} to {district_key}",
                 )
             else:
                 spawn_tracked_task(
                     record_map_only_alert(district_key, alert_type, *source_ref),
-                    f"Map-only record of {alert_type} for {district_key}"
+                    f"Map-only record of {alert_type} for {district_key}",
                 )
 
     return handle_incoming_message
@@ -905,8 +952,6 @@ TRANSIENT_CONNECTION_ERRORS = (OSError,)
 HEALTHCHECK_PING_INTERVAL = 60
 HEALTHCHECK_PING_TIMEOUT = 10
 
-# Скільки джерело чи вихідна мережа можуть мовчати, доки це ще схоже на спокійну ніч.
-# Шість годин суцільної тиші по всій країні та по прифронтових каналах - вже обрив.
 SOURCE_SILENCE_THRESHOLD = 6 * 3600
 BROADCAST_SILENCE_THRESHOLD = 6 * 3600
 
@@ -921,33 +966,26 @@ def _ping_url(base: str, suffix: str = "") -> None:
 
 
 def _ping_healthcheck(suffix: str = "") -> None:
-    _ping_url(HEALTHCHECKS_PING_URL_ALERTS_SOURCE, suffix)
+    _ping_url(HEALTHCHECKS_ALERTS_SOURCE_PING_URL, suffix)
 
 
 def _ping_tg_healthcheck(suffix: str = "") -> None:
-    _ping_url(HEALTHCHECKS_PING_URL_ALERTS_BROADCAST, suffix)
+    _ping_url(HEALTHCHECKS_ALERTS_BROADCAST_PING_URL, suffix)
 
 
-async def _source_silence_seconds() -> Optional[float]:
-    """Скільки триває тиша джерела, або None, поки мітки немає."""
+async def _source_silence_seconds() -> float | None:
     if last_source_message_at is None:
         return None
     return max(0.0, time.time() - last_source_message_at)
 
 
-async def _broadcast_silence_seconds() -> Optional[float]:
-    """Скільки триває тиша виходу, або None, поки мітки немає."""
+async def _broadcast_silence_seconds() -> float | None:
     if last_broadcast_at is None:
         return None
     return max(0.0, time.time() - last_broadcast_at)
 
 
-def _report_source_silence(silence: Optional[float]) -> None:
-    """Одна подія в Sentry на епізод тиші, і одна - на повернення джерела.
-
-    Дедуп тут не косметика: без нього кожна хвилина тиші йшла б окремою подією
-    і за ніч поховала б під собою все інше.
-    """
+def _report_source_silence(silence: float | None) -> None:
     global source_silence_reported
 
     if silence is None:
@@ -956,8 +994,6 @@ def _report_source_silence(silence: Optional[float]) -> None:
     if silence >= SOURCE_SILENCE_THRESHOLD:
         if not source_silence_reported:
             source_silence_reported = True
-            # log.error, а не capture_message: LoggingIntegration піднімає в
-            # Sentry кожен warning+, а групування йде по рядку формату.
             log.error(
                 "No message from the source channel for %.1f h; alerts are not reaching us",
                 silence / 3600,
@@ -967,8 +1003,7 @@ def _report_source_silence(silence: Optional[float]) -> None:
         log.info("The source channel is posting again")
 
 
-def _report_broadcast_silence(silence: Optional[float]) -> None:
-    """Одна подія в Sentry на епізод тиші виходу, і одна - на відновлення розсилки."""
+def _report_broadcast_silence(silence: float | None) -> None:
     global broadcast_silence_reported
 
     if silence is None:
@@ -987,15 +1022,8 @@ def _report_broadcast_silence(silence: Optional[float]) -> None:
 
 
 async def _healthcheck_loop(client: TelegramClient) -> None:
-    """Чек «Потік тривог» - вхід ланцюга.
-
-    Зелений тут означає не «процес живий», а «тривоги до нас доходять»:
-    з'єднання з Telegram живе І джерело говорило впродовж останніх шести годин.
-    Цикл працює й без налаштованого пінга: подія в Sentry про тишу потрібна
-    незалежно від healthchecks.io.
-    """
-    if not HEALTHCHECKS_PING_URL_ALERTS_SOURCE:
-        log.warning("HEALTHCHECKS_PING_URL_ALERTS_SOURCE not set; skipping healthcheck pings")
+    if not HEALTHCHECKS_ALERTS_SOURCE_PING_URL:
+        log.warning("HEALTHCHECKS_ALERTS_SOURCE_PING_URL not set; skipping healthcheck pings")
 
     while True:
         await asyncio.sleep(HEALTHCHECK_PING_INTERVAL)
@@ -1003,12 +1031,9 @@ async def _healthcheck_loop(client: TelegramClient) -> None:
         _report_source_silence(silence)
 
         if not client.is_connected():
-            # Без з'єднання мовчимо: пропущений пінг сам скаже те, що треба.
             continue
 
         if silence is not None and silence >= SOURCE_SILENCE_THRESHOLD:
-            # Явний /fail, а не пропуск: чек має почервоніти одразу, а не через
-            # period + grace - шість годин тиші й так надто довго тривали.
             await asyncio.to_thread(_ping_healthcheck, "/fail")
         else:
             await asyncio.to_thread(_ping_healthcheck)
@@ -1022,8 +1047,10 @@ async def _broadcast_watchdog_loop(client: TelegramClient) -> None:
     Цикл працює й без налаштованого пінга: подія в Sentry про тишу потрібна
     незалежно від healthchecks.io.
     """
-    if not HEALTHCHECKS_PING_URL_ALERTS_BROADCAST:
-        log.warning("HEALTHCHECKS_PING_URL_ALERTS_BROADCAST not set; skipping broadcast health pings")
+    if not HEALTHCHECKS_ALERTS_BROADCAST_PING_URL:
+        log.warning(
+            "HEALTHCHECKS_ALERTS_BROADCAST_PING_URL not set; skipping broadcast health pings"
+        )
 
     while True:
         await asyncio.sleep(HEALTHCHECK_PING_INTERVAL)
@@ -1077,18 +1104,17 @@ async def main():
     session_file = os.path.join(SESSION_PATH, "sirens")
 
     try:
-        async with TelegramClient(session_file, api_id, api_hash) as tg_client:
+        async with TelegramClient(session_file, TELEGRAM_API_ID, TELEGRAM_API_HASH) as tg_client:
             client = tg_client
             if not await client.is_user_authorized():
                 await client.start(
-                    phone=lambda: input('Please enter phone number: '),
-                    code_callback=lambda: input('Please enter a login code: ')
+                    phone=lambda: input("Please enter phone number: "),
+                    code_callback=lambda: input("Please enter a login code: "),
                 )
             log.info("Sirens started in %s mode", args.mode)
 
             client.add_event_handler(
-                build_message_handler(region_channels),
-                events.NewMessage(chats=[source_channel])
+                build_message_handler(region_channels), events.NewMessage(chats=[source_channel])
             )
 
             await _prime_monitoring_state(source_channel)
@@ -1107,7 +1133,7 @@ async def main():
     except FATAL_SESSION_ERRORS:
         log.critical(
             "Telegram session is invalid; manual re-auth required via ./deploy/setup.sh",
-            exc_info=True
+            exc_info=True,
         )
         await asyncio.to_thread(_ping_healthcheck, "/fail")
         raise

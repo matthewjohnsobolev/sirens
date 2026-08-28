@@ -46,9 +46,9 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     environment:
-      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+      - APP_SECRET_KEY=${APP_SECRET_KEY}
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sirens}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-sirens}:${POSTGRES_PASSWORD:-sirens}@db:5432/${POSTGRES_DB:-sirens}
       - TZ=Europe/Kyiv
     env_file:
       - .env
@@ -68,13 +68,13 @@ services:
       - ./logs:/app/logs
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sirens}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-sirens}:${POSTGRES_PASSWORD:-sirens}@db:5432/${POSTGRES_DB:-sirens}
       - TZ=Europe/Kyiv
     env_file:
       - .env
     stdin_open: true
     tty: true
-    command: python run_alerts.py -m ${APP_MODE:-dev}
+    command: python run_alerts.py -m ${APP_ENV:-dev}
 
   bi:
     build: .
@@ -87,13 +87,13 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sirens}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-sirens}:${POSTGRES_PASSWORD:-sirens}@db:5432/${POSTGRES_DB:-sirens}
       - TZ=Europe/Kyiv
     env_file:
       - .env
     stdin_open: true
     tty: true
-    command: python run_bi.py -m ${APP_MODE:-dev}
+    command: python run_bi.py -m ${APP_ENV:-dev}
 
 volumes:
   pgdata:

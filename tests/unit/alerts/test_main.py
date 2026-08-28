@@ -1861,7 +1861,9 @@ async def test_request_telemetry_sync_uses_default_delay():
 @pytest.mark.asyncio
 async def test_request_telemetry_sync_logs_error_on_exception(caplog):
     caplog.set_level(logging.ERROR)
-    with patch.object(alerts_main, "push_telemetry_to_kv", side_effect=RuntimeError("telemetry crash")):
+    with patch.object(
+        alerts_main, "push_telemetry_to_kv", side_effect=RuntimeError("telemetry crash")
+    ):
         alerts_main.request_telemetry_sync(delay=0.01)
         await asyncio.sleep(0.05)
 

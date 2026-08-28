@@ -52,8 +52,8 @@ step() { printf '\n\033[1;32m==>\033[0m %s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" 
 die()  { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; ping_healthcheck /fail; exit 1; }
 
 ping_healthcheck() {
-    [[ -n "${HEALTHCHECKS_PING_URL_BACKUP:-}" ]] || return 0
-    curl -fsS -m 10 -o /dev/null "${HEALTHCHECKS_PING_URL_BACKUP}${1:-}" || true
+    [[ -n "${HEALTHCHECKS_BACKUP_PING_URL:-}" ]] || return 0
+    curl -fsS -m 10 -o /dev/null "${HEALTHCHECKS_BACKUP_PING_URL}${1:-}" || true
 }
 
 step "Checking environment"

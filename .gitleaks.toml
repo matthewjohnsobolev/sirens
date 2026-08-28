@@ -1,0 +1,15 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for testing and example tokens"
+paths = [
+    '''tests/''',
+    '''\.env\.example''',
+]
+regexes = [
+    '''test-[a-zA-Z0-9_-]+''',
+    '''cf-[a-zA-Z0-9_-]+''',
+    '''dev-secret-key''',
+    '''postgresql://sirens:sirens@localhost''',
+]

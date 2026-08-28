@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import (
-    DATABASE_URL,
+from config import DATABASE_URL
+from domain import (
     DISTRICT_CONFIG,
     DISTRICTS_BY_OBLAST,
     REGION_CONFIG,
@@ -20,7 +20,6 @@ from config import (
 from web.db import (
     SCHEMA_LOCK_KEY,
     THREAT_TABLES,
-    _normalize_status,
     _validate_table,
     ensure_pg_tables,
     get_all_threats_data,
@@ -39,17 +38,17 @@ from web.db import (
 )
 
 TIME_RE = re.compile(r"\d{2}:\d{2}")
-KYIV_CHANNEL = real_channels['kyiv']
+KYIV_CHANNEL = real_channels["kyiv"]
 
 
 def test_get_region_by_channel_id():
-    assert get_region_by_channel_id(real_channels['kyiv']) == 'kyiv'
-    assert get_region_by_channel_id(test_channels['source']) == 'source'
+    assert get_region_by_channel_id(real_channels["kyiv"]) == "kyiv"
+    assert get_region_by_channel_id(test_channels["source"]) == "source"
     assert get_region_by_channel_id(12345) is None
 
 
 def test_get_pg_conn_uses_configured_database_url():
-    with patch('web.db.psycopg2.connect') as mock_connect:
+    with patch("web.db.psycopg2.connect") as mock_connect:
         conn = get_pg_conn()
 
     assert conn is mock_connect.return_value
@@ -107,7 +106,7 @@ def test_ensure_pg_tables_leaves_issue_reports_to_sentry(mock_web_pg):
 def test_ensure_pg_tables_raises_and_logs_when_pg_is_unreachable(caplog):
     caplog.set_level(logging.ERROR)
 
-    with patch('web.db.get_pg_conn', side_effect=OSError('connection refused')):
+    with patch("web.db.get_pg_conn", side_effect=OSError("connection refused")):
         with pytest.raises(OSError):
             ensure_pg_tables()
 
@@ -119,13 +118,16 @@ def test_validate_table_accepts_known_tables(table):
     _validate_table(table)
 
 
-@pytest.mark.parametrize("func, args", [
-    (get_threat_status, ("bad_table", "kyiv")),
-    (get_threat_time, ("bad_table", "kyiv")),
-    (get_threat_source, ("bad_table", "kyiv")),
-    (update_threat_status, ("bad_table", "kyiv")),
-    (reset_threat_status, ("bad_table", "kyiv")),
-])
+@pytest.mark.parametrize(
+    "func, args",
+    [
+        (get_threat_status, ("bad_table", "kyiv")),
+        (get_threat_time, ("bad_table", "kyiv")),
+        (get_threat_source, ("bad_table", "kyiv")),
+        (update_threat_status, ("bad_table", "kyiv")),
+        (reset_threat_status, ("bad_table", "kyiv")),
+    ],
+)
 def test_threat_helpers_reject_unknown_table(mock_web_redis, func, args):
     with pytest.raises(ValueError, match="Invalid threat table: bad_table"):
         func(*args)
@@ -134,10 +136,21 @@ def test_threat_helpers_reject_unknown_table(mock_web_redis, func, args):
     mock_web_redis.hset.assert_not_called()
 
 
-@pytest.mark.parametrize("raw, expected", [
-    ("1", True), ("true", True), ("TRUE", True), ("active", True), ("Active", True),
-    ("0", False), ("false", False), ("", False), ("nonsense", False), (None, False),
-])
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("1", True),
+        ("true", True),
+        ("TRUE", True),
+        ("active", True),
+        ("Active", True),
+        ("0", False),
+        ("false", False),
+        ("", False),
+        ("nonsense", False),
+        (None, False),
+    ],
+)
 def test_get_threat_status_normalisation(mock_web_redis, raw, expected):
     mock_web_redis.hget.return_value = raw
 
@@ -172,7 +185,9 @@ def test_update_threat_status(mock_web_redis):
 
 
 def test_update_threat_status_includes_source_when_given(mock_web_redis):
-    update_threat_status("explosions", "kyiv", status=True, time_val="12:00", source_val="https://t.me/x/1")
+    update_threat_status(
+        "explosions", "kyiv", status=True, time_val="12:00", source_val="https://t.me/x/1"
+    )
 
     mock_web_redis.hset.assert_called_once()
     key = mock_web_redis.hset.call_args.args[0]
@@ -208,46 +223,57 @@ def test_reset_threat_status(mock_web_redis):
     assert "updated_at" in mapping
 
 
-@pytest.mark.parametrize("func, table", [
-    (update_explosion_source, "explosions"),
-    (update_shelling_source, "shellings"),
-])
+@pytest.mark.parametrize(
+    "func, table",
+    [
+        (update_explosion_source, "explosions"),
+        (update_shelling_source, "shellings"),
+    ],
+)
 def test_update_threat_source_marks_threat_active(mock_web_redis, func, table):
-    func('kyiv', 'https://t.me/channel/1')
+    func("kyiv", "https://t.me/channel/1")
 
     assert mock_web_redis.hset.call_args.args[0] == f"threat:{table}:kyiv"
     mapping = mock_web_redis.hset.call_args.kwargs["mapping"]
-    assert mapping["source"] == 'https://t.me/channel/1'
+    assert mapping["source"] == "https://t.me/channel/1"
     assert mapping["status"] == "true"
     assert TIME_RE.fullmatch(mapping["time"])
     assert "updated_at" in mapping
 
 
 def test_update_alert_source_writes_single_field(mock_web_redis):
-    update_alert_source(KYIV_CHANNEL, 'https://t.me/channel/1')
+    update_alert_source(KYIV_CHANNEL, "https://t.me/channel/1")
 
     assert mock_web_redis.hset.call_count == 2
-    mock_web_redis.hset.assert_any_call("threat:alerts:kyiv", "source", 'https://t.me/channel/1')
-    mock_web_redis.hset.assert_any_call("threat:alerts:city:kyiv", "source", 'https://t.me/channel/1')
+    mock_web_redis.hset.assert_any_call("threat:alerts:kyiv", "source", "https://t.me/channel/1")
+    mock_web_redis.hset.assert_any_call(
+        "threat:alerts:city:kyiv", "source", "https://t.me/channel/1"
+    )
 
 
-@pytest.mark.parametrize("channel_id", [
-    pytest.param(12345, id="unknown-channel"),
-    pytest.param(real_channels['source'], id="region-missing-from-region-config"),
-])
+@pytest.mark.parametrize(
+    "channel_id",
+    [
+        pytest.param(12345, id="unknown-channel"),
+        pytest.param(real_channels["source"], id="region-missing-from-region-config"),
+    ],
+)
 def test_update_alert_source_ignores_unmapped_channels(mock_web_redis, channel_id):
-    update_alert_source(channel_id, 'https://t.me/channel/1')
+    update_alert_source(channel_id, "https://t.me/channel/1")
 
     mock_web_redis.hset.assert_not_called()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status_text, expected_status, expected_event", [
-    ("Повітряна тривога", "true", "air_raid_alert"),
-    ("Відбій повітряної тривоги", "false", "air_raid_alert_cancelled"),
-    ("Загроза артилерійського обстрілу", "true", "threat_of_shelling"),
-    ("Відбій загрози артобстрілу", "false", "threat_of_shelling_cancelled"),
-])
+@pytest.mark.parametrize(
+    "status_text, expected_status, expected_event",
+    [
+        ("Повітряна тривога", "true", "air_raid_alert"),
+        ("Відбій повітряної тривоги", "false", "air_raid_alert_cancelled"),
+        ("Загроза артилерійського обстрілу", "true", "threat_of_shelling"),
+        ("Відбій загрози артобстрілу", "false", "threat_of_shelling_cancelled"),
+    ],
+)
 async def test_update_alert_status_writes_redis_and_history(
     mock_web_redis, mock_web_pg, status_text, expected_status, expected_event
 ):
@@ -257,7 +283,8 @@ async def test_update_alert_status_writes_redis_and_history(
 
     if "shelling" in expected_event:
         city_calls = [
-            c for c in mock_web_redis.hset.call_args_list
+            c
+            for c in mock_web_redis.hset.call_args_list
             if c.args and c.args[0] == "threat:shellings:kyiv"
         ]
         assert len(city_calls) == 1
@@ -266,7 +293,8 @@ async def test_update_alert_status_writes_redis_and_history(
         assert "updated_at" in mapping
     else:
         city_calls = [
-            c for c in mock_web_redis.hset.call_args_list
+            c
+            for c in mock_web_redis.hset.call_args_list
             if c.args and c.args[0] == "threat:alerts:city:kyiv"
         ]
         assert len(city_calls) == 1
@@ -308,7 +336,8 @@ async def test_update_alert_status_falls_back_to_default_source(mock_web_redis, 
     await update_alert_status(KYIV_CHANNEL, "Повітряна тривога")
 
     calls = [
-        c for c in mock_web_redis.hset.call_args_list
+        c
+        for c in mock_web_redis.hset.call_args_list
         if c.args and c.args[0] == "threat:alerts:city:kyiv"
     ]
     assert calls[0].kwargs["mapping"]["source"] == "telegram"
@@ -323,7 +352,8 @@ async def test_update_alert_status_keeps_stored_link_on_unknown_text(mock_web_re
     await update_alert_status(KYIV_CHANNEL, "Щось незрозуміле")
 
     calls = [
-        c for c in mock_web_redis.hset.call_args_list
+        c
+        for c in mock_web_redis.hset.call_args_list
         if c.args and c.args[0] == "threat:alerts:city:kyiv"
     ]
     assert "source" not in calls[0].kwargs["mapping"]
@@ -338,7 +368,8 @@ async def test_update_alert_status_stores_shelling_link(mock_web_redis, mock_web
     )
 
     calls = [
-        c for c in mock_web_redis.hset.call_args_list
+        c
+        for c in mock_web_redis.hset.call_args_list
         if c.args and c.args[0] == "threat:shellings:kyiv"
     ]
     assert calls[0].kwargs["mapping"]["source"] == link
@@ -350,7 +381,7 @@ async def test_update_alert_status_raises_and_logs_when_history_write_fails(
 ):
     caplog.set_level(logging.ERROR)
 
-    with patch('web.db.get_pg_conn', side_effect=OSError('connection refused')):
+    with patch("web.db.get_pg_conn", side_effect=OSError("connection refused")):
         with pytest.raises(OSError):
             await update_alert_status(KYIV_CHANNEL, "Повітряна тривога")
 
@@ -367,10 +398,13 @@ async def test_update_alert_status_unknown_text_updates_time_only(mock_web_redis
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("channel_id", [
-    pytest.param(12345, id="unknown-channel"),
-    pytest.param(real_channels['source'], id="region-missing-from-region-config"),
-])
+@pytest.mark.parametrize(
+    "channel_id",
+    [
+        pytest.param(12345, id="unknown-channel"),
+        pytest.param(real_channels["source"], id="region-missing-from-region-config"),
+    ],
+)
 async def test_update_alert_status_ignores_unmapped_channels(
     mock_web_redis, mock_web_pg, channel_id
 ):
@@ -389,8 +423,14 @@ def test_rehydrate_state_from_db(mock_web_pg, mock_web_redis):
         ("kyiv", "kyiv", "air_raid_alert", "14:00", now, "https://t.me/kyiv_alert/42"),
         ("lviv", "lviv_oblast", "air_raid_alert_cancelled", "13:00", now, None),
         (None, "odesa_oblast", "start", "12:00", now, None),
-        ("nikopol", "dnipropetrovsk_oblast", "threat_of_shelling", "11:00", now,
-         "https://t.me/nikopol_alert/7"),
+        (
+            "nikopol",
+            "dnipropetrovsk_oblast",
+            "threat_of_shelling",
+            "11:00",
+            now,
+            "https://t.me/nikopol_alert/7",
+        ),
     ]
 
     pipeline = MagicMock()
@@ -399,8 +439,7 @@ def test_rehydrate_state_from_db(mock_web_pg, mock_web_redis):
     rehydrate_state_from_db()
 
     city_calls = [
-        c for c in pipeline.hset.call_args_list
-        if c.args and c.args[0] == "threat:alerts:city:kyiv"
+        c for c in pipeline.hset.call_args_list if c.args and c.args[0] == "threat:alerts:city:kyiv"
     ]
     assert len(city_calls) == 1
     mapping = city_calls[0].kwargs["mapping"]
@@ -410,16 +449,14 @@ def test_rehydrate_state_from_db(mock_web_pg, mock_web_redis):
     assert mapping["type"] == "air_raid_alert"
     assert "updated_at" in mapping
 
-    # Запис без збереженого посилання (історія до цієї зміни) лишається з
-    # нейтральним джерелом, тож таблетка просто не стає клікабельною.
     lviv_calls = [
-        c for c in pipeline.hset.call_args_list
-        if c.args and c.args[0] == "threat:alerts:city:lviv"
+        c for c in pipeline.hset.call_args_list if c.args and c.args[0] == "threat:alerts:city:lviv"
     ]
     assert lviv_calls[0].kwargs["mapping"]["source"] == "telegram"
 
     shelling_calls = [
-        c for c in pipeline.hset.call_args_list
+        c
+        for c in pipeline.hset.call_args_list
         if c.args and c.args[0] == "threat:shellings:nikopol"
     ]
     assert len(shelling_calls) == 1
@@ -435,7 +472,7 @@ def test_rehydrate_state_from_db(mock_web_pg, mock_web_redis):
 def test_rehydrate_state_from_db_logs_and_raises_on_error(mock_web_pg, caplog):
     caplog.set_level(logging.ERROR)
 
-    with patch('web.db.get_pg_conn', side_effect=OSError('pg down')):
+    with patch("web.db.get_pg_conn", side_effect=OSError("pg down")):
         with pytest.raises(OSError):
             rehydrate_state_from_db()
 
@@ -443,7 +480,6 @@ def test_rehydrate_state_from_db_logs_and_raises_on_error(mock_web_pg, caplog):
 
 
 class _FakePipeline:
-
     def __init__(self, store, sets=None):
         self._store = store
         self._sets = sets or {}
@@ -470,17 +506,52 @@ class _FakePipeline:
 @pytest.fixture
 def threats_store(mock_web_redis):
     store = {
-        'threat:alerts:kyiv': {'status': 'true', 'time': '10:00', 'source': 'telegram', 'updated_at': '1000'},
-        'threat:alerts:dnipropetrovsk_oblast': {'status': 'true', 'time': '11:00', 'source': 'tg-dnipro', 'updated_at': '1000'},
-        'threat:alerts:kherson_oblast': {'status': 'true', 'time': '12:00', 'source': 'tg-kherson', 'updated_at': '1000'},
-        'threat:alerts:lviv_oblast': {'status': 'false', 'time': '09:00', 'source': 'tg-lviv', 'updated_at': '1000'},
-        'threat:explosions:dnipropetrovsk_oblast': {'status': 'true', 'time': '11:30', 'source': 'ex-dnipro', 'updated_at': '1000'},
-        'threat:shellings:nikopol': {'status': 'true', 'time': '11:45', 'source': 'sh-nikopol', 'updated_at': '1000'},
-        'threat:shellings:kherson': {'status': 'false', 'time': '12:15', 'source': 'sh-kherson', 'updated_at': '1000'},
+        "threat:alerts:kyiv": {
+            "status": "true",
+            "time": "10:00",
+            "source": "telegram",
+            "updated_at": "1000",
+        },
+        "threat:alerts:dnipropetrovsk_oblast": {
+            "status": "true",
+            "time": "11:00",
+            "source": "tg-dnipro",
+            "updated_at": "1000",
+        },
+        "threat:alerts:kherson_oblast": {
+            "status": "true",
+            "time": "12:00",
+            "source": "tg-kherson",
+            "updated_at": "1000",
+        },
+        "threat:alerts:lviv_oblast": {
+            "status": "false",
+            "time": "09:00",
+            "source": "tg-lviv",
+            "updated_at": "1000",
+        },
+        "threat:explosions:dnipropetrovsk_oblast": {
+            "status": "true",
+            "time": "11:30",
+            "source": "ex-dnipro",
+            "updated_at": "1000",
+        },
+        "threat:shellings:nikopol": {
+            "status": "true",
+            "time": "11:45",
+            "source": "sh-nikopol",
+            "updated_at": "1000",
+        },
+        "threat:shellings:kherson": {
+            "status": "false",
+            "time": "12:15",
+            "source": "sh-kherson",
+            "updated_at": "1000",
+        },
     }
     sets = {
-        'threat:alerts:active:kyiv': {'kyiv'},
-        'threat:alerts:active:dnipropetrovsk_oblast': {'nikopol'},
+        "threat:alerts:active:kyiv": {"kyiv"},
+        "threat:alerts:active:dnipropetrovsk_oblast": {"nikopol"},
     }
     pipeline = _FakePipeline(store, sets)
     mock_web_redis.pipeline.return_value = pipeline
@@ -490,7 +561,7 @@ def threats_store(mock_web_redis):
 def test_get_all_threats_data_raises_and_logs_when_redis_is_down(threats_store, caplog):
     caplog.set_level(logging.ERROR)
 
-    with patch.object(threats_store, 'execute', side_effect=ConnectionError('redis down')):
+    with patch.object(threats_store, "execute", side_effect=ConnectionError("redis down")):
         with pytest.raises(ConnectionError):
             get_all_threats_data()
 
@@ -508,75 +579,77 @@ def test_get_all_threats_data_queries_every_table_and_oblast(threats_store):
 def test_get_all_threats_data_normalises_status(threats_store):
     result = get_all_threats_data()
 
-    assert result['kyiv']['alert']['status'] is True
-    assert result['kyiv']['alert']['time'] == '10:00'
-    assert result['kyiv']['alert']['updated_at'] == 1000
-    assert result['lviv_oblast']['alert']['status'] is False
+    assert result["kyiv"]["alert"]["status"] is True
+    assert result["kyiv"]["alert"]["time"] == "10:00"
+    assert result["kyiv"]["alert"]["updated_at"] == 1000
+    assert result["lviv_oblast"]["alert"]["status"] is False
 
 
 def test_get_all_threats_data_defaults_missing_keys(threats_store):
     result = get_all_threats_data()
 
-    assert result['crimea']['alert']['status'] is False
-    assert result['crimea']['alert']['updated_at'] == 0
-    assert result['crimea']['explosion']['status'] is False
-    assert result['crimea']['explosion']['updated_at'] == 0
+    assert result["crimea"]["alert"]["status"] is False
+    assert result["crimea"]["alert"]["updated_at"] == 0
+    assert result["crimea"]["explosion"]["status"] is False
+    assert result["crimea"]["explosion"]["updated_at"] == 0
 
 
-@pytest.mark.parametrize("city, parent_oblast", [
-    ('nikopol', 'dnipropetrovsk_oblast'),
-    ('kherson', 'kherson_oblast'),
-])
+@pytest.mark.parametrize(
+    "city, parent_oblast",
+    [
+        ("nikopol", "dnipropetrovsk_oblast"),
+        ("kherson", "kherson_oblast"),
+    ],
+)
 def test_get_all_threats_data_maps_cities_to_parent_oblast(threats_store, city, parent_oblast):
     result = get_all_threats_data()
 
-    assert result[city]['alert'] == result[parent_oblast]['alert']
-    assert result[city]['explosion'] == result[parent_oblast]['explosion']
+    assert result[city]["alert"] == result[parent_oblast]["alert"]
+    assert result[city]["explosion"] == result[parent_oblast]["explosion"]
 
 
 def test_get_all_threats_data_aggregates_shelling(threats_store):
     result = get_all_threats_data()
 
-    assert result['nikopol']['shelling']['status'] is True
-    assert result['kherson']['shelling']['status'] is False
-    assert result['dnipropetrovsk_oblast']['shelling']['status'] is True
-    assert result['kyiv']['shelling']['status'] is False
+    assert result["nikopol"]["shelling"]["status"] is True
+    assert result["kherson"]["shelling"]["status"] is False
+    assert result["dnipropetrovsk_oblast"]["shelling"]["status"] is True
+    assert result["kyiv"]["shelling"]["status"] is False
 
 
 def test_get_all_threats_data_coverage_partial(mock_web_redis):
     store = {
-        'threat:alerts:city:bucha': {'status': 'true', 'time': '12:00', 'updated_at': '100'},
+        "threat:alerts:city:bucha": {"status": "true", "time": "12:00", "updated_at": "100"},
     }
     sets = {
-        'threat:alerts:active:kyiv_oblast': {'bucha'},
+        "threat:alerts:active:kyiv_oblast": {"bucha"},
     }
     mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
     result = get_all_threats_data()
 
-    kyiv_obl = result['kyiv_oblast']
-    assert kyiv_obl['alert']['status'] is True
-    assert kyiv_obl['alert']['coverage'] == 'partial'
-    assert kyiv_obl['alert']['active_districts'] == ['bucha']
-    assert set(kyiv_obl['alert']['tracked_districts']) == set(DISTRICTS_BY_OBLAST['kyiv_oblast'])
-    assert 'bucha' in kyiv_obl['districts']
-    assert kyiv_obl['districts']['bucha']['alert']['status'] is True
+    kyiv_obl = result["kyiv_oblast"]
+    assert kyiv_obl["alert"]["status"] is True
+    assert kyiv_obl["alert"]["coverage"] == "partial"
+    assert kyiv_obl["alert"]["active_districts"] == ["bucha"]
+    assert set(kyiv_obl["alert"]["tracked_districts"]) == set(DISTRICTS_BY_OBLAST["kyiv_oblast"])
+    assert "bucha" in kyiv_obl["districts"]
+    assert kyiv_obl["districts"]["bucha"]["alert"]["status"] is True
 
 
 def test_get_all_threats_data_coverage_full(mock_web_redis):
     store = {}
-    # 'full' тепер означає саме всю область, а не всі мої канали в ній.
     sets = {
-        'threat:alerts:active:volyn_oblast': set(DISTRICTS_BY_OBLAST['volyn_oblast']),
-        'threat:alerts:active:lviv_oblast': set(DISTRICTS_BY_OBLAST['lviv_oblast']),
+        "threat:alerts:active:volyn_oblast": set(DISTRICTS_BY_OBLAST["volyn_oblast"]),
+        "threat:alerts:active:lviv_oblast": set(DISTRICTS_BY_OBLAST["lviv_oblast"]),
     }
     mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
     result = get_all_threats_data()
 
-    assert result['volyn_oblast']['alert']['coverage'] == 'full'
-    assert result['lviv_oblast']['alert']['coverage'] == 'full'
-    assert result['crimea']['alert']['coverage'] == 'none'
-    assert result['crimea']['alert']['active_districts'] == []
-    assert result['crimea']['alert']['tracked_districts'] == []
+    assert result["volyn_oblast"]["alert"]["coverage"] == "full"
+    assert result["lviv_oblast"]["alert"]["coverage"] == "full"
+    assert result["crimea"]["alert"]["coverage"] == "none"
+    assert result["crimea"]["alert"]["active_districts"] == []
+    assert result["crimea"]["alert"]["tracked_districts"] == []
 
 
 def test_get_all_threats_data_carries_district_names(mock_web_redis):
@@ -584,13 +657,10 @@ def test_get_all_threats_data_carries_district_names(mock_web_redis):
     mock_web_redis.pipeline.return_value = _FakePipeline({}, {})
     result = get_all_threats_data()
 
-    districts = result['kyiv_oblast']['districts']
-    assert districts['bucha']['name'] == 'Бучанський район'
-    assert districts['vyshhorod']['name'] == 'Вишгородський район'
-    assert all(
-        entry['name'] == DISTRICT_CONFIG[key]['name']
-        for key, entry in districts.items()
-    )
+    districts = result["kyiv_oblast"]["districts"]
+    assert districts["bucha"]["name"] == "Бучанський район"
+    assert districts["vyshhorod"]["name"] == "Вишгородський район"
+    assert all(entry["name"] == DISTRICT_CONFIG[key]["name"] for key, entry in districts.items())
 
 
 def test_get_all_threats_data_covers_every_district(mock_web_redis):
@@ -598,7 +668,7 @@ def test_get_all_threats_data_covers_every_district(mock_web_redis):
     mock_web_redis.pipeline.return_value = _FakePipeline({}, {})
     result = get_all_threats_data()
 
-    tracked = {key for oblast in DISTRICTS_BY_OBLAST for key in result[oblast]['districts']}
+    tracked = {key for oblast in DISTRICTS_BY_OBLAST for key in result[oblast]["districts"]}
     assert tracked == set(DISTRICT_CONFIG)
     assert set(REGION_CONFIG) < tracked
 
@@ -606,37 +676,33 @@ def test_get_all_threats_data_covers_every_district(mock_web_redis):
 def test_get_all_threats_data_filters_untracked_from_active_districts(mock_web_redis):
     store = {}
     sets = {
-        'threat:alerts:active:kyiv_oblast': {'bucha', 'nonexistent_district'},
+        "threat:alerts:active:kyiv_oblast": {"bucha", "nonexistent_district"},
     }
     mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
     result = get_all_threats_data()
 
-    assert result['kyiv_oblast']['alert']['active_districts'] == ['bucha']
-    assert result['kyiv_oblast']['alert']['coverage'] == 'partial'
+    assert result["kyiv_oblast"]["alert"]["active_districts"] == ["bucha"]
+    assert result["kyiv_oblast"]["alert"]["coverage"] == "partial"
 
 
 def test_aggregate_shelling_selects_latest():
-    from web.db import _aggregate_shelling, DEFAULT_THREAT
+    from web.db import DEFAULT_THREAT, _aggregate_shelling
 
     districts_empty = {}
     assert _aggregate_shelling(districts_empty) == DEFAULT_THREAT
 
     districts_no_active = {
-        'd1': {'shelling': {'status': False, 'time': '10:00', 'updated_at': 50}},
+        "d1": {"shelling": {"status": False, "time": "10:00", "updated_at": 50}},
     }
     assert _aggregate_shelling(districts_no_active) == DEFAULT_THREAT
 
     districts_multi = {
-        'd1': {'shelling': {'status': True, 'time': '10:00', 'source': 's1', 'updated_at': 100}},
-        'd2': {'shelling': {'status': True, 'time': '11:00', 'source': 's2', 'updated_at': 200}},
-        'd3': {'shelling': {'status': False, 'time': '12:00', 'source': 's3', 'updated_at': 300}},
+        "d1": {"shelling": {"status": True, "time": "10:00", "source": "s1", "updated_at": 100}},
+        "d2": {"shelling": {"status": True, "time": "11:00", "source": "s2", "updated_at": 200}},
+        "d3": {"shelling": {"status": False, "time": "12:00", "source": "s3", "updated_at": 300}},
     }
     agg = _aggregate_shelling(districts_multi)
-    assert agg['status'] is True
-    assert agg['time'] == '11:00'
-    assert agg['source'] == 's2'
-    assert agg['updated_at'] == 200
-
-
-
-
+    assert agg["status"] is True
+    assert agg["time"] == "11:00"
+    assert agg["source"] == "s2"
+    assert agg["updated_at"] == 200

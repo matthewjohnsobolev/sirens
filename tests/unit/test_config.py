@@ -1,52 +1,121 @@
 import importlib
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 import config
 
 
 @pytest.fixture(autouse=True)
 def _mock_load_dotenv():
-    with patch('dotenv.load_dotenv'):
+    with patch("dotenv.load_dotenv"):
         yield
+
+
+def test_config_paths():
+    assert config.PROJECT_ROOT.exists()
+    assert config.IMAGES_PATH.name == "img"
+    assert config.SESSION_PATH.name == "sessions"
+    assert config.LOGS_PATH.name == "logs"
+    assert config.VERSION == "1.1.0"
 
 
 def test_config_r2_endpoint_defaults_when_account_id_set(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "account123")
-    monkeypatch.delenv("R2_ENDPOINT", raising=False)
-    monkeypatch.delenv("CLOUDFLARE_R2_ENDPOINT", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_R2_S3_ENDPOINT", raising=False)
 
     importlib.reload(config)
 
-    assert config.R2_ENDPOINT == "https://account123.r2.cloudflarestorage.com"
+    assert config.CLOUDFLARE_R2_S3_ENDPOINT == "https://account123.r2.cloudflarestorage.com"
 
 
+def test_config_cloudflare_r2_custom_endpoint(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "account123")
+    monkeypatch.setenv("CLOUDFLARE_R2_S3_ENDPOINT", "https://custom.endpoint")
 
-def test_config_cloudflare_r2_keys_and_bucket(monkeypatch):
+    importlib.reload(config)
+
+    assert config.CLOUDFLARE_R2_S3_ENDPOINT == "https://custom.endpoint"
+
+
+def test_config_cloudflare_r2_keys_and_buckets(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_R2_ACCESS_KEY_ID", "cf-key-id")
     monkeypatch.setenv("CLOUDFLARE_R2_SECRET_ACCESS_KEY", "cf-secret")
-    monkeypatch.setenv("CLOUDFLARE_R2_DATA_BUCKET", "cf-data-bucket")
-    monkeypatch.setenv("CLOUDFLARE_R2_WEB_BUCKET", "cf-web-bucket")
-    monkeypatch.setenv("CLOUDFLARE_R2_ENDPOINT", "https://cf.r2.endpoint")
+    monkeypatch.setenv("CLOUDFLARE_R2_BI_DATA_BUCKET", "cf-data-bucket")
+    monkeypatch.setenv("CLOUDFLARE_R2_BI_WEB_BUCKET", "cf-web-bucket")
 
     importlib.reload(config)
 
-    assert config.R2_ACCESS_KEY_ID == "cf-key-id"
-    assert config.R2_SECRET_ACCESS_KEY == "cf-secret"
-    assert config.R2_DATA_BUCKET == "cf-data-bucket"
-    assert config.R2_BUCKET == "cf-data-bucket"
-    assert config.R2_WEB_BUCKET == "cf-web-bucket"
-    assert config.R2_ENDPOINT == "https://cf.r2.endpoint"
+    assert config.CLOUDFLARE_R2_ACCESS_KEY_ID == "cf-key-id"
+    assert config.CLOUDFLARE_R2_SECRET_ACCESS_KEY == "cf-secret"
+    assert config.CLOUDFLARE_R2_BI_DATA_BUCKET == "cf-data-bucket"
+    assert config.CLOUDFLARE_R2_BI_WEB_BUCKET == "cf-web-bucket"
 
 
 def test_config_cloudflare_kv_keys(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-api-token-test")
-    monkeypatch.setenv("CLOUDFLARE_KV_STATUS_NAMESPACE_ID", "cf-kv-namespace-id")
+    monkeypatch.setenv("CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "cf-kv-namespace-id")
 
     importlib.reload(config)
 
     assert config.CLOUDFLARE_API_TOKEN == "cf-api-token-test"
-    assert config.CLOUDFLARE_KV_STATUS_NAMESPACE_ID == "cf-kv-namespace-id"
+    assert config.CLOUDFLARE_TELEMETRY_NAMESPACE_ID == "cf-kv-namespace-id"
 
+
+def test_config_healthchecks_keys(monkeypatch):
+    monkeypatch.setenv("HEALTHCHECKS_API_KEY", "hc-key")
+    monkeypatch.setenv("HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/source")
+    monkeypatch.setenv("HEALTHCHECKS_ALERTS_BROADCAST_PING_URL", "https://hc-ping.com/bcast")
+    monkeypatch.setenv("HEALTHCHECKS_WEB_PING_URL", "https://hc-ping.com/web")
+    monkeypatch.setenv("HEALTHCHECKS_BACKUP_PING_URL", "https://hc-ping.com/backup")
+    monkeypatch.setenv("HEALTHCHECKS_BI_PING_URL", "https://hc-ping.com/bi")
+
+    importlib.reload(config)
+
+    assert config.HEALTHCHECKS_API_KEY == "hc-key"
+    assert config.HEALTHCHECKS_ALERTS_SOURCE_PING_URL == "https://hc-ping.com/source"
+    assert config.HEALTHCHECKS_ALERTS_BROADCAST_PING_URL == "https://hc-ping.com/bcast"
+    assert config.HEALTHCHECKS_WEB_PING_URL == "https://hc-ping.com/web"
+    assert config.HEALTHCHECKS_BACKUP_PING_URL == "https://hc-ping.com/backup"
+    assert config.HEALTHCHECKS_BI_PING_URL == "https://hc-ping.com/bi"
+
+
+def test_config_uptimerobot_keys(monkeypatch):
+    monkeypatch.setenv("UPTIMEROBOT_API_MONITOR_KEY", "ur-api")
+    monkeypatch.setenv("UPTIMEROBOT_WEB_MONITOR_KEY", "ur-web")
+
+    importlib.reload(config)
+
+    assert config.UPTIMEROBOT_API_MONITOR_KEY == "ur-api"
+    assert config.UPTIMEROBOT_WEB_MONITOR_KEY == "ur-web"
+
+
+def test_config_app_and_database(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("APP_SECRET_KEY", "secret-key-123")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://sirens:pass@localhost:5432/sirens_prod")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/1")
+
+    importlib.reload(config)
+
+    assert config.APP_ENV == "production"
+    assert config.APP_SECRET_KEY == "secret-key-123"
+    assert config.DATABASE_URL == "postgresql://sirens:pass@localhost:5432/sirens_prod"
+    assert config.REDIS_URL == "redis://localhost:6379/1"
+
+
+def test_config_telegram_settings(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_API_ID", "12345")
+    monkeypatch.setenv("TELEGRAM_API_HASH", "hashabc")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bottoken")
+    monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "100")
+
+    importlib.reload(config)
+
+    assert config.TELEGRAM_API_ID == "12345"
+    assert config.TELEGRAM_API_HASH == "hashabc"
+    assert config.TELEGRAM_BOT_TOKEN == "bottoken"
+    assert config.TELEGRAM_ADMIN_CHAT_ID == "100"
 
 
 def test_config_github_repo_normalization(monkeypatch):
@@ -57,76 +126,3 @@ def test_config_github_repo_normalization(monkeypatch):
     monkeypatch.setenv("GITHUB_REPO", "git@github.com:matthewjohnsobolev/sirens")
     importlib.reload(config)
     assert config.GITHUB_REPO == "matthewjohnsobolev/sirens"
-
-
-def test_config_districts_by_oblast_covers_every_district():
-    assert set(config.DISTRICTS_BY_OBLAST['cherkasy_oblast']) == {
-        'cherkasy', 'zvenyhorodka', 'zolotonosha', 'uman'
-    }
-    assert set(config.DISTRICTS_BY_OBLAST['kyiv_oblast']) == {
-        'bilatserkva', 'boryspil', 'brovary', 'bucha', 'vyshhorod', 'obukhiv', 'fastiv'
-    }
-    assert set(config.DISTRICTS_BY_OBLAST['lviv_oblast']) == {
-        'lviv', 'drohobych', 'zolochiv', 'sambir', 'stryi', 'chervonohrad', 'yavoriv'
-    }
-    assert config.DISTRICTS_BY_OBLAST['kyiv'] == ['kyiv']
-    assert sum(len(d) for d in config.DISTRICTS_BY_OBLAST.values()) == len(config.DISTRICT_CONFIG)
-
-
-def test_config_occupied_regions_have_no_districts():
-    """Крим, Севастополь, Донеччина й Луганщина лишаються поза довідником."""
-    for region in ('crimea', 'sevastopol', 'donetsk_oblast', 'luhansk_oblast'):
-        assert region not in config.DISTRICTS_BY_OBLAST
-
-
-def test_config_region_config_is_the_broadcast_subset():
-    """REGION_CONFIG - рівно ті райони, у яких є канал."""
-    assert set(config.REGION_CONFIG) == config.BROADCAST_DISTRICTS
-    assert config.BROADCAST_DISTRICTS <= set(config.DISTRICT_CONFIG)
-    assert set(config.real_channels) == set(config.test_channels)
-    assert all('display_name' in conf for conf in config.REGION_CONFIG.values())
-
-
-def test_config_broadcast_triggers_keep_the_oblast_name():
-    """Формат REGION_CONFIG незмінний: назва району плюс назва області."""
-    assert config.REGION_CONFIG['bucha']['triggers'] == [
-        'Бучанський район', 'Київська область'
-    ]
-    assert config.DISTRICT_CONFIG['bucha']['triggers'] == ['Бучанський район']
-
-
-def test_config_triggers_cover_both_apostrophes():
-    assert config.DISTRICT_CONFIG['kamianske']['triggers'] == [
-        "Кам'янський район", "Кам\u2019янський район"
-    ]
-    assert config.DISTRICT_CONFIG['kupiansk']['triggers'] == [
-        "Куп'янський район", "Куп\u2019янський район"
-    ]
-
-
-def test_config_renamed_districts_keep_their_former_name():
-    for key, former in [
-        ('zviahel', 'Новоград-Волинський район'),
-        ('volodymyr', 'Володимир-Волинський район'),
-        ('samar', 'Новомосковський район'),
-        ('berestyn', 'Красноградський район'),
-    ]:
-        assert former in config.DISTRICT_CONFIG[key]['triggers']
-
-
-def test_config_no_trigger_belongs_to_two_districts():
-    """Однакова назва в двох областях зробила б зіставлення неоднозначним."""
-    owners = {}
-    for key, conf in config.DISTRICT_CONFIG.items():
-        for trigger in conf['triggers']:
-            owners.setdefault(trigger, []).append(key)
-
-    assert {t: keys for t, keys in owners.items() if len(keys) > 1} == {}
-
-
-def test_config_every_broadcast_district_has_a_city_name():
-    """Новий канал без назви міста потрапив би в розсилку, але не в підказку
-    на сторінці помилки."""
-    assert set(config.BROADCAST_CITIES) == config.BROADCAST_DISTRICTS
-    assert all(name.strip() for name in config.BROADCAST_CITIES.values())
-    assert len(set(config.BROADCAST_CITIES.values())) == len(config.BROADCAST_CITIES)

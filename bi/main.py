@@ -8,10 +8,10 @@ README.md.
 """
 
 import asyncio
-import datetime
-import logging
 import csv
+import datetime
 import io
+import logging
 import os
 import sys
 from typing import NamedTuple
@@ -21,17 +21,27 @@ import boto3
 import requests
 import sentry_sdk
 from sentry_sdk.integrations.logging import LoggingIntegration
-
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from telethon.tl.functions.channels import GetFullChannelRequest
 
 from bi import cli
 from config import (
-    api_id, api_hash, SESSION_PATH, DATABASE_URL, SENTRY_DSN, VERSION,
-    REGION_CONFIG, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, CLOUDFLARE_ACCOUNT_ID,
-    R2_DATA_BUCKET, R2_BUCKET, R2_ENDPOINT, GITHUB_PAT, GITHUB_REPO
+    CLOUDFLARE_ACCOUNT_ID,
+    CLOUDFLARE_R2_ACCESS_KEY_ID,
+    CLOUDFLARE_R2_BI_DATA_BUCKET,
+    CLOUDFLARE_R2_S3_ENDPOINT,
+    CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    DATABASE_URL,
+    GITHUB_PAT,
+    GITHUB_REPO,
+    SENTRY_DSN,
+    SESSION_PATH,
+    TELEGRAM_API_HASH,
+    TELEGRAM_API_ID,
+    VERSION,
 )
+from domain import REGION_CONFIG
 from web.db import ensure_pg_tables
 
 logging.basicConfig(
@@ -88,12 +98,17 @@ async def fetch_subscribers(client: TelegramClient, channel_id: int) -> int | No
             if e.seconds > MAX_FLOOD_WAIT:
                 log.error(
                     "Rate-limited on channel %d for %ds, past the %ds cap; skipping it",
-                    channel_id, e.seconds, MAX_FLOOD_WAIT
+                    channel_id,
+                    e.seconds,
+                    MAX_FLOOD_WAIT,
                 )
                 return None
             log.warning(
                 "Rate-limited on channel %d (attempt %d/%d), waiting %ds",
-                channel_id, attempt, MAX_ATTEMPTS, e.seconds
+                channel_id,
+                attempt,
+                MAX_ATTEMPTS,
+                e.seconds,
             )
             await asyncio.sleep(e.seconds)
         except Exception:
@@ -123,10 +138,7 @@ async def collect(client: TelegramClient, channels: dict) -> list[ChannelCount]:
 
 async def store(pool, counts: list[ChannelCount]) -> None:
     now = datetime.datetime.now().replace(microsecond=0)
-    rows = [
-        (c.channel_key, c.channel_id, c.subscribers, now.date(), now)
-        for c in counts
-    ]
+    rows = [(c.channel_key, c.channel_id, c.subscribers, now.date(), now) for c in counts]
 
     async with pool.acquire() as conn:
         await conn.executemany(INSERT_SQL, rows)
@@ -169,21 +181,32 @@ export_subscribers_csv = export_stats_csv
 
 
 def upload_to_r2(csv_content: str) -> None:
-    if not (R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and (R2_ENDPOINT or CLOUDFLARE_ACCOUNT_ID)):
+    if not (
+        CLOUDFLARE_R2_ACCESS_KEY_ID
+        and CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        and (CLOUDFLARE_R2_S3_ENDPOINT or CLOUDFLARE_ACCOUNT_ID)
+    ):
         log.warning("R2 credentials not set; skipping upload to R2")
         return
 
-    endpoint = R2_ENDPOINT or f"https://{CLOUDFLARE_ACCOUNT_ID}.eu.r2.cloudflarestorage.com"
+    endpoint = (
+        CLOUDFLARE_R2_S3_ENDPOINT or f"https://{CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+    )
     s3_client = boto3.client(
         "s3",
         endpoint_url=endpoint,
-        aws_access_key_id=R2_ACCESS_KEY_ID,
-        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        aws_access_key_id=CLOUDFLARE_R2_ACCESS_KEY_ID,
+        aws_secret_access_key=CLOUDFLARE_R2_SECRET_ACCESS_KEY,
         region_name="auto",
     )
-    bucket = R2_DATA_BUCKET or R2_BUCKET
+    bucket = CLOUDFLARE_R2_BI_DATA_BUCKET
     key = "subscribers.csv"
-    log.info("Uploading subscribers CSV to s3://%s/%s (%d bytes)", bucket, key, len(csv_content.encode("utf-8")))
+    log.info(
+        "Uploading subscribers CSV to s3://%s/%s (%d bytes)",
+        bucket,
+        key,
+        len(csv_content.encode("utf-8")),
+    )
     s3_client.put_object(
         Bucket=bucket,
         Key=key,
@@ -210,7 +233,9 @@ def trigger_dashboard_build() -> None:
         if resp.status_code in (204, 201, 200):
             log.info("Triggered GitHub Actions dashboard workflow successfully")
         else:
-            log.warning("Failed to trigger dashboard workflow (HTTP %d): %s", resp.status_code, resp.text)
+            log.warning(
+                "Failed to trigger dashboard workflow (HTTP %d): %s", resp.status_code, resp.text
+            )
     except Exception:
         log.exception("Exception while triggering GitHub Actions dashboard workflow")
 
@@ -229,17 +254,15 @@ async def run_snapshot(client: TelegramClient, pool, channels: dict) -> int:
             "Snapshot reached only %d of %d channels; discarding it rather than "
             "storing a day that reads as a subscriber collapse. Re-running fills "
             "the day in once the cause is fixed",
-            len(counts), expected
+            len(counts),
+            expected,
         )
         return 1
 
     await store(pool, counts)
 
     total = sum(c.subscribers for c in counts)
-    log.info(
-        "Snapshot done: %d/%d channels, %d subscribers in total",
-        len(counts), expected, total
-    )
+    log.info("Snapshot done: %d/%d channels, %d subscribers in total", len(counts), expected, total)
 
     csv_data = await export_stats_csv(pool)
     await asyncio.to_thread(upload_to_r2, csv_data)
@@ -266,7 +289,7 @@ async def main() -> int:
     session_file = os.path.join(SESSION_PATH, SESSION_NAME)
 
     try:
-        async with TelegramClient(session_file, api_id, api_hash) as client:
+        async with TelegramClient(session_file, TELEGRAM_API_ID, TELEGRAM_API_HASH) as client:
             await asyncio.to_thread(ensure_pg_tables)
             pool = await asyncpg.create_pool(DATABASE_URL)
             try:
@@ -275,8 +298,9 @@ async def main() -> int:
                 await pool.close()
     except EOFError:
         log.error(
-            "Telegram session '%s' is missing or expired; create it with "
-            "./deploy/setup.sh %s", SESSION_NAME, SESSION_NAME
+            "Telegram session '%s' is missing or expired; create it with " "./deploy/setup.sh %s",
+            SESSION_NAME,
+            SESSION_NAME,
         )
         return 1
 

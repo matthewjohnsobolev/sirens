@@ -97,9 +97,31 @@ def test_config_app_and_database(monkeypatch):
 
     importlib.reload(config)
 
-    assert config.APP_ENV == "production"
+    assert config.APP_ENV == "prod"
     assert config.DATABASE_URL == "postgresql://sirens:pass@localhost:5432/sirens_prod"
     assert config.REDIS_URL == "redis://localhost:6379/1"
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [("dev", "dev"), ("development", "dev"), ("prod", "prod"), ("PRODUCTION", "prod"), ("", "dev")],
+)
+def test_config_app_env_normalizes_spellings(monkeypatch, raw, expected):
+    monkeypatch.setenv("APP_ENV", raw)
+
+    importlib.reload(config)
+
+    assert config.APP_ENV == expected
+
+
+def test_config_app_env_rejects_unknown_value(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "staging")
+
+    with pytest.raises(ValueError, match="APP_ENV"):
+        importlib.reload(config)
+
+    monkeypatch.setenv("APP_ENV", "dev")
+    importlib.reload(config)
 
 
 def test_config_telegram_settings(monkeypatch):

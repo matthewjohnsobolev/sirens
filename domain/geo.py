@@ -268,6 +268,48 @@ OBLAST_TRIGGERS = {
     "zhytomyr_oblast": ["Житомирська область"],
 }
 
+LOCATION_LOCATIVE = {
+    "bilatserkva": "у Білій Церкві",
+    "bucha": "у Бучі",
+    "cherkasy": "у Черкасах",
+    "chernihiv": "у Чернігові",
+    "chernivtsi": "у Чернівцях",
+    "dnipro": "у Дніпрі",
+    "fastiv": "у Фастові",
+    "ivanofrankivsk": "в Івано-Франківську",
+    "izmail": "в Ізмаїлі",
+    "kamianske": "у Кам'янському",
+    "kharkiv": "у Харкові",
+    "kherson": "у Херсоні",
+    "khmelnytskyi": "у Хмельницькому",
+    "kovel": "у Ковелі",
+    "kremenchuk": "у Кременчуці",
+    "kropyvnytskyi": "у Кропивницькому",
+    "kryvyirih": "у Кривому Розі",
+    "kyiv": "у Києві",
+    "lutsk": "у Луцьку",
+    "lviv": "у Львові",
+    "mykolaiv": "у Миколаєві",
+    "nikopol": "у Нікополі",
+    "odesa": "в Одесі",
+    "pervomaisk": "у Первомайську",
+    "poltava": "у Полтаві",
+    "rivne": "у Рівному",
+    "sumy": "у Сумах",
+    "ternopil": "у Тернополі",
+    "uman": "в Умані",
+    "uzhhorod": "в Ужгороді",
+    "vinnytsia": "у Вінниці",
+    "zaporizhzhia": "у Запоріжжі",
+    "zhytomyr": "у Житомирі",
+    "zolotonosha": "у Золотоноші",
+    "zvenyhorodka": "у Звенигородці",
+    "boryspil": "у Борисполі",
+    "brovary": "у Броварах",
+    "vyshhorod": "у Вишгороді",
+    "obukhiv": "в Обухові",
+}
+
 DISTRICTS_BY_OBLAST = {}
 for district_key, conf in DISTRICT_CONFIG.items():
     DISTRICTS_BY_OBLAST.setdefault(conf["oblast"], []).append(district_key)

@@ -38,10 +38,14 @@ Create a `.env` file in the root directory of the project based on `.env.example
 TELEGRAM_API_ID=your_api_id
 TELEGRAM_API_HASH=your_api_hash
 
-# Application Mode (dev or prod)
-APP_MODE=prod
+# Application environment: dev (test channels) or prod (real channels).
+# docker-compose also passes it to the workers as their -m run mode.
+APP_ENV=prod
 
 # PostgreSQL Credentials (Required for Docker)
+# docker-compose initializes the volume with these and builds DATABASE_URL
+# from them, so changing them after the first start means recreating the
+# volume - or the app authenticates as a role postgres does not have.
 POSTGRES_USER=admin
 POSTGRES_PASSWORD=your_db_password
 POSTGRES_DB=sirens

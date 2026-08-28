@@ -14,6 +14,7 @@ from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 from config import (
+    APP_ENV,
     HEALTHCHECKS_WEB_PING_URL,
     LOGS_PATH,
     SENTRY_DSN,
@@ -267,7 +268,7 @@ def _report_to_sentry(report: dict[str, str]) -> bool:
         log.info(
             "Issue report forwarded to Sentry: event_id=%s environment=%s",
             event_id,
-            os.environ.get("APP_MODE", "dev"),
+            APP_ENV,
         )
         return True
     except Exception:
@@ -377,7 +378,7 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
             FlaskIntegration(),
             LoggingIntegration(level=logging.INFO, event_level=logging.WARNING),
         ],
-        environment=os.environ.get("APP_MODE", "dev"),
+        environment=APP_ENV,
         release=VERSION,
         traces_sample_rate=0.0,
         send_default_pii=False,
@@ -415,5 +416,5 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    debug_mode = os.environ.get("APP_MODE") == "dev"
+    debug_mode = APP_ENV == "dev"
     app.run(host="0.0.0.0", debug=debug_mode, port=5000)

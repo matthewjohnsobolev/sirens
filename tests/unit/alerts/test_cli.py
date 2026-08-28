@@ -16,6 +16,9 @@ from domain import real_channels, test_channels
         (["sirens.py", "--mode", "dev"], "dev"),
         (["sirens.py", "-m", "prod"], "prod"),
         (["sirens.py", "--mode", "prod"], "prod"),
+        (["sirens.py", "-m", "production"], "prod"),
+        (["sirens.py", "-m", "development"], "dev"),
+        (["sirens.py", "-m", "PROD"], "prod"),
     ],
 )
 def test_get_args_parses_mode(argv, expected_mode):

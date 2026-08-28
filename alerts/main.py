@@ -56,6 +56,7 @@ from domain import (
     BROADCAST_CITIES,
     BROADCAST_DISTRICTS,
     DISTRICT_CONFIG,
+    LOCATION_LOCATIVE,
     MESSAGES,
     OBLAST_TRIGGERS,
 )
@@ -166,49 +167,6 @@ def district_label(district_key: str) -> str:
     if not conf:
         return district_key.capitalize()
     return conf.get("display_name") or conf["name"]
-
-
-LOCATION_LOCATIVE = {
-    "bilatserkva": "у Білій Церкві",
-    "bucha": "у Бучі",
-    "cherkasy": "у Черкасах",
-    "chernihiv": "у Чернігові",
-    "chernivtsi": "у Чернівцях",
-    "dnipro": "у Дніпрі",
-    "fastiv": "у Фастові",
-    "ivanofrankivsk": "в Івано-Франківську",
-    "izmail": "в Ізмаїлі",
-    "kamianske": "у Кам'янському",
-    "kharkiv": "у Харкові",
-    "kherson": "у Херсоні",
-    "khmelnytskyi": "у Хмельницькому",
-    "kovel": "у Ковелі",
-    "kremenchuk": "у Кременчуці",
-    "kropyvnytskyi": "у Кропивницькому",
-    "kryvyirih": "у Кривому Розі",
-    "kyiv": "у Києві",
-    "lutsk": "у Луцьку",
-    "lviv": "у Львові",
-    "mykolaiv": "у Миколаєві",
-    "nikopol": "у Нікополі",
-    "odesa": "в Одесі",
-    "pervomaisk": "у Первомайську",
-    "poltava": "у Полтаві",
-    "rivne": "у Рівному",
-    "sumy": "у Сумах",
-    "ternopil": "у Тернополі",
-    "uman": "в Умані",
-    "uzhhorod": "в Ужгороді",
-    "vinnytsia": "у Вінниці",
-    "zaporizhzhia": "у Запоріжжі",
-    "zhytomyr": "у Житомирі",
-    "zolotonosha": "у Золотоноші",
-    "zvenyhorodka": "у Звенигородці",
-    "boryspil": "у Борисполі",
-    "brovary": "у Броварах",
-    "vyshhorod": "у Вишгороді",
-    "obukhiv": "в Обухові",
-}
 
 
 def city_or_district_name(district_key: str) -> str:

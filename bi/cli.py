@@ -1,6 +1,6 @@
 import argparse
 
-from config import VERSION
+from config import APP_ENV_ALIASES, VERSION
 from domain import real_channels, test_channels
 
 FULL_HELP = """Sirens BI - subscriber counts across the network
@@ -40,12 +40,17 @@ class CustomHelpFormatter(argparse.HelpFormatter):
         return FULL_HELP
 
 
+def normalize_mode(value):
+    return APP_ENV_ALIASES.get(value.strip().lower(), value)
+
+
 def get_args():
     parser = argparse.ArgumentParser(formatter_class=CustomHelpFormatter, add_help=False)
 
     parser.add_argument(
         "-m",
         "--mode",
+        type=normalize_mode,
         choices=["prod", "dev"],
         default="dev",
         help="Run mode: dev (test channels) or prod (real channels)",

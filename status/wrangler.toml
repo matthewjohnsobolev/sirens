@@ -3,10 +3,10 @@ pages_build_output_dir = "public"
 compatibility_date = "2024-05-12"
 
 [vars]
-HEALTHCHECKS_SLUG_ALERTS_SOURCE = "sirens-alerts-source"
-HEALTHCHECKS_SLUG_ALERTS_BROADCAST = "sirens-alerts-broadcast"
+HEALTHCHECKS_ALERTS_SOURCE_SLUG = "sirens-alerts-source"
+HEALTHCHECKS_ALERTS_BROADCAST_SLUG = "sirens-alerts-broadcast"
 STATUS_START_DATE = "2023-01-01"
 
 [[kv_namespaces]]
 binding = "TELEMETRY"
-id = "b5d43aca2b594634a6247f043e7b0f17"
+id = "396e291acf1d4fb390fc18d5e3685ad3"

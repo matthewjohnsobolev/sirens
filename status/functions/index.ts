@@ -49,7 +49,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const url = new URL(request.url);
     const mockParam = url.searchParams.get("mock");
 
-    // If explicit ?mock= is requested
     if (mockParam) {
         const mockData = getMockStatusData(mockParam, new Date());
         const html = renderHtml(mockData);
@@ -70,7 +69,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         try {
             const data = await computeStatusData(env);
             if (!data) {
-                // Return styled fallback page with 503 without caching error
                 const fallbackHtml = renderHtml(getFallbackStatusData(new Date()));
                 return new Response(fallbackHtml, {
                     status: 503,
@@ -86,11 +84,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             response = new Response(html, {
                 headers: {
                     ...SECURITY_HEADERS,
-                    "Cache-Control": "public, max-age=60" // 1-minute edge cache
+                    "Cache-Control": "public, max-age=60"
                 }
             });
             
-            // Wait to put it into the cache
             context.waitUntil(cache.put(cacheKey, response.clone()));
             
         } catch (error) {

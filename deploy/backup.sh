@@ -1,38 +1,4 @@
 #!/usr/bin/env bash
-#
-# Sirens database backup. Non-interactive — designed for cron, never waits
-# for input: either uploads a verified dump or exits non-zero with a reason.
-#
-# Dumps the Postgres database from the running `db` container, gzips it,
-# verifies the archive, uploads it to OCI Object Storage through a
-# Pre-Authenticated Request (PAR) URL, and prunes old local copies.
-#
-# Requires in .env:
-#
-#   POSTGRES_USER, POSTGRES_PASSWORD   # already needed by docker-compose
-#   OCI_PAR_URL                        # PAR with "Object write" on the bucket
-#
-# Optional in .env:
-#
-#   HEALTHCHECKS_PING_URL_BACKUP       # healthchecks.io monitor for this job
-#
-# Usage (run on the VPS from the project directory):
-#
-#   ./deploy/backup.sh                 # dump -> upload -> prune
-#   SKIP_UPLOAD=1 ./deploy/backup.sh   # local dump only (for testing)
-#   KEEP_LOCAL=12 ./deploy/backup.sh   # keep 12 local dumps instead of 6
-#
-# Install as a cron job (every 4 hours — 24 is divisible by 4, so the gaps
-# stay even; with KEEP_LOCAL=6 the local copies cover exactly one day):
-#
-#   crontab -e
-#   0 */4 * * * cd /sirens && ./deploy/backup.sh >> logs/backup.log 2>&1
-#
-# Restore a dump into a fresh database:
-#
-#   gunzip -c backups/sirens-20260814-030000Z.sql.gz \
-#     | docker compose exec -T db psql -U "$POSTGRES_USER" -d sirens
-#
 set -euo pipefail
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:${PATH:-}"

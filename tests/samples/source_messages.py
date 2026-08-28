@@ -138,9 +138,7 @@ def region_sample(region, district, alert_time="12:00", cancellation_time="13:00
 
 
 MESSAGES_SAMPLES = (
-    # --- Kyiv ---
     region_sample("kyiv", "м. Київ", "04:31", "05:24"),
-    # --- Central ---
     region_sample("cherkasy", "Черкаський район", "10:08", "11:06"),
     region_sample("uman", "Уманський район", "19:53", "21:11"),
     region_sample("zvenyhorodka", "Звенигородський район", "17:44", "18:49"),
@@ -151,26 +149,21 @@ MESSAGES_SAMPLES = (
     region_sample("kremenchuk", "Кременчуцький район", "12:57", "14:34"),
     region_sample("vinnytsia", "Вінницький район", "14:34", "16:26"),
     region_sample("zhytomyr", "Житомирський район", "12:44", "13:56"),
-    # --- Kyiv region ---
     region_sample("bilatserkva", "Білоцерківський район", "20:26", "21:56"),
     region_sample("bucha", "Бучанський район", "19:53", "20:59"),
     region_sample("fastiv", "Фастівський район", "19:27", "21:02"),
-    # --- Northeast ---
     region_sample("kharkiv", "м. Харків", "22:42", "23:18"),
     region_sample("sumy", "Сумський район", "06:12", "06:55"),
-    # --- East ---
     region_sample("zaporizhzhia", "м. Запоріжжя", "18:07", "18:47"),
     region_sample("dnipro", "Дніпровський район", "00:21", "01:29"),
     region_sample("kryvyirih", "Криворізький район", "05:03", "06:46"),
     region_sample("kamianske", "Кам'янський район", "03:26", "04:53"),
     region_sample("nikopol", "Нікопольський район", "10:27", "11:30"),
-    # --- South ---
     region_sample("kherson", "Херсонський район", "08:44", "09:18"),
     region_sample("mykolaiv", "Миколаївський район", "23:33", "01:21"),
     region_sample("pervomaisk", "Первомайський район", "09:11", "10:07"),
     region_sample("odesa", "Одеський район", "02:16", "03:20"),
     region_sample("izmail", "Ізмаїльський район", "20:17", "21:55"),
-    # --- West ---
     region_sample("lviv", "Львівський район", "04:28", "05:45"),
     region_sample("lutsk", "Луцький район", "18:28", "19:59"),
     region_sample("kovel", "Ковельський район", "20:11", "22:10"),
@@ -252,7 +245,6 @@ PARTIAL_CANCELLATION_SAMPLES = (
 )
 
 
-# Райони без мого каналу: карта про них знає, канали - ні.
 MAP_ONLY_SAMPLES = (
     MapOnlySample(
         id="vyshhorod",
@@ -275,7 +267,6 @@ MAP_ONLY_SAMPLES = (
         alert_time="07:48",
         cancellation_time="08:22",
     ),
-    # Джерело може називати район і по-старому - для карти це той самий район.
     MapOnlySample(
         id="zviahel-under-its-former-name",
         districts=("Новоград-Волинський район",),
@@ -283,7 +274,6 @@ MAP_ONLY_SAMPLES = (
         alert_time="13:03",
         cancellation_time="14:17",
     ),
-    # Апостроф у джерелі буває і прямий, і машинописний.
     MapOnlySample(
         id="kupiansk-with-a-curly-apostrophe",
         districts=("Куп\u2019янський район",),
@@ -298,9 +288,6 @@ MAP_ONLY_SAMPLES = (
         alert_time="05:26",
         cancellation_time="06:09",
     ),
-    # Назва одного району лежить усередині назви іншого: "Подільський район" -
-    # частина "Кам'янець-Подільського", а "Дністровський" - частина
-    # "Білгород-Дністровського". Жоден із постів не має чіпати сусіда.
     MapOnlySample(
         id="kamianets-podilskyi-does-not-raise-podilsk",
         districts=("Кам'янець-Подільський район",),
@@ -315,8 +302,6 @@ MAP_ONLY_SAMPLES = (
         alert_time="01:14",
         cancellation_time="02:38",
     ),
-    # Один пост - обидві гілки парсера: Бучанський іде в канал, Вишгородський
-    # лише на карту.
     MapOnlySample(
         id="mixed-broadcast-and-map-only",
         districts=("Бучанський район", "Вишгородський район"),

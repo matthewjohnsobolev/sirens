@@ -1,20 +1,17 @@
-"""Довідник форми /issue: те, з чого малюється сторінка й чим сервер
-перевіряє відповідь."""
+"""Directory configuration for /issue: defines rendered options and server validation rules."""
 
 from domain import BROADCAST_CITIES, BROADCAST_DISTRICTS, DISTRICT_CONFIG
 from web import issue
 
 
 def test_cities_are_exactly_the_ones_with_a_channel():
-    """Скаржаться на сповіщення, якого чекали, а чекати його можна тільки там,
-    де є канал."""
+    """Alert issues can only be reported for cities that have broadcast channels."""
     assert set(issue.CITIES) == set(BROADCAST_CITIES.values())
     assert len(issue.CITIES) == len(BROADCAST_DISTRICTS)
 
 
 def test_cities_follow_the_ukrainian_alphabet():
-    """І, Ї, Є в Unicode стоять за «я», тож без власного ключа «Ізмаїл» опинився
-    б у кінці списку, а не між «Івано-Франківськом» і «Кам'янським»."""
+    """Ukrainian sorting key orders specific Cyrillic vowels properly."""
     assert list(issue.CITIES) == sorted(issue.CITIES, key=issue.ukrainian_sort_key)
     assert issue.CITIES.index("Івано-Франківськ") < issue.CITIES.index("Ізмаїл")
     assert issue.CITIES.index("Ізмаїл") < issue.CITIES.index("Київ")
@@ -22,7 +19,7 @@ def test_cities_follow_the_ukrainian_alphabet():
 
 
 def test_districts_contain_every_district_and_follow_alphabet():
-    """Довідник районів охоплює всі райони з DISTRICT_CONFIG."""
+    """The districts list contains every district from DISTRICT_CONFIG sorted in alphabetical order."""
     assert set(issue.DISTRICTS) == {conf["name"] for conf in DISTRICT_CONFIG.values()}
     assert list(issue.DISTRICTS) == sorted(issue.DISTRICTS, key=issue.ukrainian_sort_key)
     assert "Бучанський район" in issue.DISTRICTS
@@ -30,8 +27,7 @@ def test_districts_contain_every_district_and_follow_alphabet():
 
 
 def test_apostrophe_and_hyphen_do_not_move_a_city_in_the_list():
-    """«Кам'янське» стоїть там само, де стояло б «Камянське»: розділові знаки
-    в ключі не рахуються, інакше вони кидали б місто на початок абетки."""
+    """Punctuation marks such as apostrophes and hyphens do not disrupt alphabetical sort order."""
     assert issue.ukrainian_sort_key("Кам'янське") == issue.ukrainian_sort_key("Камянське")
     assert issue.ukrainian_sort_key("Івано-Франківськ") == issue.ukrainian_sort_key(
         "ІваноФранківськ"
@@ -40,7 +36,7 @@ def test_apostrophe_and_hyphen_do_not_move_a_city_in_the_list():
 
 
 def test_category_names_and_tab_labels_are_distinct_fields():
-    """Вкладка підписана коротко, далі звернення живе під повною назвою."""
+    """Tabs use short display labels while issues retain full category names."""
     by_id = {c["id"]: c for c in issue.CATEGORIES}
 
     assert by_id["map"]["tab"] == "Мапа"
@@ -49,7 +45,7 @@ def test_category_names_and_tab_labels_are_distinct_fields():
 
 
 def test_map_options_match_updated_specification():
-    """У мапі залишились дві опції тривоги і додано опцію, що мапа не відкривається."""
+    """The map category contains updated failure options."""
     map_options = issue.OPTIONS_BY_CATEGORY["Мапа тривог"]
     assert map_options == (
         "Область не підсвічена, хоча тривога є",
@@ -59,7 +55,7 @@ def test_map_options_match_updated_specification():
 
 
 def test_only_the_catch_all_category_has_no_options():
-    """Розділ без переліку існує саме для непередбаченого - там суть у коментарі."""
+    """The catch-all category has no predefined options and relies on comments."""
     empty = [c["id"] for c in issue.CATEGORIES if not c["options"]]
 
     assert empty == ["other"]
@@ -70,31 +66,28 @@ def test_only_the_catch_all_category_has_no_options():
 
 
 def test_no_option_belongs_to_two_categories():
-    """Однакове формулювання в двох розділах зробило б перевірку неоднозначною."""
+    """Option wordings are unique across categories to prevent ambiguous validation."""
     seen = [o["name"] for c in issue.CATEGORIES for o in c["options"]]
 
     assert len(seen) == len(set(seen))
 
 
 def test_every_choice_carries_an_english_label_for_sentry():
-    """Звернення читають у Sentry поруч із рештою подій проєкту - там усе
-    англійською, і кирилиця читалась би найгірше з усього."""
+    """Every choice includes an English label for Sentry telemetry."""
     records = (
         list(issue.CATEGORIES)
         + [o for c in issue.CATEGORIES for o in c["options"]]
         + list(issue.TIME_OPTIONS)
     )
 
-    assert records, "довідник не має бути порожнім"
+    assert records, "directory must not be empty"
     for record in records:
         assert record["en"].strip(), record
         assert record["en"].isascii(), record
 
 
 def test_sentry_keys_are_stable_ascii_and_unique():
-    """Тег тримається за ключ, а не за формулювання: перепишеш український
-    рядок - історія групи в Sentry лишиться тією самою. Кирилиця в теґу
-    зробила б його непридатним для фільтра."""
+    """Sentry tags use stable, ASCII-safe identifiers for consistent filtering."""
     option_keys = [o["key"] for c in issue.CATEGORIES for o in c["options"]]
     time_keys = [t["key"] for t in issue.TIME_OPTIONS]
     category_keys = [c["id"] for c in issue.CATEGORIES]
@@ -108,7 +101,7 @@ def test_sentry_keys_are_stable_ascii_and_unique():
 
 
 def test_lookups_cover_every_wording_the_form_can_send():
-    """Пошук іде за українським рядком, бо саме він приходить із форми."""
+    """Lookups cover all localized form submission strings."""
     assert set(issue.CATEGORY_INFO) == {c["name"] for c in issue.CATEGORIES}
     assert set(issue.OPTION_INFO) == {o["name"] for c in issue.CATEGORIES for o in c["options"]}
     assert set(issue.TIME_INFO) == set(issue.TIME_NAMES)
@@ -128,8 +121,7 @@ def test_lookups_cover_every_wording_the_form_can_send():
 
 
 def test_page_config_carries_everything_the_page_draws_itself_from():
-    """Сторінці їдуть тільки українські написи: ключі й англійські підписи
-    існують для Sentry, і робити їй із ними нема чого."""
+    """The page config contains localized labels used to render form options."""
     config = issue.page_config()
 
     assert config["cities"] == list(issue.CITIES)

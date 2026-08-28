@@ -1,11 +1,4 @@
 name: Deploy
- 
-# Runs deploy/deploy.sh on the production VPS over SSH once tests pass on main.
-#
-# Required secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_KNOWN_HOSTS
-#   plus DEPLOY_PASSWORD (password auth) or DEPLOY_SSH_KEY (key auth, preferred).
-#   Adding DEPLOY_SSH_KEY later switches the job to keys, no edits needed here.
-# Optional variables: DEPLOY_PATH (default /sirens), DEPLOY_PORT (default 22)
 
 on:
   workflow_run:

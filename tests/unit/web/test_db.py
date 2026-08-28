@@ -92,9 +92,7 @@ def test_ensure_pg_tables_creates_subscribers(mock_web_pg):
 
 
 def test_ensure_pg_tables_leaves_issue_reports_to_sentry(mock_web_pg):
-    """Звернення з /issue не мають місця в базі: єдиний їх приймач - Sentry.
-    Стара таблиця error_reports лишилась у Postgres із власними рядками, але
-    схему для неї більше ніхто не тримає."""
+    """Issue submissions are forwarded directly to Sentry rather than stored in PostgreSQL."""
     _, mock_cursor = mock_web_pg
 
     ensure_pg_tables()
@@ -653,7 +651,7 @@ def test_get_all_threats_data_coverage_full(mock_web_redis):
 
 
 def test_get_all_threats_data_carries_district_names(mock_web_redis):
-    """Попап області підписує таблетки назвами з /api, тож вони мають там бути."""
+    """Oblast popups label items using district names from /api."""
     mock_web_redis.pipeline.return_value = _FakePipeline({}, {})
     result = get_all_threats_data()
 
@@ -664,7 +662,7 @@ def test_get_all_threats_data_carries_district_names(mock_web_redis):
 
 
 def test_get_all_threats_data_covers_every_district(mock_web_redis):
-    """Карта відстежує всі райони, а не лише ті, у яких є канал."""
+    """The map tracks all districts, not just those with broadcast channels."""
     mock_web_redis.pipeline.return_value = _FakePipeline({}, {})
     result = get_all_threats_data()
 

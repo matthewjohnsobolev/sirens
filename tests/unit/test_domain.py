@@ -31,13 +31,13 @@ def test_domain_districts_by_oblast_covers_every_district():
 
 
 def test_domain_occupied_regions_have_no_districts():
-    """Крим, Севастополь, Донеччина й Луганщина лишаються поза довідником."""
+    """Crimea, Sevastopol, Donetsk, and Luhansk regions remain outside the directory."""
     for region in ("crimea", "sevastopol", "donetsk_oblast", "luhansk_oblast"):
         assert region not in domain.DISTRICTS_BY_OBLAST
 
 
 def test_domain_region_config_is_the_broadcast_subset():
-    """REGION_CONFIG - рівно ті райони, у яких є канал."""
+    """REGION_CONFIG contains exactly the districts that have a broadcast channel."""
     assert set(domain.REGION_CONFIG) == domain.BROADCAST_DISTRICTS
     assert domain.BROADCAST_DISTRICTS <= set(domain.DISTRICT_CONFIG)
     assert set(domain.real_channels) == set(domain.test_channels)
@@ -45,7 +45,7 @@ def test_domain_region_config_is_the_broadcast_subset():
 
 
 def test_domain_broadcast_triggers_keep_the_oblast_name():
-    """Формат REGION_CONFIG незмінний: назва району плюс назва області."""
+    """REGION_CONFIG format is stable: district name plus oblast name."""
     assert domain.REGION_CONFIG["bucha"]["triggers"] == ["Бучанський район", "Київська область"]
     assert domain.DISTRICT_CONFIG["bucha"]["triggers"] == ["Бучанський район"]
 
@@ -72,7 +72,7 @@ def test_domain_renamed_districts_keep_their_former_name():
 
 
 def test_domain_no_trigger_belongs_to_two_districts():
-    """Однакова назва в двох областях зробила б зіставлення неоднозначним."""
+    """Identical trigger names across two oblasts would make matching ambiguous."""
     owners = {}
     for key, conf in domain.DISTRICT_CONFIG.items():
         for trigger in conf["triggers"]:
@@ -82,8 +82,7 @@ def test_domain_no_trigger_belongs_to_two_districts():
 
 
 def test_domain_every_broadcast_district_has_a_city_name():
-    """Новий канал без назви міста потрапив би в розсилку, але не в підказку
-    на сторінці помилки."""
+    """A broadcast district without a city name would send alerts but miss autocomplete suggestions."""
     assert set(domain.BROADCAST_CITIES) == domain.BROADCAST_DISTRICTS
     assert all(name.strip() for name in domain.BROADCAST_CITIES.values())
     assert len(set(domain.BROADCAST_CITIES.values())) == len(domain.BROADCAST_CITIES)

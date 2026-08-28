@@ -11,8 +11,6 @@
 <link rel="stylesheet" href="{{ static_url('css/tokens.css') }}">
 <link rel="stylesheet" href="{{ static_url('css/issue.css') }}">
 
-<!-- Розділи, варіанти й міста - з web/issue.py: тим самим переліком
-     сервер перевіряє те, що прийшло назад. -->
 <script type="application/json" id="report-config">{{ page_config | tojson }}</script>
 <script src="{{ static_url('js/issue.js') }}" defer></script>
 </head>
@@ -27,11 +25,6 @@
   <div class="card" id="card">
     <h1>Повідомити про збій</h1>
 
-    <!-- Та сама таблетка, що в попапі на мапі, з тими самими іконками: зелена
-         «відбій» на успіх, червона на збій - по одній за раз.
-         Зовнішній .notice - сітка на один рядок: у ній таблетка розгортається
-         з нуля до власної висоти, скільки б рядків не зайняв напис. Живе в
-         потоці завжди, тож role="status" читалка бачить із першого кадру. -->
     <div class="notice" id="notice" role="status" aria-live="polite">
       <div class="notice-pill">
         <span class="notice-icon" aria-hidden="true">
@@ -91,8 +84,6 @@
                  autocomplete="off" role="combobox" aria-expanded="false"
                  aria-controls="city-list" aria-autocomplete="list"
                  lang="uk" inputmode="text" autocapitalize="words">
-          <!-- .scroller - коробка для смуги прокрутки, яку малює issue.js:
-               системної на iOS не видно. -->
           <div class="combo-list scroller">
             <ul class="combo-scroll scroller-view" id="city-list" role="listbox" aria-label="Міста"></ul>
           </div>
@@ -128,7 +119,7 @@
     </div>
 
     <div class="foot-disclaimer">
-      <p>«Сирени» — незалежний сервіс агрегації тривог. У разі загрози завжди орієнтуйтеся на офіційні сигнали цивільного захисту та прямуйте в укриття.</p>
+      <p>«Сирени» — незалежний агрегатор тривог. Сервіс не є офіційним джерелом оповіщення населення. Почувши сигнал тривоги, орієнтуйтесь на офіційні джерела та одразу прямуйте в укриття.</p>
     </div>
   </footer>
 </div>

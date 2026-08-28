@@ -13,7 +13,6 @@ export const STATUS_WORDS: Record<string, string> = {
 };
 
 export const LOCATION_LOCATIVE: Record<string, string> = {
-    // Міста з каналами розсилки
     "bilatserkva": "у Білій Церкві",
     "bucha": "у Бучі",
     "cherkasy": "у Черкасах",
@@ -50,7 +49,6 @@ export const LOCATION_LOCATIVE: Record<string, string> = {
     "zolotonosha": "у Золотоноші",
     "zvenyhorodka": "у Звенигородці",
 
-    // Райони Київщини та міст
     "boryspil": "у Борисполі",
     "brovary": "у Броварах",
     "vyshhorod": "у Вишгороді",

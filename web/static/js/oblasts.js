@@ -1,20 +1,8 @@
-/**
- * Oblast boundary styles and popup configurations for Sirens map.
- */
-
-// Заливки полігонів: початкові значення Leaflet, які були до появи штриховки.
 const OBLAST_FILL_OPACITY = {
     idle:  0.18,
     alert: 0.2
 };
 
-// Штриховка часткової тривоги: смуга - той самий помаранчевий, що й обведення,
-// на повну насиченість; проміжок - сірий спокійної області. Смуги не
-// перекриваються, тож кожен колір лишається чистим.
-//
-// Крок паттерна заданий в екранних пікселях, тож на оглядовому зумі, де вся
-// країна вміщається в кілька сотень пікселів, фіксовані 7px читалися як пара
-// товстих балок замість штриховки. Тому смуга росте разом із зумом.
 const HATCH = { minStripe: 3, maxStripe: 7 };
 
 function hatchStripe(zoom) {
@@ -42,7 +30,7 @@ function ensureHatchDefs(map) {
 
     let pattern = svg.querySelector('#alert-hatch');
     if (!pattern) {
-        const defs = L.SVG.create('defs');   // createElementNS in SVG namespace
+        const defs = L.SVG.create('defs');
         defs.innerHTML = `
       <pattern id="alert-hatch" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
         <rect x="0" fill="${ALERT_COLORS.ALERT}"/>
@@ -66,8 +54,8 @@ function setOblastStyle(layer, data) {
     const dominant = pickDominant({
         alert: data.alert, explosion: data.explosion,
     });
-    const state = dominant === 'alert' ? (data.alert ? data.alert.coverage : 'idle')   // 'partial' | 'full'
-                : dominant || 'idle';                          // 'explosion' | 'idle'
+    const state = dominant === 'alert' ? (data.alert ? data.alert.coverage : 'idle')
+                : dominant || 'idle';
 
     layer.setStyle(OBLAST_STYLES[state] || OBLAST_STYLES.idle);
     if (layer._path) {
@@ -76,16 +64,10 @@ function setOblastStyle(layer, data) {
     layer[state === 'idle' ? 'bringToBack' : 'bringToFront']();
 }
 
-// Попап області - той самий список стандартних таблеток, що й у попапах маркерів:
-// над кожною таблеткою стоїть моношрифтом район, якого вона стосується. Районів
-// в області більше, ніж моїх каналів, тож назва їде з /api, а не з маркерів:
-// маркери лишаються містами й покривають не кожен район.
 function getOblastPopupContent(oblastData) {
     const alert = (oblastData && oblastData.alert) || {};
     const tracked = alert.tracked_districts || [];
 
-    // Області без жодного відстежуваного району (Крим, Донеччина, Луганщина,
-    // Севастополь): показуємо єдину таблетку "немає даних" замість порожнього списку.
     if (!tracked.length) {
         return `
       <div class="container">
@@ -112,13 +94,6 @@ function getOblastPopupContent(oblastData) {
 
 var customOptions = {'maxWidth': '310', 'width': '310'};
 
-// Прокрутку списку районів від карти ізолює сам Leaflet: Popup._initLayout
-// глушить mousedown/touchstart на .leaflet-popup і wheel на вмісті попапа, а
-// .scrollable-content лежить усередині обох. Своїх обробників тут не треба.
-//
-// Увага: цей файл підключений у <head>, а карта створюється нижче, в <body>.
-// Тому на верхньому рівні звертатись до `map` не можна - тільки з колбеків,
-// які виконуються вже після того, як тіло сторінки відпрацювало.
 fetch('/api')
     .then(response => response.json())
     .then(apiData => {
@@ -149,7 +124,6 @@ fetch('/api')
                         };
                         const name = nameMap[regionId] || regionId;
                         
-                        // Функція, а не рядок: тривалість рахується у мить відкриття попапа.
                         layer.bindPopup(
                             () => '<div class="oblast-name">' + name + '</div>' + getOblastPopupContent(data),
                             customOptions

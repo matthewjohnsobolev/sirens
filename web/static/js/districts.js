@@ -1,7 +1,3 @@
-/**
- * District markers, color constants, and threat dominance logic.
- */
-
 const ALERT_COLORS = {
     IDLE: '#8A8A8A',
     ALERT: '#FF831A',
@@ -9,9 +5,9 @@ const ALERT_COLORS = {
     SHELLING: '#FFDA1A'
 };
 
-const FALLBACK_ORDER = ['explosion', 'alert', 'shelling']; // Fallback order when updated_at is equal
+const FALLBACK_ORDER = ['explosion', 'alert', 'shelling'];
 
-function pickDominant(threats) { // {alert, explosion, shelling} -> 'alert' | 'explosion' | 'shelling' | null
+function pickDominant(threats) {
     if (!threats) return null;
     let best = null;
     for (const kind of FALLBACK_ORDER) {
@@ -53,10 +49,6 @@ function formatDuration(updatedAt) {
     return hours ? `${days} дн ${hours} год` : `${days} дн`;
 }
 
-// Джерело події - це посилання на повідомлення бродкастера в каналі міста
-// (https://t.me/...). Історичні записи натомість несуть маркери на кшталт
-// 'telegram' чи 'None': їх не можна віддавати в href, інакше таблетка веде в
-// нікуди. Тому клікабельна лише таблетка зі справжнім посиланням на t.me.
 const MESSAGE_LINK_RE = /^https:\/\/t\.me\/[\w/+-]+$/;
 
 function messageLink(source) {
@@ -65,8 +57,6 @@ function messageLink(source) {
     return MESSAGE_LINK_RE.test(trimmed) ? trimmed : null;
 }
 
-// Єдина таблетка на всі попапи - маркера й області: та сама анатомія
-// (іконка, лейбл, тривалість), той самий розмір. Різниця лише в даних.
 function renderPill({ variant, text, updatedAt, source, showTime = true }) {
     const v = PILL_VARIANTS[variant] || PILL_VARIANTS.unknown;
     const duration = (showTime && updatedAt) ? formatDuration(updatedAt) : '';
@@ -133,8 +123,6 @@ const DISTRICT_MARKERS = [
     { district: 'izmail', oblast: 'odesa_oblast', name: 'Ізмаїл', lat: 45.3502, lng: 28.8502, channel: 'izmail_sirens' },
     { district: 'zolotonosha', oblast: 'cherkasy_oblast', name: 'Золотоноша', lat: 49.6618, lng: 32.0477, channel: 'zolotonosha_sirens' },
     { district: 'zvenyhorodka', oblast: 'cherkasy_oblast', name: 'Звенигородка', lat: 49.0762, lng: 30.9700, channel: 'zvenyhorodka_sirens' },
-    // Свого каналу в цих міст немає, але район тепер відстежується, тож маркер
-    // фарбується від нього, а не від агрегату області.
     { district: 'zviahel', oblast: 'zhytomyr_oblast', name: 'Звягель', lat: 50.5860, lng: 27.6364, channel: 'zviahel_sirens' },
     { district: 'korosten', oblast: 'zhytomyr_oblast', name: 'Коростень', lat: 50.9481, lng: 28.6412, channel: 'korosten_sirens' },
     { district: 'berdychiv', oblast: 'zhytomyr_oblast', name: 'Бердичів', lat: 49.9107, lng: 28.5900, channel: 'berdychiv_sirens' }
@@ -157,7 +145,6 @@ function getMarkerThreats(apiData, marker) {
         alert = oblastData.alert;
     }
 
-    // Direct check if top-level entry exists for city (e.g. apiData.nikopol, apiData.kherson)
     if (marker.district && apiData[marker.district] && apiData[marker.district].shelling) {
         if (!shelling || !shelling.status) {
             if (apiData[marker.district].shelling.status) {
@@ -165,10 +152,6 @@ function getMarkerThreats(apiData, marker) {
             }
         }
     }
-
-    // Обстріл, що потрапив у хеш тривог, сервер уже погасив (status=false для
-    // threat_of_shelling*, web/db.py), тож pickDominant його не візьме. Мітку часу
-    // при цьому лишаємо — з неї рахується тривалість відбою в попапі маркера.
 
     const explosion = oblastData.explosion;
 

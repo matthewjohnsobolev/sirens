@@ -2,7 +2,7 @@ import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUp
 import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts, formatLocationLocative } from "./helpers";
 
 const WINDOW_HOURS = 24;
-const THRESHOLD_MAJOR = 900; // seconds (15 minutes in an hour: long outage / тривалі збої)
+const THRESHOLD_MAJOR = 900;
 
 function getHourStart(d: Date): Date {
     return new Date(Math.floor(d.getTime() / (3600 * 1000)) * (3600 * 1000));
@@ -55,16 +55,13 @@ export async function computeStatusData(env: Env) {
     const now = new Date();
     const nowKyiv = getKyivParts(now);
 
-    // Fetch telemetry from Cloudflare KV
     const telemetry = await fetchTelemetry(env);
 
-    // We anchor 72 hours to the start of the current hour
     const currentHourStart = getHourStart(now);
     const firstHourStart = new Date(currentHourStart.getTime() - (WINDOW_HOURS - 1) * 3600 * 1000);
 
     const probes: Record<string, any> = {};
 
-    // 1. Fetch Healthchecks
     const checksList = await fetchHealthchecks(env);
     if (checksList) {
         const specs = COMPONENTS_SPEC.filter(c => c.source === "healthchecks");
@@ -104,10 +101,9 @@ export async function computeStatusData(env: Env) {
         }
     } else {
         const specs = COMPONENTS_SPEC.filter(c => c.source === "healthchecks");
-        for (const spec of specs) probes[spec.key] = null; // API failed entirely
+        for (const spec of specs) probes[spec.key] = null;
     }
 
-    // 2. Fetch UptimeRobot
     const urSpecs = COMPONENTS_SPEC.filter(c => c.source === "uptimerobot");
     for (const spec of urSpecs) {
         const apiKey = spec.key === "map" ? env.UPTIMEROBOT_SIRENS_WEB_API : env.UPTIMEROBOT_SIRENS_API_API;
@@ -127,7 +123,7 @@ export async function computeStatusData(env: Env) {
                 last_ping: null
             };
         } else {
-            probes[spec.key] = null; // API failed entirely
+            probes[spec.key] = null;
         }
     }
 
@@ -138,7 +134,6 @@ export async function computeStatusData(env: Env) {
 
     const components = [];
     
-    // Resolve history start baseline
     let configStart: Date | null = null;
     if (env.STATUS_START_DATE) {
         const [y, m, d] = env.STATUS_START_DATE.split("-").map(Number);
@@ -223,7 +218,6 @@ export async function computeStatusData(env: Env) {
             });
         }
 
-        // Live status override for current hour
         if (probe.live && hours.length > 0) {
             const severity = (s: string) => (s === "down" || s === "major") ? 2 : s === "minor" ? 1 : 0;
             const computed = hours[hours.length - 1].state;

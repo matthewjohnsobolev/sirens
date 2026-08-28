@@ -1,22 +1,4 @@
 #!/usr/bin/env bash
-#
-# Sirens subscriber snapshot. Non-interactive - designed for cron, never waits
-# for input: either records today's subscriber counts or exits non-zero.
-#
-# Starts the one-shot `bi` container, which counts subscribers across the
-# network channels and writes one row per channel per run into subscribers.
-# The container is removed afterwards, so nothing stays resident between runs.
-#
-#   ./deploy/bi.sh                 # count and store
-#   MODE=dev ./deploy/bi.sh        # count test channels instead
-#
-#   crontab -e
-#   0 */4 * * * cd /sirens && ./deploy/bi.sh >> logs/bi.log 2>&1
-#
-# Needs data/sessions/bi.session (create once with ./deploy/setup.sh bi), and
-# optionally HEALTHCHECKS_PING_URL_BI in .env. See "Channel Statistics" in
-# README.md.
-#
 set -euo pipefail
 
 # cron hands a job a nearly empty environment - commonly just PATH=/usr/bin:/bin.

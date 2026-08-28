@@ -46,7 +46,6 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     environment:
-      - APP_SECRET_KEY=${APP_SECRET_KEY}
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://${POSTGRES_USER:-sirens}:${POSTGRES_PASSWORD:-sirens}@db:5432/${POSTGRES_DB:-sirens}
       - TZ=Europe/Kyiv

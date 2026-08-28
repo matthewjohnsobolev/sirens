@@ -33,10 +33,10 @@ step "Checking environment"
 [[ -f docker-compose.yml ]] || die "run this from the project directory"
 [[ -f .env ]] || die "no .env file (copy .env.example and fill it in)"
 
-for var in TELEGRAM_API_ID TELEGRAM_API_HASH FLASK_SECRET_KEY POSTGRES_USER POSTGRES_PASSWORD; do
+for var in TELEGRAM_API_ID TELEGRAM_API_HASH APP_SECRET_KEY; do
     grep -Eq "^[[:space:]]*${var}=.+" .env || die "$var is not set in .env"
 done
-grep -Eq '^[[:space:]]*APP_MODE=prod' .env || die "APP_MODE must be 'prod' in .env"
+grep -Eq '^[[:space:]]*(APP_ENV=(prod|production)|APP_MODE=prod)' .env || die "APP_ENV must be 'production' or 'prod' in .env"
 
 [[ -f "$SESSION_FILE" ]] || die "no Telegram session - run ./deploy/setup.sh first"
 

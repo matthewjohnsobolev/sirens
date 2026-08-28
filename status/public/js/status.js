@@ -22,7 +22,7 @@
       tip.className = 'tip';
       tip.setAttribute('role', 'tooltip');
       tip.hidden = true;
-      tip.innerHTML = '<span class="tip-time"></span><span class="tip-state"><span class="tip-dot" data-state="ok"></span><span class="tip-text"></span></span><svg class="tip-arrow" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M 0.5 0 L 5 5 L 9.5 0" fill="#fff" stroke="#B0B0B0" stroke-width="1" stroke-linecap="square" stroke-linejoin="miter"></path><path d="M 0 0 L 10 0" stroke="#fff" stroke-width="2"></path></svg>';
+      tip.innerHTML = '<span class="tip-time"></span><span class="tip-state"><span class="tip-dot" data-state="ok"></span><span class="tip-text"></span></span><svg class="tip-arrow" width="20" height="6" viewBox="0 0 20 6" aria-hidden="true"><path d="M 5 0.5 L 10 5.5 L 15 0.5 Z" fill="#fff"></path><rect x="0" y="0" width="20" height="1" fill="#fff"></rect><path class="tip-arrow-stroke" d="M 0 0.5 L 5 0.5 L 10 5.5 L 15 0.5 L 20 0.5" fill="none" stroke-width="1" stroke-linecap="square" stroke-linejoin="miter"></path></svg>';
     }
     const root = document.body || document.documentElement;
     if (root && tip.parentElement !== root) {
@@ -150,21 +150,25 @@
 
     tip.hidden = false;
 
-    // Позиціонування підказки точно над/під центром смужки зі стрілкою (цілі пікселі для чіткості стиків)
+    // Позиціонування підказки точно над/під центром смужки зі стрілкою
     const barBox = bar.getBoundingClientRect();
     const tipBox = tip.getBoundingClientRect();
     const margin = 8;
 
-    const barCenterX = Math.round(barBox.left + barBox.width / 2);
+    const barCenterX = barBox.left + barBox.width / 2;
     const tipWidth = Math.round(tipBox.width);
     const tipHeight = Math.round(tipBox.height);
 
     let left = Math.round(barCenterX - tipWidth / 2);
     left = Math.max(margin, Math.min(left, window.innerWidth - tipWidth - margin));
 
-    // Стрілка центрується точно по смужці з безпечним відступом від кутів
-    const arrowX = Math.round(Math.max(10, Math.min(tipWidth - 10, barCenterX - left)));
-    tip.style.setProperty('--arrow-x', arrowX + 'px');
+    // Стрілка центрується точно по центру активної смужки графіка з урахуванням внутрішнього зміщення padding-box
+    const borderLeft = tip.clientLeft || 1;
+    const minArrowX = 14;
+    const maxArrowX = tipWidth - borderLeft - 15;
+    const rawArrowX = barCenterX - left - borderLeft;
+    const arrowX = Math.max(minArrowX, Math.min(maxArrowX, rawArrowX));
+    tip.style.setProperty('--arrow-x', arrowX.toFixed(2) + 'px');
 
     const verticalOffset = 7;
     let top = Math.round(barBox.top - tipHeight - verticalOffset);

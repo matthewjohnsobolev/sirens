@@ -1,7 +1,9 @@
 import argparse
-from config import real_channels, test_channels, VERSION
 
-FULL_HELP = f'''Sirens BI - subscriber counts across the network
+from config import VERSION
+from domain import real_channels, test_channels
+
+FULL_HELP = """Sirens BI - subscriber counts across the network
 
 Takes a snapshot of how many subscribers every Sirens channel has and stores
 one row per channel per day. Runs once and exits - scheduling is cron's job,
@@ -27,7 +29,7 @@ Requires its own Telegram session (data/sessions/bi.session), created with
 ./deploy/setup.sh bi - the alerts worker holds the sirens.session file.
 
 For support and more information:
-  GitHub: https://github.com/matthewjohnsobolev/sirens'''
+  GitHub: https://github.com/matthewjohnsobolev/sirens"""
 
 
 class CustomHelpFormatter(argparse.HelpFormatter):
@@ -39,38 +41,28 @@ class CustomHelpFormatter(argparse.HelpFormatter):
 
 
 def get_args():
-    parser = argparse.ArgumentParser(
-        formatter_class=CustomHelpFormatter,
-        add_help=False
-    )
+    parser = argparse.ArgumentParser(formatter_class=CustomHelpFormatter, add_help=False)
 
     parser.add_argument(
-        '-m', '--mode',
-        choices=['prod', 'dev'],
-        default='dev',
-        help='Run mode: dev (test channels) or prod (real channels)'
+        "-m",
+        "--mode",
+        choices=["prod", "dev"],
+        default="dev",
+        help="Run mode: dev (test channels) or prod (real channels)",
     )
 
-    parser.add_argument(
-        '--version',
-        action='store_true',
-        help='Show program version and exit'
-    )
+    parser.add_argument("--version", action="store_true", help="Show program version and exit")
 
-    parser.add_argument(
-        '-h', '--help',
-        action='help',
-        help='Show this help message'
-    )
+    parser.add_argument("-h", "--help", action="help", help="Show this help message")
 
     args = parser.parse_args()
 
     if args.version:
-        print(f'Sirens BI {VERSION}')
+        print(f"Sirens BI {VERSION}")
         raise SystemExit(0)
 
     return args
 
 
 def get_mode_config(args):
-    return real_channels if args.mode == 'prod' else test_channels
+    return real_channels if args.mode == "prod" else test_channels

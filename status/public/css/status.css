@@ -445,10 +445,10 @@ body {
 
 .tip-arrow {
   position: absolute;
-  bottom: -5px;
+  bottom: -6px;
   left: var(--arrow-x, 50%);
   transform: translateX(-50%);
-  width: 10px;
+  width: 20px;
   height: 6px;
   display: block;
   pointer-events: none;
@@ -457,11 +457,11 @@ body {
 
 .tip.tip--below .tip-arrow {
   bottom: auto;
-  top: -5px;
-  transform: translateX(-50%) rotate(180deg);
+  top: -6px;
+  transform: translateX(-50%) scaleY(-1);
 }
 
-.tip-arrow path:first-child {
+.tip-arrow-stroke {
   stroke: var(--hairline-dark);
 }
 

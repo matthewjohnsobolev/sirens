@@ -12,7 +12,7 @@ dynamic = ["dependencies"]
 dependencies = { file = ["requirements.txt"] }
 
 [tool.setuptools]
-packages = ["alerts", "bi", "data", "web"]
+packages = ["alerts", "bi", "data", "domain", "web"]
 
 [tool.setuptools.package-data]
 alerts = ["img/*.png"]
@@ -22,3 +22,11 @@ exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]

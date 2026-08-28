@@ -719,9 +719,9 @@ def test_partial_cancellation_samples_name_the_silenced_channels(sample):
 
     note = sample.message.split("ще триває", 1)[1]
     for region in sample.silenced:
-        assert any(
-            trigger in note for trigger in REGION_CONFIG[region]["triggers"]
-        ), f"note does not name anything {region} listens for"
+        assert any(trigger in note for trigger in REGION_CONFIG[region]["triggers"]), (
+            f"note does not name anything {region} listens for"
+        )
 
 
 @pytest.mark.asyncio

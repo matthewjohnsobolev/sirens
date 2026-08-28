@@ -79,8 +79,7 @@
 
 .donate-button {
     position: relative;
-    /* Keep your gradient styling, no need to modify here */
-    z-index: 1000; /* Ensure the button's gradient is not above the tooltip */
+    z-index: 1000;
 }
 
 .donate-button {
@@ -108,6 +107,6 @@
         top: -50px;
         left: auto;
         right: 12px;
-        margin-left: auto; /* Помогает прижать кнопку к правому краю */
+        margin-left: auto;
     }
 }

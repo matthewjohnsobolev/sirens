@@ -1,23 +1,4 @@
 #!/usr/bin/env bash
-#
-# Sirens one-time server setup. Interactive — run manually once when first
-# setting up the VPS (or after the Telegram session is revoked).
-#
-# Prerequisite: .env filled in (copy from .env.example).
-#
-# Usage:
-#
-#   ./deploy/setup.sh          # sirens.session, used by the alerts worker
-#   ./deploy/setup.sh bi       # bi.session, used by the subscriber snapshot
-#
-# Logs in to Telegram via Telethon: enter phone number and login code when
-# prompted, then Ctrl+C once logs start streaming. Session is written to
-# data/sessions/<name>.session on the host, so it survives rebuilds.
-#
-# The two sessions are separate on purpose: one session file cannot be shared
-# by two running processes without risking AuthKeyDuplicatedError, and Telegram
-# is perfectly happy to hold several sessions for one account.
-#
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

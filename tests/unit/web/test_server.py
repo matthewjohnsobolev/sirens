@@ -60,13 +60,13 @@ def test_issue_footer_contains_status_link_and_disclaimer(client):
 
 
 def test_index_versions_every_stylesheet_and_script(client):
-    """Статика віддається як immutable, тож без версії в URL зміни JS не доїдуть."""
+    """Static assets are cached with immutable headers, requiring URL version hashes."""
     html = client.get("/").get_data(as_text=True)
 
     assets = re.findall(r'(?:href|src)="(/static/(?:css|js)/[^"]+)"', html)
-    assert assets, "у сторінці не знайшлось жодного css/js"
+    assert assets, "no css/js assets found on the page"
     unversioned = [a for a in assets if "?v=" not in a]
-    assert unversioned == [], f"без версії: {unversioned}"
+    assert unversioned == [], f"unversioned assets: {unversioned}"
 
 
 def test_static_url_fingerprint_follows_the_file_contents(app, tmp_path):
@@ -194,7 +194,7 @@ def test_claim_ping_slot_uses_atomic_set():
 
 def test_claim_ping_slot_false_when_another_worker_holds_it():
     with patch("web.server.redis_client") as mock_redis:
-        mock_redis.set.return_value = None  # redis-py returns None when NX fails
+        mock_redis.set.return_value = None
 
         assert web_server._claim_ping_slot() is False
 
@@ -273,10 +273,6 @@ def test_create_app_skips_healthcheck_thread_when_disabled(monkeypatch):
     MockThread.assert_not_called()
 
 
-# --------------------------------------------------------------------------
-# error pages
-# --------------------------------------------------------------------------
-
 
 def test_unknown_url_renders_the_branded_404_page(client):
     response = client.get("/no-such-page")
@@ -333,7 +329,7 @@ def report_deps():
 
 
 def sent_report(mock_report):
-    """Те, що пішло в Sentry: єдине, що лишається від звернення."""
+    """Extracts the report payload sent to Sentry."""
     return mock_report.call_args.args[0]
 
 
@@ -345,8 +341,7 @@ def test_report_form_is_served(client):
 
 
 def test_report_form_carries_the_taxonomy_the_server_checks_against(client):
-    """Сторінка малюється з того ж переліку, яким сервер перевіряє відповідь:
-    розійшовшись, вони почали б відкидати власні ж варіанти."""
+    """The page renders using the same option definitions that the server validates against."""
     html = client.get("/issue").get_data(as_text=True)
     config = json.loads(
         re.search(
@@ -362,8 +357,7 @@ def test_report_form_carries_the_taxonomy_the_server_checks_against(client):
 
 
 def test_report_form_keeps_the_sentry_vocabulary_off_the_page(client):
-    """Ключі й англійські підписи існують для Sentry. На сторінці вони були б
-    зайвою вагою в кожному завантаженні."""
+    """Internal keys and English labels are kept out of the frontend page bundle."""
     html = client.get("/issue").get_data(as_text=True)
     config = json.loads(
         re.search(
@@ -377,7 +371,7 @@ def test_report_form_keeps_the_sentry_vocabulary_off_the_page(client):
 
 
 def test_report_form_suggests_every_city_with_a_channel(client):
-    """Підказка міста - це рівно ті міста, куди йде сповіщення."""
+    """City suggestions match the set of cities that receive broadcast alerts."""
     html = client.get("/issue").get_data(as_text=True)
     config = json.loads(
         re.search(
@@ -391,7 +385,7 @@ def test_report_form_suggests_every_city_with_a_channel(client):
 
 
 def test_report_form_suggests_districts(client):
-    """Підказка районів містить усі райони з конфігурації."""
+    """District suggestions contain all configured districts."""
     html = client.get("/issue").get_data(as_text=True)
     config = json.loads(
         re.search(
@@ -404,17 +398,14 @@ def test_report_form_suggests_districts(client):
 
 
 def test_report_form_keeps_three_tabs(client):
-    """Перемикач розділів зверстаний на три колонки (repeat(3,1fr) у
-    issue.css), і на 320px четверта вкладка вже не вміститься."""
+    """The section switcher contains exactly three tabs for layout consistency."""
     html = client.get("/issue").get_data(as_text=True)
 
     assert len(re.findall(r'role="radio"', html)) == 3
 
 
 def test_form_fields_are_named_the_way_the_server_reads_them(client, app):
-    """Сторінка й fetch говорять одним словником. Поки імена розходились,
-    сервер мусив тримати запасні - і мовчки згубив би поле, щойно перелік
-    запасних відстав би від розмітки."""
+    """Form input names match the keys expected by the server handler."""
     html = client.get("/issue").get_data(as_text=True)
 
     assert 'name="message"' in html and 'name="contact"' in html
@@ -430,16 +421,14 @@ def test_form_fields_are_named_the_way_the_server_reads_them(client, app):
 
 
 def test_the_page_travels_time_as_its_own_field(app):
-    """Сервер тримає час окремим полем."""
+    """The frontend transmits time as a distinct form field."""
     js = (Path(app.static_folder) / "js" / "issue.js").read_text(encoding="utf-8")
 
     assert "formData.append('time', chosenTime)" in js
 
 
 def test_report_notice_shows_one_icon_at_a_time(app):
-    """`.notice-icon img` не має ставити display: клас+тег переважає клас, тож
-    таке правило перебило б .notice-icon-error{display:none} і на таблетці
-    світились би обидві іконки - зелена й червона заразом."""
+    """Notice status indicators display one icon state at a time."""
     css = (Path(app.static_folder) / "css" / "issue.css").read_text(encoding="utf-8")
     icon_rule = re.search(r"\.notice-icon img\{([^}]*)\}", css).group(1)
 
@@ -449,9 +438,7 @@ def test_report_notice_shows_one_icon_at_a_time(app):
 
 
 def test_report_notice_icon_keeps_the_popup_proportion(app):
-    """Іконка - половина висоти таблетки, як 20 із 40 у попапі. Тут таблетка
-    48px, отже 24px, і розмітка мусить оголосити той самий розмір, щоб місце
-    під іконку було зайняте ще до її завантаження."""
+    """Notice icon dimensions match the expected proportions."""
     css = (Path(app.static_folder) / "css" / "issue.css").read_text(encoding="utf-8")
     popup = (Path(app.static_folder) / "css" / "oblasts.css").read_text(encoding="utf-8")
 
@@ -467,11 +454,11 @@ def test_report_notice_icon_keeps_the_popup_proportion(app):
 
 
 def test_report_form_versions_every_stylesheet_and_script(client):
-    """Статика immutable на 30 днів: без відбітка правка форми не доїде."""
+    """Issue form stylesheets and scripts include version parameters."""
     html = client.get("/issue").get_data(as_text=True)
 
     assets = re.findall(r'(?:href|src)="(/static/(?:css|js)/[^"]+)"', html)
-    assert assets, "у сторінці не знайшлось жодного css/js"
+    assert assets, "no css/js assets found on the page"
     assert [a for a in assets if "?v=" not in a] == []
 
 
@@ -492,8 +479,7 @@ def test_valid_report_reaches_sentry_and_is_confirmed(client, report_deps):
 
 
 def test_only_a_sent_report_gets_the_sent_class(client):
-    """Напис про успіх сидить у розмітці завжди - показує його клас на <body>.
-    Без цієї різниці перевірка успіху проходила б і на порожньому GET."""
+    """The sent CSS class is applied only upon a successful submission."""
     page = client.get("/issue").get_data(as_text=True)
 
     assert SUCCESS_MARKER in page
@@ -501,7 +487,7 @@ def test_only_a_sent_report_gets_the_sent_class(client):
 
 
 def test_report_normalizes_the_short_tab_label(client, report_deps):
-    """Без JavaScript у полі category опиняється напис вкладки."""
+    """Normalizes tab label aliases into full category names."""
     response = client.post(
         "/issue",
         data={
@@ -520,7 +506,7 @@ def test_report_normalizes_the_short_tab_label(client, report_deps):
 
 
 def test_report_keeps_only_the_options_its_own_form_offers(client, report_deps):
-    """Варіант із чужого розділу - це або підробка, або сторінка з-перед деплою."""
+    """Rejects options that belong to a different category."""
     response = client.post(
         "/issue",
         data={
@@ -534,7 +520,7 @@ def test_report_keeps_only_the_options_its_own_form_offers(client, report_deps):
 
 
 def test_report_ignores_the_sub_option_of_a_category_without_options(client, report_deps):
-    """У «Іншому» переліку немає, тож будь-який варіант звідти - сміття."""
+    """Ignores sub-options submitted for the catch-all category."""
     client.post(
         "/issue",
         data={
@@ -812,9 +798,7 @@ def test_report_is_refused_once_the_client_runs_out_of_slots(client):
 
 
 def test_a_report_that_did_not_get_through_is_not_called_sent(client):
-    """Sentry тримає звернення один - проковтнувши збій відправки, сторінка
-    сказала б «надіслано» про те, чого більше ніде немає. 503 лишає набране
-    в формі й дає спробувати ще раз."""
+    """Returns HTTP 503 when Sentry delivery fails, allowing the user to retry."""
     with (
         patch("web.server._claim_report_slot", return_value=True),
         patch("web.server._report_to_sentry", return_value=False),
@@ -826,8 +810,7 @@ def test_a_report_that_did_not_get_through_is_not_called_sent(client):
 
 
 def test_the_log_line_keeps_the_choices_and_not_the_free_text(client, report_deps, caplog):
-    """web.log крутиться на диску: вибір там доречний, а текст, який людина
-    написала про себе, - ні."""
+    """Server logs record structured issue metadata without freeform text."""
     caplog.set_level(logging.INFO)
 
     client.post("/issue", data=VALID_REPORT)
@@ -914,8 +897,7 @@ def sentry(monkeypatch):
 
 
 def test_sentry_forward_is_skipped_when_unconfigured(monkeypatch):
-    """Без DSN звернення нікуди не йде - але й помилкою це не є: у dev його
-    тримає лише web.log, і сторінка не має через це лякати людину."""
+    """Skips forwarding to Sentry without error when DSN is unconfigured."""
     monkeypatch.setattr(web_server, "SENTRY_DSN", "")
 
     with patch("web.server.sentry_sdk.capture_message") as mock_capture:
@@ -934,8 +916,7 @@ def test_sentry_title_is_english(sentry):
 
 
 def test_sentry_tags_are_stable_ascii_keys(sentry):
-    """Тег тримається за ключ довідника: перепишеш формулювання - історія
-    групи лишиться. Місто - виняток: це не підпис, а те, що ввела людина."""
+    """Sentry tags use stable ASCII keys for consistency."""
     mock_scope, _, _ = sentry
 
     web_server._report_to_sentry(REPORT)
@@ -993,8 +974,7 @@ def test_sentry_context_spells_the_choices_out_in_english(sentry):
 
 
 def test_sentry_carries_the_handle_the_reporter_offered(sentry):
-    """send_default_pii=False стосується того, що SDK збирає сам. Нік тут
-    тому, що людина вписала його саме для відповіді."""
+    """Includes the user handle in Sentry payload when provided."""
     mock_scope, _, _ = sentry
 
     web_server._report_to_sentry(REPORT)
@@ -1048,8 +1028,7 @@ def test_sentry_custom_ukrainian_datetime_and_tags(sentry):
 
 
 def test_sentry_marks_the_choices_a_report_did_not_make(sentry):
-    """«Інше» не має ні варіанта, ні обовʼязкового міста або часу -
-    тег мусить лишитись, інакше фільтр за ним губить саме ці звернення."""
+    """Tags unspecified fields with default values for proper Sentry filtering."""
     mock_scope, mock_capture, _ = sentry
 
     web_server._report_to_sentry(
@@ -1075,8 +1054,7 @@ def test_sentry_marks_the_choices_a_report_did_not_make(sentry):
 
 
 def test_sentry_groups_one_failure_regardless_of_city_or_time(sentry):
-    """Місто й час у заголовку розсипали б один збій на групу за
-    містом. Вони теги - саме ними й фільтрують."""
+    """Groups issue reports under stable titles regardless of location or time."""
     _, mock_capture, _ = sentry
 
     web_server._report_to_sentry({**REPORT, "city": "Львів", "time": "Щойно"})
@@ -1087,8 +1065,7 @@ def test_sentry_groups_one_failure_regardless_of_city_or_time(sentry):
 
 
 def test_sentry_send_is_flushed_before_the_response(sentry):
-    """Воркер може піти на перезапуск одразу після відповіді, а подія до того
-    моменту ще лежить у черзі транспорту."""
+    """Flushes pending Sentry events before sending the HTTP response."""
     _, _, mock_flush = sentry
 
     web_server._report_to_sentry(REPORT)
@@ -1097,8 +1074,7 @@ def test_sentry_send_is_flushed_before_the_response(sentry):
 
 
 def test_the_event_id_is_logged_so_a_report_can_be_found_again(sentry, caplog):
-    """Без id «чи дійшло звернення?» лишається здогадкою: у логу є рядок про
-    відправку, а в Sentry - подія, і зв'язати їх нічим."""
+    """Logs the Sentry event ID for traceability."""
     caplog.set_level(logging.INFO)
 
     web_server._report_to_sentry(REPORT)
@@ -1117,8 +1093,7 @@ def test_a_declined_event_is_logged_as_such(sentry, caplog):
 
 
 def test_sentry_reports_a_dropped_event_as_failure(sentry):
-    """capture_message повертає None, коли подію не взяли - для звернення це
-    те саме, що не надіслати його зовсім."""
+    """Treats dropped Sentry events as failures."""
     _, mock_capture, _ = sentry
     mock_capture.return_value = None
 
@@ -1126,8 +1101,7 @@ def test_sentry_reports_a_dropped_event_as_failure(sentry):
 
 
 def test_sentry_failure_is_reported_not_swallowed(monkeypatch, caplog):
-    """Поки звернення лягало ще й у базу, проковтнути збій Sentry було можна.
-    Тепер це була б єдина його копія."""
+    """Surfaces Sentry client exceptions as errors."""
     caplog.set_level(logging.ERROR)
     monkeypatch.setattr(web_server, "SENTRY_DSN", DSN)
 
@@ -1138,8 +1112,7 @@ def test_sentry_failure_is_reported_not_swallowed(monkeypatch, caplog):
 
 
 def test_missing_dsn_is_announced_at_startup(caplog):
-    """Деплой без DSN тихо викидав би кожне звернення, поки сторінка казала б
-    «надіслано»."""
+    """Warns on startup when SENTRY_DSN is not configured."""
     caplog.set_level(logging.WARNING)
 
     create_app(init_db=False, start_healthcheck=False)

@@ -64,12 +64,12 @@
 }
   
 .icon-container-marker {
-    width: 40px; /* Изменено с 54.52px на 40px для соответствия */
+    width: 40px;
     height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0; /* Запрещаем сжиматься */
+    flex-shrink: 0;
 }
   
 .icon-marker {

@@ -370,7 +370,6 @@ def _register_schema_init(app: Flask) -> None:
 
 def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask:
     app = Flask(__name__)
-    app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,

@@ -10,15 +10,13 @@
 <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
 <style>
   :root{
-    /* один ряд сірого: тон 60°, крутиться тільки світлота */
-    --bg:#E9E9E7;      /* 91% */
-    --fig:#D8D8D5;     /* 84% */
-    --hair:#CCCCC7;    /* 79% */
-    --copy:#68685F;    /* 40% — 4.6:1 */
-    --text:#65655D;    /* 38% — 4.9:1 */
-    --strong:#40403B;  /* 24% */
+    --bg:#E9E9E7;
+    --fig:#D8D8D5;
+    --hair:#CCCCC7;
+    --copy:#68685F;
+    --text:#65655D;
+    --strong:#40403B;
 
-    /* шкала відступів: 8 / 16 / 24 / 32 / 56 */
     --s2:16px;
     --s4:32px;
     --s7:56px;
@@ -39,7 +37,7 @@
   main{
     display:grid;
     place-items:center;
-    padding-bottom:7vh;   /* оптичний центр, а не геометричний */
+    padding-bottom:7vh;
   }
   .num{
     font-size:clamp(96px,20vw,180px);
@@ -50,7 +48,7 @@
     margin:var(--s4) 0 0;
     font-size:12.5px;font-weight:400;color:var(--text);
     letter-spacing:.18em;text-transform:uppercase;
-    margin-right:-.18em;   /* компенсація трекінгу справа */
+    margin-right:-.18em;
   }
   .back{
     display:inline-block;margin-top:var(--s4);

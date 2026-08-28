@@ -1,65 +1,25 @@
-/* ===========================================================================
-   issue.css - сторінка «Повідомити про збій».
-
-   Кольори, шрифти й рух - із tokens.css; тут лише те, чим повна сторінка
-   відрізняється від попапа на мапі, та власне форма.
-
-   РОЗМІРНА СИСТЕМА. Чотири кеглі, кожен зі своєю роботою; проміжних значень
-   немає - раніше на сторінці стояли 11, 13, 14, 15, 16 і 20, і сусідні
-   13/14/15 не розрізнялись, а лише плодили винятки.
-
-     20 / 700   заголовок. Один на сторінку.
-     16 / 400   те, що людина вводить або обирає: поля, коментар, варіанти.
-     14         інтерфейс. 500 - підписи, вкладки, кнопка, таблетка стану;
-                400 - пояснення, помилки, підказка всередині поля.
-     11 / 500   моно, капс, розрядка .14em - підвал, як на сторінці 404.
-
-   Розрізняє елементи вага й колір, а не десята частка кегля: підпис поля
-   й пояснення під ним однакові за розміром, але 500 проти 400.
-   =========================================================================== */
-
 :root{
-  /* --- Масштаб сторінки, а не попапа --------------------------------------
-     tokens.css міряє попап: 40px контрол, 12px текст, 10px проміжок. На повній
-     сторінці ті самі співвідношення беруть більший крок - палець замість
-     курсора, ціла ширина замість бульбашки 310px. Змінюються значення,
-     правило лишається: радіус = висота / 4 (у попапа 40 -> 10, тут 48 -> 12). */
   --control-h:48px;
   --radius-control:12px;
-  --radius-card:14px;          /* радіус контрола + 2, як у попапі */
-  --radius-nested:8px;         /* 12 - 4 (відступ жолоба) */
+  --radius-card:14px;
+  --radius-nested:8px;
 
   --gap-tight:8px;
   --gap-block:24px;
   --gap-section:32px;
 
   --text-title:20px;
-  --text-body:16px;            /* нижче 16px iOS зумить поле при фокусі */
+  --text-body:16px;
   --text-ui:14px;
   --text-footer:11px;
 
-  /* --- Чого немає в попапі -------------------------------------------------
-     Підказки в порожньому полі й помаранчевого напису на мапі не буває. */
   --placeholder:#9A9A9A;
-  /* Той самий тон, що й --explosion, затемнений до 5.6:1 на білому: сам #FF1A1A
-     у тексті дає 3.9:1. Колір лишається впізнаваним, напис - робочим. */
   --error-ink:#D00000;
 
-  /* Рух розділів. Решта сторінки міняє колір за --motion (0.15s) - як мапа;
-     тут же їде предмет, а не відтінок, тож довше й з гальмуванням у кінці:
-     та сама крива, що тримає висоту картки. Ривка на старті немає - .2
-     замість типового .42 у ease. */
   --motion-slide:.28s cubic-bezier(.2,.7,.3,1);
-  /* Згасання - удвічі коротше за рух і без гальмування: колір з'являється
-     майже одразу, рухається довше. */
   --motion-fade:.14s ease-out;
 }
 
-/* Мобільні браузери малюють поверх натиснутого елемента власний прямокутник:
-   на Android Chrome це синій квадрат, який спалахує на вкладці розділу, не
-   тримається її скруглень і не має жодного стосунку до палітри продукту.
-   Натиснуте тут показує сам елемент - плитка розділів їде, у варіанта
-   темнішає контур, - тож системній підсвітці нема чого додати. */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0}
 body{
@@ -91,9 +51,6 @@ body{
   font-size:var(--text-title);font-weight:700;letter-spacing:-.01em;color:var(--ink);
 }
 
-/* Порядок блоків задає flex, а не розмітка: у розділі «Інше» переліку
-   варіантів немає, і його місце займає коментар. Так поле, яке в цьому
-   розділі несе всю суть звернення, стоїть першим, а не третім. */
 #report-form{display:flex;flex-direction:column}
 .seg{order:0}
 #block-issue{order:1}
@@ -150,7 +107,6 @@ body.tab-other .textarea{
   border:0;padding:0;margin:0;
 }
 
-/* Розділи */
 .seg{
   position:relative;
   display:grid;
@@ -161,14 +117,6 @@ body.tab-other .textarea{
   margin:var(--gap-block) 0 28px;
   user-select:none;
 }
-/* Біла плитка під активною вкладкою - єдине, що на цій сторінці справді
-   їде. Рухається саме вона, а не три написи: тоді перехід читається як
-   переміщення одного предмета, і око стежить за ним, а не перемальовує
-   рядок. Тінь під плитку не кладемо - на сторінці немає жодної, крім
-   випадного списку міст.
-   translateX у відсотках від власної ширини плитки: колонки в .seg рівні
-   (repeat(3,1fr) у полі 4px), тож 100% - це рівно крок вкладки, і при
-   будь-якій ширині екрана плитка стає точно в жолоб. */
 .seg-slider{
   position:absolute;
   top:4px;bottom:4px;left:4px;
@@ -193,10 +141,7 @@ body.tab-other .textarea{
 .seg button:not([aria-checked="true"]):hover{color:var(--ink-muted-hover)}
 .seg button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 
-/* Блоки */
 .block{margin-bottom:var(--gap-block);border:0;padding:0;min-width:0}
-/* Останній блок віддає нижній відступ кнопці: над «Надіслати» й під нею
-   однакові 32. */
 .block--tail{margin-bottom:0}
 .label{
   display:block;margin:0 0 var(--gap-tight);padding:0;
@@ -204,15 +149,9 @@ body.tab-other .textarea{
 }
 .label .opt-mark{font-weight:400}
 
-/* Варіанти */
 .opts{display:grid;gap:var(--gap-tight)}
 .opt{display:block;position:relative}
 .opt input{position:absolute;opacity:0;width:0;height:0}
-/* Обраний варіант позначає сама коробка: волосок #E8E8E8 проти подвійного
-   чорного кільця. Позначки-галочки немає навмисно - вона повторювала б те,
-   що вже сказано контуром, і була б єдиним таким знаком у продукті.
-   Стан несе не колір, а товщина й тон обводки, тож на чорно-білому екрані
-   й у сонці він читається так само. */
 .opt span{
   display:flex;align-items:center;
   min-height:var(--control-h);
@@ -225,12 +164,10 @@ body.tab-other .textarea{
 .opt input:checked + span{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 .opt input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
 
-/* Поля. -webkit-appearance:none - для iOS: без нього Safari домальовує полю
-   власну рамку з внутрішньою тінню і своє скруглення поверх наших. */
 .input,.textarea{
   -webkit-appearance:none;appearance:none;
   width:100%;font-family:var(--font);
-  font-size:var(--text-body);   /* нижче 16px iOS зумить поле при фокусі */
+  font-size:var(--text-body);
   color:var(--ink);
   background:transparent;
   border:1px solid var(--hairline);border-radius:var(--radius-control);
@@ -250,8 +187,6 @@ body.tab-other .textarea{
   padding:13px 16px;
   box-sizing:border-box;
 }
-/* Нік - ідентифікатор: посимвольна точність важливіша за читабельність
-   речення. */
 .input-id{font-family:var(--font-mono);letter-spacing:.01em}
 .input.input-datetime,
 .input-datetime{
@@ -262,8 +197,6 @@ body.tab-other .textarea{
   cursor:pointer;
   user-select:none;
 }
-/* Підказка в полі - не введений текст, а пояснення, тож кегль інтерфейсу.
-   Кегль самого поля лишається 16px, тому iOS не зумить. */
 .input::placeholder,.textarea::placeholder{
   font-family:var(--font);font-size:var(--text-ui);font-weight:400;color:var(--placeholder);
 }
@@ -279,9 +212,6 @@ body.tab-other .textarea{
 .input:hover,.textarea:hover{border-color:var(--hairline-hover)}
 .input:focus,.textarea:focus{outline:0;border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 
-/* Рядок під блоком - одне місце для двох станів: спокійне пояснення сірим
-   і повідомлення про незаповнене поле червоним. Однакові кегль, відступ
-   і позиція, тож поява помилки не рухає верстку. */
 .hint,.err{
   margin:var(--gap-tight) 0 0;
   font-size:var(--text-ui);font-weight:400;line-height:1.4;
@@ -290,18 +220,10 @@ body.tab-other .textarea{
 .err{display:none;color:var(--error-ink)}
 .block.invalid .err{display:block}
 .block.invalid .hint{display:none}
-/* Незаповнене поле бере червоний контур помилки. Обводка подвійна (рамка + внутрішнє
-   кільце). */
 .block.invalid .input,
 .block.invalid .textarea,
 .block.invalid .opt span{border-color:var(--explosion);box-shadow:inset 0 0 0 1px var(--explosion)}
 
-/* Правила валідації для блоку часу:
-   - Якщо блок помилковий взагалі (не обрано варіант часу), червоніють радіокнопки,
-     а поля дати/часу залишаються зі звичайною рамкою.
-   - Якщо обрано «Вибрати дату і час», але не заповнено (.picker-invalid), обрана
-     радіокнопка лишається чорною, а червоніє тільки те поле (.input-datetime.invalid),
-     яке не було заповнене. */
 #block-time.invalid .input-datetime{
   border-color:var(--hairline);
   box-shadow:none;
@@ -337,10 +259,6 @@ body.tab-other .textarea{
   box-shadow:inset 0 0 0 1px var(--ink) !important;
 }
 
-/* Автодоповнення міста. Нативний <datalist> малює системний список, який не
-   підпорядковується жодному токену продукту, тож список власний.
-   Це єдиний елемент сторінки, який справді висить над вмістом, - тому саме
-   йому дістається єдина тінь продукту (приглушена Leaflet-івська). */
 .combo{position:relative}
 .combo-list{
   position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:20;
@@ -349,16 +267,9 @@ body.tab-other .textarea{
   border:1px solid var(--hairline);
   border-radius:var(--radius-control);
   box-shadow:var(--shadow-card);
-  overflow:hidden;   /* щоб рядки не вилазили за скруглення */
+  overflow:hidden;
 }
 .combo.open .combo-list{display:block}
-/* Прокрутка - на внутрішньому елементі, як .scrollable-content у попапі.
-   Від'ємний margin виносить список у 4px жолоб коробки, куди лягає смуга, а
-   padding праворуч рівно на її ширину повертає рядкам їхній край: смуга
-   нікого не тіснить, і рядок однаковий, гортається список чи ні. Видно
-   чотири рядки й половину п'ятого - тоді одразу зрозуміло, що він гортається.
-   -webkit-overflow-scrolling тут не потрібен: з iOS 13 це порожній рядок, а
-   до того він віддавав інерцію системі й повзунок відставав би від списку. */
 .combo-scroll{
   margin:0 -4px 0 0;padding:0 10px 0 0;list-style:none;
   max-height:180px;
@@ -375,28 +286,12 @@ body.tab-other .textarea{
 }
 .combo-option:hover,
 .combo-option[aria-selected="true"]{background:var(--page)}
-/* Збіг виділяється вагою, а не кольором: колір зайнятий станом. */
 .combo-option b{font-weight:600}
 
-/* --- Смуга прокрутки ------------------------------------------------------
-   ::-webkit-scrollbar малює смугу скрізь, крім iOS: там Safari його просто не
-   слухає, а власний індикатор показує поверх вмісту на пів секунди й гасить.
-   Тобто на айфоні ні коментар, ні список міст жодним знаком не показували, що
-   під краєм є ще текст. Тому смуга тут не системна, а своя: доріжка з
-   повзунком лежать поверх контейнера, а issue.js рухає повзунок за scrollTop.
-   Вигляд лишився той самий, що в списку районів на мапі, - лінійка 10px, з
-   якої видно 4: у повзунок легко влучити мишею й пальцем, але виглядає він
-   тонким. Прозора рамка з background-clip: padding-box і робить цю різницю
-   між тим, що видно, і тим, за що хапаються.
-
-   Системну ховаємо тільки тоді, коли своя вже стоїть: клас .is-live ставить
-   той самий скрипт, що її й малює. */
 .scroller{position:relative}
 .scroller.is-live .scroller-view{scrollbar-width:none}
 .scroller.is-live .scroller-view::-webkit-scrollbar{display:none}
 
-/* У коментарі смуга стоїть усередині рамки поля, у списку міст - у його
-   жолобі, рівно там, де досі малювалась системна. */
 .scroller-bar{
   position:absolute;top:5px;right:5px;bottom:5px;
   width:10px;padding:0 3px;
@@ -408,10 +303,7 @@ body.tab-other .textarea{
   transition:opacity var(--motion-fade);
 }
 .combo-list .scroller-bar{top:4px;right:0;bottom:4px}
-/* Смуги немає, доки нема чого гортати - як у нативної. */
 .scroller.is-scrollable .scroller-bar{opacity:1}
-/* Повзунок: height і transform ставить скрипт. min-height не дає йому
-   зіщулитись у нерухому крапку, коли в списку всі тридцять п'ять міст. */
 .scroller-thumb{
   position:absolute;top:0;left:0;width:10px;min-height:24px;
   border:3px solid transparent;
@@ -419,7 +311,6 @@ body.tab-other .textarea{
   background-clip:padding-box;
   border-radius:5px;
   pointer-events:none;
-  /* Вертикальний жест на повзунку тягне повзунок, а не сторінку. */
   touch-action:none;
 }
 .scroller-thumb:hover,
@@ -427,11 +318,6 @@ body.tab-other .textarea{
   background:rgba(0,0,0,0.4);
   background-clip:padding-box;
 }
-/* Смуга хапається тільки мишею; пальцю вона лишається знаком, а не органом
-   керування. У 10px лінійку пальцем цілять хіба випадково, зате тап по
-   правому краю поля мусить ставити курсор, а гортають на дотику сам вміст.
-   Умова .is-scrollable тут не про вигляд, а про те саме: невидима смуга не
-   має ловити натискання, призначені полю під нею. */
 @media (hover:hover) and (pointer:fine){
   .scroller.is-scrollable .scroller-bar,
   .scroller.is-scrollable .scroller-thumb{pointer-events:auto}
@@ -449,41 +335,17 @@ body.tab-other .textarea{
 .submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .submit:disabled{opacity:.6;cursor:not-allowed}
 
-/* --- Успіх ----------------------------------------------------------------
-   Не окрема сторінка, а стан над формою: та сама таблетка, що в попапі
-   (контейнер іконки завширшки з висоту, далі напис), стоїть просто над
-   перемикачем розділів і зникає за двадцять секунд. Форма при цьому чиста й
-   готова до наступного звернення - окрема кнопка «повідомити ще» більше
-   не потрібна. Сторінку прокручує до початку, щоб повідомлення не лишилось
-   за кадром, якщо людина стояла внизу біля кнопки.
-
-   Таблетка не вмикається з display:none, а розгортається: рядок сітки їде
-   з 0fr у 1fr, і картка виростає рівно на висоту повідомлення - хоч на один
-   рядок, хоч на два. height:auto не анімується, а max-height довелося б
-   вгадувати наперед, і при двох рядках перехід обривався б на середині.
-   Заразом таблетка завжди в потоці, тож role="status" читалка бачить із
-   першого кадру, а не помічає його раптовою появою. */
 .notice{
   display:grid;
   grid-template-rows:0fr;
   margin-top:0;
   opacity:0;
-  /* Розгортається тією ж кривою, якою їде плитка розділів - на сторінці
-     одна мова руху. Заливка при цьому набігає вдвічі швидше за коробку:
-     таблетка встигає прочитатись раніше, ніж дорозгорнеться, і поява
-     читається швидкою, лишаючись плавною. */
   transition:grid-template-rows var(--motion-slide),
              margin-top var(--motion-slide),
              opacity var(--motion-fade);
 }
-/* .show вмикає JavaScript; body.sent лишається для сторінки, яку сервер
-   віддав уже з успіхом - там таблетка просто є, без появи. */
 .notice.show,
 body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
-/* Обрізає вміст, поки рядок нижчий за нього; min-height:0 обов'язковий -
-   без нього елемент відмовиться стиснутись до нуля й розгортати буде нічого.
-   Висоту тримає контейнер іконки, а не min-height: 48px мусять лишитись
-   стисливими. */
 .notice-pill{
   overflow:hidden;min-height:0;
   display:flex;align-items:center;
@@ -491,26 +353,17 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
   border-radius:var(--radius-control);
   font-size:var(--text-ui);font-weight:500;color:var(--ink);
 }
-/* Збій відправки - та сама таблетка в червоному: колір несе стан, напис на
-   ньому чорний. */
 .notice--error .notice-pill{background:var(--status-red)}
-/* Квадрат завширшки з таблетку - як .icon-container у попапі, тільки за її
-   висотою: 48 замість 40. Він же й задає висоту однорядковій таблетці. */
 .notice-icon{
   flex:none;width:var(--control-h);height:var(--control-h);
   display:flex;align-items:center;justify-content:center;
 }
-/* Іконка - половина висоти таблетки, те саме співвідношення, що в попапі
-   (20 з 40). При 48 це рівно 24, з полем 12px навколо. display тут не
-   ставимо навмисно: .notice-icon img переважив би правила нижче за
-   специфічністю (клас + тег проти класу), і видно було б обидві іконки. */
 .notice-icon img{width:24px;height:24px}
 .notice-icon-error{display:none}
 .notice--error .notice-icon-ok{display:none}
 .notice--error .notice-icon-error{display:block}
 .notice-text{padding:12px 16px 12px 0;line-height:1.35}
 
-/* --- Підвал (Дворядна горизонтальна панель) ------------------------------ */
 .foot{
   margin-top:var(--gap-section);
   display:flex;
@@ -574,13 +427,7 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
   color:var(--ink-muted);
 }
 
-/* ==========================================================================
-   МОБІЛЬНЕ
-   ========================================================================== */
-
 @media (max-width:600px){
-  /* На мобільних пристроях переносимо випадний список автодоповнення наверх над полем,
-     щоб його не перекривала екранна клавіатура. */
   .combo-list{
     top:auto;
     bottom:calc(100% + 6px);
@@ -636,10 +483,6 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
   }
 }
 
-/* На 320px три вкладки ділять ~232px, тобто по 77px на кожну, а «Сповіщення»
-   при 14px займає ~73px - слово впритул торкалось сусіднього або лізло в
-   другий рядок. Тут сторінка й картка віддають по 4px поля з кожного боку,
-   а кегль вкладок падає до 13: слово стає ~68px при 78px доступних. */
 @media (max-width:420px){
   body{
     padding-left:max(16px, env(safe-area-inset-left));
@@ -647,21 +490,13 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
   }
   .card{padding-left:16px;padding-right:16px}
   .seg button{font-size:13px;padding:12px 2px;letter-spacing:-.01em}
-  /* З відкритою клавіатурою вікно вдвічі нижче: список не має затуляти
-     все, що лишилось видимим. */
   .combo-scroll{max-height:min(180px,40vh)}
 }
 
-/* Палець - не курсор: рядок списку піднімається до 44px, мінімальної цілі
-   для дотику. У полях і варіантах уже 48. */
 @media (pointer:coarse){
   .combo-option{min-height:44px}
 }
 
-/* На дотику ховер «залипає»: після тапу елемент лишається підсвіченим, доки
-   людина не торкнеться чогось іншого, і виглядає обраним, хоч ним не є.
-   Тому там, де ховера не буває, він скасовується - лишається тільки те,
-   що справді означає стан. */
 @media (hover:none){
   .seg button:not([aria-checked="true"]):hover{color:var(--ink-muted)}
   .opt span:hover{border-color:var(--hairline)}
@@ -681,11 +516,6 @@ body.sent .notice{grid-template-rows:1fr;margin-top:var(--gap-block);opacity:1}
   .input-datetime.invalid{border-color:var(--explosion) !important}
 }
 
-/* Перевага стосується руху, а не будь-якої зміни стану: згасанням і зміною
-   кольору рух якраз і рекомендують заміняти, тож вони лишаються. Миттєвим
-   стає те, що їде або розгортається, - плитка розділів, висота картки й
-   розгортання таблетки. Напис вкладки при цьому теж перемикається коротко:
-   0.28s кольору при миттєвому стрибку плитки виглядали б відв'язано. */
 @media (prefers-reduced-motion:reduce){
   *{animation:none !important}
   .seg-slider,.card{transition:none}

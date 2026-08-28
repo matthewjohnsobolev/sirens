@@ -12,7 +12,6 @@ VERSION = "1.1.0"
 load_dotenv()
 
 APP_ENV = os.getenv("APP_ENV", "development")
-APP_SECRET_KEY = os.getenv("APP_SECRET_KEY", "")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://sirens:sirens@localhost:5432/sirens")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

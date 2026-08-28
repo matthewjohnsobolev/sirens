@@ -41,9 +41,6 @@ TELEGRAM_API_HASH=your_api_hash
 # Application Mode (dev or prod)
 APP_MODE=prod
 
-# Flask Secret Key
-FLASK_SECRET_KEY=your_secure_random_string
-
 # PostgreSQL Credentials (Required for Docker)
 POSTGRES_USER=admin
 POSTGRES_PASSWORD=your_db_password

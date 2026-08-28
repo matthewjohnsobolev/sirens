@@ -1,25 +1,8 @@
-/**
- * Сторінка «Повідомити про збій»: розділи, автодоповнення міста й району,
- * вибір часу події, перевірка полів і відправка.
- *
- * Перелік розділів, варіантів, міст, районів і опцій часу приїздить із
- * сервера в <script id="report-config">, бо тим самим переліком сервер
- * перевіряє те, що прийшло (web/issue.py).
- */
-
 const CONFIG = JSON.parse(document.getElementById('report-config').textContent);
 
-/* Варіанти розділу. У «Іншому» перелік порожній навмисно: там людина описує
-   проблему словами, тож замість варіантів першим іде коментар. */
 const SETS = CONFIG.sets;
-
-/* Вкладка -> назва, під якою звернення прийде в Sentry. */
 const TAB_CATEGORIES = CONFIG.categories;
-
-/* Варіанти часу, коли сталася проблема. */
 const TIME_OPTIONS = CONFIG.time_options || ['Щойно', 'Менше години тому', 'Вибрати дату і час'];
-
-/* Списки міст та районів */
 const CITIES = CONFIG.cities || [];
 const DISTRICTS = CONFIG.districts || [];
 
@@ -48,7 +31,6 @@ const bComment       = document.getElementById('block-comment');
 const inputCat       = document.getElementById('input-category');
 const inputSub       = document.getElementById('input-sub-option');
 
-/* Ізольований стан кожного розділу */
 function createEmptyTabState() {
   const now = new Date();
   return {
@@ -421,7 +403,6 @@ function select(i){
   document.body.classList.toggle('tab-other', isOther());
   comboClose();
 
-  /* помилки попереднього розділу не переносяться на новий */
   bIssue.classList.remove('invalid');
   if (bTime) bTime.classList.remove('invalid', 'picker-invalid');
   if (exactDate) exactDate.classList.remove('invalid');
@@ -437,16 +418,7 @@ function select(i){
   checkCommentOverflow();
 }
 
-/* --- Смуга прокрутки ------------------------------------------------------
-   iOS Safari не малює тієї смуги, що решта браузерів: ::-webkit-scrollbar він
-   не слухає взагалі, а системний індикатор спливає поверх вмісту на пів
-   секунди й гасне. На айфоні через це ні коментар, ні список міст жодним
-   знаком не показували, що під краєм є ще текст.
-
-   Тому смуга своя: доріжка з повзунком лежать поверх контейнера (issue.css),
-   а тут повзунок ходить за scrollTop. Системну ховає CSS - але лише коли
-   своя вже в розмітці, звідси .is-live. */
-const THUMB_MIN = 24;   /* повзунок не зіщулюється в нерухому крапку */
+const THUMB_MIN = 24;
 
 function attachScrollbar(view){
   const host = view.parentElement;
@@ -454,7 +426,6 @@ function attachScrollbar(view){
 
   const bar = document.createElement('div');
   bar.className = 'scroller-bar';
-  /* Читалці смуга не потрібна: скільки лишилось тексту, вона знає й без неї. */
   bar.setAttribute('aria-hidden', 'true');
   const thumb = document.createElement('div');
   thumb.className = 'scroller-thumb';
@@ -462,12 +433,10 @@ function attachScrollbar(view){
   host.appendChild(bar);
   host.classList.add('is-live');
 
-  /* Скільки лишилось прокрутити, у пікселях вмісту. */
   const range = () => view.scrollHeight - view.clientHeight;
 
   function update(){
     const max = range();
-    /* Піксель різниці - це округлення, а не прокрутка. */
     host.classList.toggle('is-scrollable', max > 1);
     if(max <= 1) return;
     const track  = bar.clientHeight;
@@ -476,9 +445,6 @@ function attachScrollbar(view){
     thumb.style.transform = `translateY(${Math.round((track - height) * view.scrollTop / max)}px)`;
   }
 
-  /* Повзунок тягнеться, доріжка під ним перекидає на місце натискання - як у
-     системної. Захоплення вказівника доводить жест до кінця, навіть якщо
-     палець зійшов зі смуги вбік. */
   let fromY = 0, fromTop = 0;
 
   thumb.addEventListener('pointerdown', e => {
@@ -491,8 +457,6 @@ function attachScrollbar(view){
 
   thumb.addEventListener('pointermove', e => {
     if(!host.classList.contains('is-dragging')) return;
-    /* Повзунок проходить менше, ніж текст, - рівно у стільки разів, у скільки
-       він коротший за доріжку. */
     const free = bar.clientHeight - thumb.offsetHeight;
     if(free > 0) view.scrollTop = fromTop + (e.clientY - fromY) * range() / free;
   });
@@ -510,20 +474,15 @@ function attachScrollbar(view){
   });
 
   view.addEventListener('scroll', update, {passive:true});
-  /* Текст у коментарі росте, а саме поле лишається тієї ж висоти, тож
-     ResizeObserver цього не побачить - за нього це робить input. */
   view.addEventListener('input', update);
   window.addEventListener('resize', update);
   if(window.ResizeObserver) new ResizeObserver(update).observe(view);
-  /* Поки не приїхав Inter, рядки міряються запасним шрифтом і виходять іншої
-     висоти - разом із ними попливла б і довжина повзунка. */
   if(document.fonts) document.fonts.ready.then(update);
   update();
 
   return {update};
 }
 
-/* --- Автодоповнення міста й району (тільки за префіксом) ------------------- */
 const combo      = document.getElementById('combo-city');
 const cityList   = document.getElementById('city-list');
 const cityScroll = attachScrollbar(cityList);
@@ -538,7 +497,6 @@ function comboMatch(q){
               : [...CITIES, ...DISTRICTS];
   if(!q) return items;
   const n = norm(q);
-  /* Пошук виключно за префіксом (початком слова або початком назви) */
   return items.filter(item => {
     const full = norm(item);
     if (full.startsWith(n)) return true;
@@ -856,14 +814,6 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-/* --- Повідомлення ---------------------------------------------------------
-   Одна таблетка на два результати: зелена, коли звернення пішло, червона,
-   коли ні. Живе 10 секунд над перемикачем розділів. Сторінку піднімає до
-   початку - кнопка «Надіслати» стоїть унизу, і без цього повідомлення
-   з'явилось би поза екраном. 20 секунд: на телефоні між появою таблетки
-   й тим, як людина підніме погляд від клавіатури, минає більше часу.
-   Після успіху форма чиста; після збою - навпаки, недоторкана: набране
-   людиною має дочекатись повторної спроби. */
 const NOTICE_MS = 20000;
 let noticeTimer;
 
@@ -913,20 +863,13 @@ function showNotice(kind, text){
   clearTimeout(noticeTimer);
   noticeText.textContent = text;
   notice.classList.toggle('notice--error', kind === 'error');
-  /* збій читалка озвучує негайно, успіх - у свою чергу */
   notice.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
-
-  /* Таблетка завжди в розмітці й лише розгортається, тож ні display, ні
-     примусового перерахунку не потрібно - один клас робить усе. */
   notice.classList.add('show');
 
   const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   window.scrollTo({top:0, behavior: still ? 'auto' : 'smooth'});
 
   noticeTimer = setTimeout(() => {
-    /* body.sent тримає таблетку відкритою на сторінці, яку сервер віддав уже
-     з успіхом; знімати його треба разом із .show, інакше вона лишиться
-     відкритою й закриється стрибком. */
     document.body.classList.remove('sent');
     notice.classList.remove('show');
   }, NOTICE_MS);
@@ -936,6 +879,4 @@ if (exactDate) exactDate.placeholder = formatUkrainianDate(selectedDate);
 if (exactTime) exactTime.placeholder = formatUkrainianTime(selectedTimeStr, selectedDate);
 select(0);
 
-/* Якщо сторінку віддав сервер уже з успіхом (форма пішла звичайним POST,
-   без fetch), таблетка поводиться так само. */
 if (document.body.classList.contains('sent')) showNotice('ok', MSG.ok);

@@ -67,7 +67,6 @@
 
         const mapSize = document.querySelector("#map");
         
-        // Hide markers button init
         const hideMarkersButton = document.createElement("div");
         hideMarkersButton.classList.add("layer-control");
         mapSize.appendChild(hideMarkersButton);
@@ -79,12 +78,10 @@
         hideMarkersButton.appendChild(hideMarkersIcon);
 
         hideMarkersButton.addEventListener('click', function() {
-            // Переключаем иконку и заголовок кнопки
             if (hideMarkersIcon.getAttribute('src') === "{{ url_for('static', filename='img/icons/markers-off-button-icon.svg') }}") {
                 hideMarkersIcon.setAttribute('src', "{{ url_for('static', filename='img/icons/markers-on-button-icon.svg') }}");
                 hideMarkersButton.setAttribute("title", "Показати маркери");
 
-                // Скрываем все маркеры
                 map.getPane('markerPane').style.display = 'none';
                 map.getPane('shadowPane').style.display = 'none';
                 map.closePopup();
@@ -92,14 +89,11 @@
                 hideMarkersIcon.setAttribute('src', "{{ url_for('static', filename='img/icons/markers-off-button-icon.svg') }}");
                 hideMarkersButton.setAttribute("title", "Прибрати маркери");
                 
-                // Показуємо всі маркери
                 map.getPane('markerPane').style.display = '';
                 map.getPane('shadowPane').style.display = '';
             }
         });
 
-
-        // Report-an-error button init; sits under the markers toggle
         const reportErrorButton = document.createElement("a");
         reportErrorButton.classList.add("contact-button");
         reportErrorButton.href = "/issue";
@@ -110,7 +104,6 @@
         reportErrorIcon.src = "{{ url_for('static', filename='img/icons/contact-us-button-icon.svg') }}";
         reportErrorIcon.classList.add("contact-icon");
         reportErrorButton.appendChild(reportErrorIcon);
-
 
         function closeBanner() {
             document.getElementById('banner').classList.add('closed');
@@ -169,7 +162,6 @@
             popupAnchor: [0, -14]
         });
 
-        // Иконки для разных типов угроз
         var missileIcon = L.icon({
             iconUrl: "{{ url_for('static', filename='img/icons/missile-marker.svg') }}",
             iconSize: [27.5, 27.5],
@@ -194,7 +186,6 @@
             popupAnchor: [0, -14]
         });
 
-        // Иконки для разных типов объектов
         var cityIcon = L.icon({
             iconUrl: "{{ url_for('static', filename='img/icons/city-marker.svg') }}",
             iconSize: [27.5, 27.5],
@@ -219,7 +210,6 @@
             popupAnchor: [0, -14]
         });
 
-        // Функция для создания маркера
         function createMarker(lat, lng, icon, popupContent) {
             const marker = L.marker([lat, lng], {icon: icon})
                 .bindPopup(popupContent)
@@ -228,7 +218,6 @@
             return marker;
         }
 
-        // Функция для обновления маркера
         function updateMarker(marker, isActive) {
             if (!isActive) {
                 marker.remove();

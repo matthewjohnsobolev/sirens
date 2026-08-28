@@ -1,7 +1,3 @@
-/**
- * City markers and popup configurations for Sirens map.
- */
-
 function setMarkerStyle(dominant) {
     if (dominant === 'explosion') {
         return (typeof redChannelIcon !== 'undefined' && redChannelIcon) ? redChannelIcon : L.icon({
@@ -49,8 +45,6 @@ function getMarkerPopupContent(marker, threats) {
     const dominant = pickDominant(threats) || 'idle';
     const winner = threats[dominant] || threats.alert || {};
 
-    // Спершу статус, і лише потім заклик підписатись: у попап заходять,
-    // щоб дізнатись, що зараз коїться, а канал - це вже наступний крок.
     return `<div class='channel-popup-name'>${marker.name}</div>`
          + renderPill({ variant: dominant, updatedAt: winner.updated_at, source: winner.source })
          + subscribeButtonHtml(marker.channel);
@@ -67,7 +61,6 @@ fetch('/api')
             const icon = setMarkerStyle(dominant);
             const m = L.marker([marker.lat, marker.lng], { icon: icon });
 
-            // Функція, а не рядок: тривалість рахується у мить відкриття попапа.
             m.bindPopup(() => getMarkerPopupContent(marker, threats), customOptions);
             m.addTo(map);
         });

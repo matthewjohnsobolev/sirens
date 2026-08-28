@@ -1,71 +1,38 @@
-/* ===========================================================================
-   status.css - сторінка стану системи («Стан системи»).
-
-   Кольори, шрифти, геометрія та рух строго підпорядковані дизайн-системі
-   та токенам продукту (tokens.css, issue.css).
-
-   РОЗМІРНА СИСТЕМА (4 кеглі, кожен зі своєю роллю):
-     20 / 700   заголовок картки (h1). Один на сторінку.
-     16 / 400   основний текст.
-     14         інтерфейс:
-                600 - заголовки компонентів, головний статус, CTA-кнопка;
-                500 - підписи, кнопки;
-                400 - пояснення, підзаголовок статусу.
-     11 / 500   моно, капс, розрядка .04em - час оновлення, шкали часу,
-                підказка-тултип, копірайт у підвалі.
-
-   ГЕОМЕТРІЯ:
-     Радіус = висота / 4 (для контролів 48px -> 12px).
-     Радіус картки = 14px (радіус контрола + 2, як у попапах).
-     Вкладений радіус = 8px (12px мінус 4px внутрішнього відступу).
-   =========================================================================== */
-
 :root {
-  /* --- Пастельні статуси ---------------------------------------------------
-     Колір несе значення, текст на ньому завжди чорний. Ті самі значення, що й у
-     таблетках попапа та формі збою (tokens.css). */
-  --status-green: #B9FFA8;        /* відбій / успіх / без збоїв */
+  --status-green: #B9FFA8;
   --status-green-hover: #C8FFBB;
-  --status-orange: #FFCA9A;       /* тривога */
+  --status-orange: #FFCA9A;
   --status-orange-hover: #FFD5AE;
-  --status-red: #FFB7B7;          /* вибухи / помилка / тривалі збої */
+  --status-red: #FFB7B7;
   --status-red-hover: #FFC3C3;
-  --status-blue: #BFF0FF;         /* планові технічні роботи */
+  --status-blue: #BFF0FF;
   --status-blue-hover: #D2F4FF;
-  --status-gray: #E8E8E8;         /* немає даних */
+  --status-gray: #E8E8E8;
   --status-gray-hover: #EEEEEE;
 
-  /* --- Насичені графічні індикатори аптайму (шкали / смужки / тултипи) -----
-     Контраст до білого тла картки (WCAG 2.1 AA Non-text Contrast >= 3.0:1) */
-  --status-green-bar: #2EAD1A;        /* відбій / нормальна робота (Hue 112°, 3.01:1) */
-  --status-orange-bar: #FF831A;       /* незначні / часткові збої < 15 хв (оранжевий) */
-  --status-red-bar: #FF1A1A;          /* тривалі збої >= 15 хв / не працює (червоний, 3.88:1) */
-  --status-blue-bar: #0284C7;         /* планові технічні роботи (4.10:1) */
-  --status-gray-bar: #D4D4D8;         /* немає даних */
+  --status-green-bar: #2EAD1A;
+  --status-orange-bar: #FF831A;
+  --status-red-bar: #FF1A1A;
+  --status-blue-bar: #0284C7;
+  --status-gray-bar: #D4D4D8;
 
-  /* --- Нейтралі ------------------------------------------------------------
-     Усі сірі чисті, без домішки синього чи зеленого - як на мапі. */
   --ink: #000;
-  --ink-muted: #757575;           /* = хрестик закриття попапа Leaflet */
-  --hairline: #E8E8E8;            /* та ж сірість, що й таблетка "Немає даних" */
+  --ink-muted: #757575;
+  --hairline: #E8E8E8;
   --hairline-hover: #D0D0D0;
-  --hairline-dark: #B0B0B0;       /* обводка вибраної смуги графіка та тултипа */
+  --hairline-dark: #B0B0B0;
   --surface: #fff;
   --surface-hover: #F4F4F4;
   --page: #F4F4F4;
 
-  /* --- Геометрія -----------------------------------------------------------
-     Радіус = висота / 4 (у формі 48 -> 12). */
   --control-h: 48px;
   --radius-control: 12px;
   --radius-card: 14px;
 
-  /* --- Ритм ---------------------------------------------------------------- */
   --gap-tight: 8px;
   --gap-block: 24px;
   --gap-section: 32px;
 
-  /* --- Типографіка --------------------------------------------------------- */
   --font: 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --text-title: 20px;
@@ -73,7 +40,6 @@
   --text-ui: 14px;
   --text-footer: 11px;
 
-  /* --- Тінь та рух --------------------------------------------------------- */
   --motion: 0.15s ease;
   --motion-fade: .14s ease-out;
 }
@@ -105,7 +71,6 @@ body {
   margin: 0 auto;
 }
 
-/* --- Логотип -------------------------------------------------------------- */
 .logo {
   display: block;
   width: 60px;
@@ -126,7 +91,6 @@ body {
   display: block;
 }
 
-/* --- Картка --------------------------------------------------------------- */
 .card {
   background: var(--surface);
   border: 1px solid var(--hairline);
@@ -143,13 +107,6 @@ body {
   color: var(--ink);
 }
 
-/* --- Плашка-таблетка головного стану --------------------------------------
-   Геометрія сторінки (висота 48px, радіус 12px = висота / 4),
-   шрифти та типографіка синхронізовані з попапом мапи (oblasts.css, tokens.css):
-   - Квадратний блок іконки 48х48px, іконка 24х24px (половина висоти)
-   - Лейбл у центрі: Inter 14px / 500 (як .oblast-description-text)
-   - Час оновлення праворуч: JetBrains Mono 11px / 400, rgba(0,0,0,0.6) (як .oblast-description-time)
-   - Опис винесено під плашку */
 .notice {
   margin: 0 0 var(--gap-block);
   display: flex;
@@ -234,7 +191,6 @@ body {
   color: var(--ink);
 }
 
-/* --- Список компонентів --------------------------------------------------- */
 .list {
   border-top: 1px solid var(--hairline);
 }
@@ -287,7 +243,6 @@ body {
   display: none;
 }
 
-/* --- Графік 24 години (24 смуги) ------------------------------------------ */
 .bars {
   display: grid;
   grid-template-columns: repeat(24, minmax(0, 1fr));
@@ -325,7 +280,6 @@ body {
 .bar[data-state="mnt"]    { background: var(--status-blue-bar); }
 .bar[data-state="nodata"] { background: var(--status-gray-bar); }
 
-/* Активна/вибрана смужка плавно підіймається без деформації ширини та виділяється рамкою */
 .bar.is-active,
 .bar:focus-visible {
   transform: translateY(-3px);
@@ -335,7 +289,6 @@ body {
   outline: none;
 }
 
-/* Якщо блок має активний елемент, інші елементи гарантовано не мають обводки та зсуву */
 .bars.has-active .bar:not(.is-active) {
   transform: none !important;
   box-shadow: none !important;
@@ -353,7 +306,6 @@ body {
   text-transform: uppercase;
 }
 
-/* --- Блок дії під графіками ----------------------------------------------- */
 .card-action {
   margin-top: var(--gap-block);
   display: flex;
@@ -411,7 +363,6 @@ body {
   outline-offset: 2px;
 }
 
-/* --- Підказка-тултип (по ховеру / дотику / фокусу) ------------------------ */
 .tip {
   position: fixed;
   z-index: 9999;
@@ -496,7 +447,6 @@ body {
   line-height: 1;
 }
 
-/* Ідеальний круглий індикатор, точно вицентруваний по осі Y */
 .tip-dot {
   width: 6px;
   height: 6px;
@@ -511,7 +461,6 @@ body {
   box-sizing: border-box;
 }
 
-/* Системні чисті кольори індикаторів у тултипі (повністю збігаються з графіком) */
 .tip-dot[data-state="ok"]     { background: var(--status-green-bar); }
 .tip-dot[data-state="minor"]  { background: var(--status-orange-bar); }
 .tip-dot[data-state="major"]  { background: var(--status-red-bar); }
@@ -523,7 +472,6 @@ body {
   display: none;
 }
 
-/* --- Підвал (Дворядна горизонтальна панель) ------------------------------ */
 .foot {
   margin-top: var(--gap-section);
   display: flex;
@@ -586,10 +534,6 @@ body {
   line-height: 1.55;
   color: var(--ink-muted);
 }
-
-/* ==========================================================================
-   МОБІЛЬНА АДАПТАЦІЯ ТА ТАЧ-ЕРГОНОМІКА
-   ========================================================================== */
 
 @media (max-width: 600px) {
   body {
@@ -697,10 +641,8 @@ body {
   }
 }
 
-/* --- Оптимізація тач-інтерфейсу (Touch / Pointer Coarse) ------------------ */
 @media (pointer: coarse) {
   .bars {
-    /* Збільшуємо зону захоплення жесту по вертикалі без візуального розширення */
     padding: 4px 0;
     margin: -4px 0;
   }

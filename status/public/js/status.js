@@ -1,13 +1,7 @@
-/*
- * Сторінка стану: плавна підказка по наведенню/дотику з чітким виділенням
- * обраної години, підтримка тач-скрабінгу (touch scrubbing) та автоматичне фонове оновлення.
- */
 (function() {
   'use strict';
 
   const REFRESH_MS = 60000;
-
-  // --- підказка по ховеру / дотику / фокусу ----------------------------------
 
   let tip = null;
   let hideTimer = null;
@@ -31,7 +25,6 @@
     return tip;
   }
 
-  // Прибираємо стандартний спливаючий атрибут title браузера, якщо він десь залишився
   function initBars() {
     ensureTip();
     const bars = document.querySelectorAll('.bar');
@@ -70,7 +63,6 @@
       currentBar = null;
     }
 
-    // Гарантоване очищення активних класів з усіх смужок та контейнерів
     const activeBars = document.querySelectorAll('.bar.is-active');
     for (let i = 0; i < activeBars.length; i++) {
       activeBars[i].classList.remove('is-active');
@@ -80,7 +72,6 @@
       activeContainers[i].classList.remove('has-active');
     }
 
-    // Знімаємо фокус з активної смужки, щоб при скролі не залишалася обводка фокусу
     if (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('bar')) {
       if (typeof document.activeElement.blur === 'function') {
         document.activeElement.blur();
@@ -98,7 +89,6 @@
 
     ensureTip();
 
-    // Якщо фокус був на іншій смужці після тапу, знімаємо фокус, щоб не залишалося старої обводки
     if (document.activeElement && document.activeElement !== bar && document.activeElement.classList && document.activeElement.classList.contains('bar')) {
       if (typeof document.activeElement.blur === 'function') {
         document.activeElement.blur();
@@ -150,7 +140,6 @@
 
     tip.hidden = false;
 
-    // Позиціонування підказки точно над/під центром смужки зі стрілкою
     const barBox = bar.getBoundingClientRect();
     const tipBox = tip.getBoundingClientRect();
     const margin = 8;
@@ -162,7 +151,6 @@
     let left = Math.round(barCenterX - tipWidth / 2);
     left = Math.max(margin, Math.min(left, window.innerWidth - tipWidth - margin));
 
-    // Стрілка центрується точно по центру активної смужки графіка з урахуванням внутрішнього зміщення padding-box
     const borderLeft = tip.clientLeft || 1;
     const minArrowX = 14;
     const maxArrowX = tipWidth - borderLeft - 15;
@@ -203,7 +191,6 @@
     return visibleBars[index] || null;
   }
 
-  // --- Миша (плавний трекінг без мерехтіння на проміжках) -------------------
   function onPointerMove(event) {
     if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
     const bars = event.target && event.target.closest ? event.target.closest('.bars') : null;
@@ -221,7 +208,6 @@
     const bars = event.target && event.target.closest ? event.target.closest('.bars') : null;
     if (bars) {
       const related = event.relatedTarget && event.relatedTarget.closest ? event.relatedTarget.closest('.bars') : null;
-      // Ховаємо підказку лише тоді, коли курсор повністю залишив компонент .bars
       if (!related) {
         hideTip();
       }
@@ -231,7 +217,6 @@
   document.addEventListener('pointermove', onPointerMove, true);
   document.addEventListener('pointerout', onPointerOut, true);
 
-  // --- Тач-взаємодія та скрабінг -------------------------------------------
   document.addEventListener('pointerdown', function(event) {
     const isTouch = event.pointerType === 'touch' || event.pointerType === 'pen';
     const bars = event.target && event.target.closest ? event.target.closest('.bars') : null;
@@ -282,7 +267,6 @@
   document.addEventListener('pointerup', onTouchEnd, true);
   document.addEventListener('pointercancel', onTouchCancel, true);
 
-  // --- Фокус та клавіатура --------------------------------------------------
   document.addEventListener('focusin', function(event) {
     const bar = event.target && event.target.closest ? event.target.closest('.bar') : null;
     if (bar) {
@@ -322,13 +306,11 @@
   window.addEventListener('scroll', hideTip, { passive: true });
   window.addEventListener('resize', hideTip);
 
-  // --- оновлення (з безпечним відкладенням під час взаємодії) ----------------
   let due = Date.now() + REFRESH_MS;
 
   const tick = function() {
     if (document.visibilityState !== 'visible') return;
     if (Date.now() < due) return;
-    // Якщо користувач прямо зараз вивчає графік, відкладаємо релоад на 10 секунд
     if (currentBar || activeTouchBars) {
       due = Date.now() + 10000;
       return;

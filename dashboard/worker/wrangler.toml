@@ -1,19 +1,7 @@
-# Worker that serves the dashboard out of R2. Deployed by hand, not by CI, which
-# only syncs files into the bucket below:
-#
-#   cd dashboard/worker && npx wrangler deploy
-#
-# The custom domain and Cloudflare Access are attached afterwards in the
-# dashboard - see "Channel Statistics" in README.md.
-
 name = "sirens-bi"
 main = "index.js"
 compatibility_date = "2026-08-01"
 
-# Same bucket the dashboard workflow syncs the built site into. The jurisdiction
-# is not decoration: a bucket created under one is invisible to a binding that
-# omits it, exactly as it is invisible to the plain S3 endpoint. It is also
-# fixed at creation time - changing it means making a new bucket.
 [[r2_buckets]]
 binding = "STATIC"
 bucket_name = "sirens-bi-web"

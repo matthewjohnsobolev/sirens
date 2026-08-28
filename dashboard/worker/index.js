@@ -1,22 +1,9 @@
-/**
- * Serves the built Evidence dashboard out of an R2 bucket.
- *
- * R2 has no notion of an index document and serves objects by exact key, so
- * mapping request paths to keys is the whole job of this Worker. Why R2 rather
- * than Pages, and how it is deployed: see wrangler.toml and README.md.
- */
-
 const INDEX = 'index.html';
-
-// Evidence content-hashes everything under this prefix, so those URLs can never
-// point at different bytes. Anything else is rebuilt daily under the same name.
 const IMMUTABLE_PREFIX = '_app/immutable/';
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 const MUTABLE_CACHE = 'public, max-age=300, must-revalidate';
 
-// The uploader's guesses are not trustworthy for these (the aws CLI has no
-// entry for .wasm or .parquet), and duckdb-wasm refuses to instantiate a
-// module that did not arrive as application/wasm.
+// Explicit MIME types required by duckdb-wasm and static assets
 const CONTENT_TYPES = {
     css: 'text/css; charset=utf-8',
     csv: 'text/csv; charset=utf-8',
@@ -39,7 +26,7 @@ function candidateKeys(pathname) {
     try {
         key = decodeURIComponent(pathname);
     } catch {
-        key = pathname; // malformed percent-encoding: try it literally
+        key = pathname;
     }
     key = key.replace(/^\/+/, '');
 
@@ -49,7 +36,6 @@ function candidateKeys(pathname) {
     if (key.includes('.')) {
         return [key];
     }
-    // Evidence emits pretty URLs as directories: /channels -> channels/index.html
     return [key, `${key}/${INDEX}`, `${key}.html`];
 }
 

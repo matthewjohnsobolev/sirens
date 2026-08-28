@@ -137,11 +137,7 @@ async def broadcast_reference(channel_id: int, message) -> tuple[int | None, str
 
 
 async def source_reference(event) -> tuple[int | None, str | None]:
-    """Ідентифікатор і посилання на пост першоджерела.
-
-    Для районів без власного каналу саме він стає джерелом стану: таблетка
-    такого району на карті веде на пост, з якого тривогу й дізналися.
-    """
+    """Source message ID and link for map-only updates."""
     message_id = getattr(event.message, "id", None)
     chat_id = getattr(event, "chat_id", None)
     if not isinstance(message_id, int) or not isinstance(chat_id, int):
@@ -165,7 +161,7 @@ def spawn_tracked_task(coro, description: str):
 
 
 def district_label(district_key: str) -> str:
-    """Як район звати в логах: латиниця для каналів, українська - для решти."""
+    """Label for logging: latin for broadcast channels, Ukrainian for the rest."""
     conf = DISTRICT_CONFIG.get(district_key)
     if not conf:
         return district_key.capitalize()
@@ -216,7 +212,7 @@ LOCATION_LOCATIVE = {
 
 
 def city_or_district_name(district_key: str) -> str:
-    """Українська назва міста (якщо для нього є канал розсилки) або району для статус-сторінки."""
+    """Ukrainian city name (if broadcast) or district name for telemetry."""
     if district_key in BROADCAST_CITIES:
         return BROADCAST_CITIES[district_key]
     conf = DISTRICT_CONFIG.get(district_key)
@@ -226,7 +222,7 @@ def city_or_district_name(district_key: str) -> str:
 
 
 def location_locative(district_key: str) -> str:
-    """Форма місцевого відмінка ('у Києві', 'у Білій Церкві', 'у Бучі')."""
+    """Locative case form of the location title."""
     if district_key in LOCATION_LOCATIVE:
         return LOCATION_LOCATIVE[district_key]
     conf = DISTRICT_CONFIG.get(district_key, {})
@@ -519,12 +515,7 @@ async def record_map_only_alert(
     message_id: int | None = None,
     message_link: str | None = None,
 ):
-    """Район без каналу: стан лише для карти, без бродкасту.
-
-    Дзеркалить send_alert - той самий дедуп і той самий запис стану, - але
-    нікуди не пише й не чіпає фото каналу. Джерелом події стає пост
-    першоджерела, бо власного повідомлення в такого району немає.
-    """
+    """Records state for a non-broadcast district on the map."""
     if alert_type not in MESSAGES:
         log.error("Unknown alert type: %s", alert_type)
         return
@@ -563,12 +554,7 @@ def strip_ongoing_notice(message_text: str) -> str:
 
 
 def _trigger_pattern(trigger: str) -> re.Pattern:
-    """Збіг по межах слова.
-
-    Межі виписані руками, бо \b не бачить апострофа й дефіса: без них
-    "Подільський район" знаходився б усередині "Кам'янець-Подільського",
-    а "Дністровський" - усередині "Білгород-Дністровського".
-    """
+    """Matches word boundaries accounting for apostrophes and hyphens."""
     return re.compile(rf"(?<![\w'\u2019-]){re.escape(trigger)}(?![\w'\u2019])")
 
 
@@ -600,12 +586,7 @@ def _alert_type_for(district_key: str, message_text: str) -> str | None:
 
 
 def match_districts(message_text: str) -> dict[str, str]:
-    """Райони, згадані в пості -> тип події для кожного.
-
-    Район спрацьовує від власної назви або від назви своєї області: джерело
-    часто оголошує тривогу по області, не перелічуючи райони, - і тоді її
-    отримує вся область, а не лише ті райони, у яких у мене є канал.
-    """
+    """Maps mentioned districts to their alert event type."""
     oblast_hit = {
         oblast: any(pattern.search(message_text) for pattern in patterns)
         for oblast, patterns in OBLAST_PATTERNS.items()
@@ -634,11 +615,7 @@ reported_unknown_districts: set[str] = set()
 
 
 def log_unrecognised_districts(message_text: str) -> None:
-    """Назви районів із поста, яких немає в конфізі.
-
-    Без цього чергове перейменування району виглядає як тиша: карта просто не
-    оновлюється, і дізнаємось ми про це від того, хто на неї дивився.
-    """
+    """Logs district names present in the post but missing from configuration."""
     unknown = (
         {" ".join(mention.split()) for mention in DISTRICT_MENTION_RE.findall(message_text)}
         - KNOWN_DISTRICT_TRIGGERS
@@ -659,11 +636,7 @@ LAST_ALERT_INFO_KEY = "service:alerts:last_alert_info"
 
 
 async def push_telemetry_to_kv() -> None:
-    """Пуш знімка телеметрії стану в Cloudflare KV для сторінки стану.
-
-    Виконується безпечно у фоні: якщо параметри Cloudflare не налаштовані
-    або виникла помилка мережі, процес не блокується і не падає.
-    """
+    """Pushes a snapshot of current telemetry state to Cloudflare KV."""
     if not (CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_TELEMETRY_NAMESPACE_ID and CLOUDFLARE_API_TOKEN):
         return
 
@@ -779,12 +752,7 @@ def request_telemetry_sync(delay: float | None = None) -> asyncio.Task:
 
 
 async def record_source_message(moment: datetime.datetime | None = None) -> None:
-    """Запам'ятати, коли джерело озвалося востаннє.
-
-    Час беремо з самого поста, а не з годинника воркера: якщо ми наздоганяємо
-    чергу після розриву зв'язку, справжня мить публікації - єдина, що каже
-    правду про тишу.
-    """
+    """Records the timestamp of the latest source message received."""
     global last_source_message_at
 
     seen_at = moment.timestamp() if isinstance(moment, datetime.datetime) else time.time()
@@ -800,7 +768,7 @@ async def record_source_message(moment: datetime.datetime | None = None) -> None
 
 
 async def record_broadcast(succeeded: bool) -> None:
-    """Запам'ятати, коли востаннє успішно пройшов бродкаст."""
+    """Records the timestamp of the latest successful broadcast."""
     global last_broadcast_at
 
     if not succeeded:
@@ -819,16 +787,7 @@ async def record_broadcast(succeeded: bool) -> None:
 
 
 async def _prime_monitoring_state(source_channel) -> None:
-    """Відновити стан обох кінців ланцюга на старті.
-
-    Мітку тиші входу спершу шукаємо в Redis: рестарт воркера не має скидати годинник.
-    Якщо її там немає - питаємо Telegram про останній пост у джерелі, бо це і є
-    справжня відповідь. І лише коли не вийшло ні те, ні те, беремо «зараз»:
-    хибна тривога відразу після старту дорожча за пізніше виявлення.
-
-    Мітку виходу (last_broadcast_at) так само відновлюємо з Redis, а коли там
-    порожньо - беремо «зараз», щоб годинник стартував з моменту підняття процесу.
-    """
+    """Restores the monitoring state for input and output silence clocks on startup."""
     global last_broadcast_at, last_source_message_at, last_alert_payload
 
     stored_source_seen_at = None
@@ -1040,13 +999,7 @@ async def _healthcheck_loop(client: TelegramClient) -> None:
 
 
 async def _broadcast_watchdog_loop(client: TelegramClient) -> None:
-    """Чек «Сповіщення в Telegram» - вихід ланцюга.
-
-    Зелений означає, що з'єднання з Telegram живе І хоча б одне повідомлення
-    було надіслано в канали мережі за останні 6 годин (або з моменту старту).
-    Цикл працює й без налаштованого пінга: подія в Sentry про тишу потрібна
-    незалежно від healthchecks.io.
-    """
+    """Monitors Telegram broadcast pipeline liveness and pings healthchecks."""
     if not HEALTHCHECKS_ALERTS_BROADCAST_PING_URL:
         log.warning(
             "HEALTHCHECKS_ALERTS_BROADCAST_PING_URL not set; skipping broadcast health pings"

@@ -92,14 +92,12 @@ def test_config_uptimerobot_keys(monkeypatch):
 
 def test_config_app_and_database(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("APP_SECRET_KEY", "secret-key-123")
     monkeypatch.setenv("DATABASE_URL", "postgresql://sirens:pass@localhost:5432/sirens_prod")
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/1")
 
     importlib.reload(config)
 
     assert config.APP_ENV == "production"
-    assert config.APP_SECRET_KEY == "secret-key-123"
     assert config.DATABASE_URL == "postgresql://sirens:pass@localhost:5432/sirens_prod"
     assert config.REDIS_URL == "redis://localhost:6379/1"
 

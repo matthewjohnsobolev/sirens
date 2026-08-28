@@ -1,22 +1,4 @@
 #!/usr/bin/env bash
-#
-# Sirens production deploy. Non-interactive — safe for cron or CI, never
-# waits for input: either finishes with a healthy service or exits non-zero
-# with logs.
-#
-# Requires: setup.sh already run once (Telegram session must exist).
-#
-# Usage (run on the VPS from the project directory):
-#
-#   ./deploy/deploy.sh              # deploy origin/main
-#   ./deploy/deploy.sh v1.0.0       # deploy a tag/branch/commit (also used to roll back)
-#   FORCE=1 ./deploy/deploy.sh      # rebuild even if already on target revision
-#
-# What it does: validates .env -> git fetch/reset --hard to target ->
-# docker compose build --pull && up -d -> waits up to 90s for /api to
-# return 200, printing logs on failure.
-#
-set -euo pipefail
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -33,7 +15,7 @@ step "Checking environment"
 [[ -f docker-compose.yml ]] || die "run this from the project directory"
 [[ -f .env ]] || die "no .env file (copy .env.example and fill it in)"
 
-for var in TELEGRAM_API_ID TELEGRAM_API_HASH APP_SECRET_KEY; do
+for var in TELEGRAM_API_ID TELEGRAM_API_HASH; do
     grep -Eq "^[[:space:]]*${var}=.+" .env || die "$var is not set in .env"
 done
 grep -Eq '^[[:space:]]*(APP_ENV=(prod|production)|APP_MODE=prod)' .env || die "APP_ENV must be 'production' or 'prod' in .env"

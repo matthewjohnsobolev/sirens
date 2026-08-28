@@ -601,7 +601,7 @@ SOURCE_LINK = f"https://t.me/{SOURCE_USERNAME}/{SOURCE_MESSAGE_ID}"
 
 
 class Dispatched(NamedTuple):
-    """Дві гілки парсера: що пішло в канали і що лише на карту."""
+    """Two parser outputs: broadcast to channels and map-only records."""
 
     broadcast: list
     recorded: list
@@ -682,7 +682,7 @@ async def test_build_message_handler_dispatches_correct_alert(message_text, expe
 
 @pytest.mark.asyncio
 async def test_build_message_handler_maps_a_region_without_a_channel():
-    """Без каналу тривога не мовиться, але карта про неї все одно дізнається."""
+    """Without a broadcast channel, the alert is not sent to Telegram but is still recorded on the map."""
     dispatched = await _dispatch("м. Київ Повітряна тривога", {"nikopol": 2222})
 
     assert dispatched.broadcast == []
@@ -979,7 +979,7 @@ def test_ping_healthcheck_sends_get_with_suffix(monkeypatch):
 
 
 def test_ping_tg_healthcheck_uses_its_own_url(monkeypatch):
-    """Два кінці ланцюга - два чеки; переплутати їхні URL не можна."""
+    """Two ends of the pipeline have separate healthchecks and cannot swap URLs."""
     monkeypatch.setattr(
         alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/source"
     )
@@ -1089,15 +1089,11 @@ def test_returning_source_closes_the_episode(caplog):
 
 
 class _StopLoop(Exception):
-    """Вихід із нескінченного циклу на другому колі."""
+    """Exit from the infinite loop on the second iteration."""
 
 
 async def _run_one_cycle(coro):
-    """Прокрутити рівно одне коло циклу.
-
-    Через підмінений sleep, а не через таймер: під coverage реальні мілісекунди
-    пливуть, і тест на них починає блимати.
-    """
+    """Run exactly one loop iteration using a mocked sleep."""
     with patch("alerts.main.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         mock_sleep.side_effect = [None, _StopLoop]
         with pytest.raises(_StopLoop):
@@ -1106,11 +1102,10 @@ async def _run_one_cycle(coro):
 
 @pytest.mark.asyncio
 async def test_healthcheck_loop_keeps_watching_without_a_ping_url(monkeypatch, caplog):
-    """Без healthchecks.io цикл не виходить: подія в Sentry про тишу від нього
-    не залежить."""
+    """The loop continues running when healthchecks ping URL is absent."""
     caplog.set_level(logging.WARNING)
     monkeypatch.setattr(alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "")
-    alerts_main.last_source_message_at = 0.0  # тиша від початку епох
+    alerts_main.last_source_message_at = 0.0
     mock_client = MagicMock()
     mock_client.is_connected.return_value = True
 
@@ -1139,7 +1134,7 @@ async def test_healthcheck_loop_pings_while_the_source_is_fresh(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_healthcheck_loop_fails_the_check_on_silence(monkeypatch):
-    """Тиша шле явний /fail: чек має почервоніти одразу, а не через period+grace."""
+    """Extended silence triggers an explicit /fail ping."""
     monkeypatch.setattr(
         alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/test-uuid"
     )
@@ -1171,9 +1166,6 @@ async def test_healthcheck_loop_skips_ping_when_disconnected(monkeypatch):
     mock_ping.assert_not_called()
 
 
-# --- Вихід ланцюга: час останнього бродкасту ------------------------------
-
-
 @pytest.mark.asyncio
 async def test_record_broadcast_stores_timestamp_on_success(mock_redis):
     with patch("alerts.main.time.time", return_value=1_700_000_000.0):
@@ -1195,7 +1187,7 @@ async def test_record_broadcast_ignores_failure(mock_redis):
 
 @pytest.mark.asyncio
 async def test_record_broadcast_keeps_timestamp_without_redis():
-    """Мітка часу живе в пам'яті й тоді, коли Redis не піднявся зовсім."""
+    """The broadcast timestamp is preserved in memory even if Redis is completely unavailable."""
     alerts_main.redis_client = None
 
     with patch("alerts.main.time.time", return_value=1_700_000_000.0):
@@ -1218,7 +1210,7 @@ async def test_record_broadcast_survives_unreachable_redis(mock_redis, caplog):
 
 @pytest.mark.asyncio
 async def test_broadcast_watchdog_keeps_watching_without_a_ping_url(monkeypatch, caplog):
-    """Без healthchecks.io цикл не виходить: подія в Sentry про тишу від нього не залежить."""
+    """The watchdog loop continues running when healthchecks ping URL is absent."""
     caplog.set_level(logging.WARNING)
     monkeypatch.setattr(alerts_main, "HEALTHCHECKS_ALERTS_BROADCAST_PING_URL", "")
     alerts_main.last_broadcast_at = 0.0
@@ -1250,7 +1242,7 @@ async def test_broadcast_watchdog_pings_while_broadcast_is_fresh(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_broadcast_watchdog_fails_the_check_on_silence(monkeypatch):
-    """Тиша виходу шле явний /fail: чек має почервоніти одразу."""
+    """Broadcast silence triggers an explicit /fail ping."""
     monkeypatch.setattr(
         alerts_main, "HEALTHCHECKS_ALERTS_BROADCAST_PING_URL", "https://hc-ping.com/tg"
     )
@@ -1284,7 +1276,7 @@ async def test_broadcast_watchdog_skips_ping_when_disconnected(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_prime_restores_the_clock_from_redis(mock_redis, mock_telegram_client):
-    """Рестарт воркера не має скидати годинник тиші."""
+    """Worker restarts should restore the silence timer from Redis."""
     mock_redis.get.side_effect = lambda key: {
         alerts_main.LAST_SOURCE_MESSAGE_KEY: "1700000000",
         alerts_main.LAST_BROADCAST_AT_KEY: "1699990000",
@@ -1327,7 +1319,7 @@ async def test_prime_asks_telegram_when_redis_is_empty(mock_redis, mock_telegram
 async def test_prime_starts_the_clock_from_now_as_a_last_resort(
     mock_redis, mock_telegram_client, caplog
 ):
-    """Хибна тривога відразу після старту дорожча за пізніше виявлення."""
+    """Initializes the clock from current time if no persisted timestamp is found."""
     caplog.set_level(logging.WARNING)
     mock_redis.get.return_value = None
     mock_telegram_client.get_messages.side_effect = Exception("telegram down")
@@ -1464,7 +1456,7 @@ async def test_build_message_handler_records_districts_without_a_channel(sample)
 
 @pytest.mark.asyncio
 async def test_build_message_handler_points_map_only_districts_at_the_source_post():
-    """Свого повідомлення в такого району немає, тож джерелом стає пост першоджерела."""
+    """Map-only districts reference the original source message."""
     dispatched = await _dispatch("Вишгородський район Повітряна тривога")
 
     assert dispatched.recorded == [("vyshhorod", "air_raid_alert", SOURCE_MESSAGE_ID, SOURCE_LINK)]
@@ -1472,7 +1464,7 @@ async def test_build_message_handler_points_map_only_districts_at_the_source_pos
 
 @pytest.mark.asyncio
 async def test_build_message_handler_skips_the_source_lookup_when_all_districts_broadcast():
-    """У районів із каналом джерело своє, тож зайвий resolve їм ні до чого."""
+    """Broadcast districts use their own message links and skip resolving source username."""
     handler = build_message_handler(ALL_REGION_CHANNELS)
     event = MagicMock()
     event.message.message = "Бучанський район Повітряна тривога"
@@ -1498,7 +1490,7 @@ async def test_build_message_handler_skips_the_source_lookup_when_all_districts_
     ],
 )
 async def test_build_message_handler_raises_the_whole_oblast_from_its_name(oblast_key, oblast_name):
-    """Тривога по області - це тривога в усіх її районах, а не лише в моїх каналах."""
+    """An oblast-level alert activates all constituent districts."""
     dispatched = await _dispatch(oblast_message(oblast_name))
 
     touched = {call[1] for call in dispatched.broadcast} | {call[0] for call in dispatched.recorded}
@@ -1714,7 +1706,7 @@ def test_match_districts_accepts_every_spelling(name, expected_key):
     ],
 )
 def test_match_districts_does_not_match_inside_a_longer_name(name, expected_key):
-    """Назва одного району буває підрядком іншої - збіг має бути по межах слова."""
+    """District matching respects word boundaries to avoid substring false positives."""
     assert match_districts(f"Повітряна тривога в {name}") == {expected_key: "air_raid_alert"}
 
 
@@ -1741,7 +1733,7 @@ def test_log_unrecognised_districts_names_the_stranger(caplog):
 
 
 def test_log_unrecognised_districts_reports_each_name_once(caplog):
-    """Джерело регулярно пише про райони поза конфігом - Sentry не має тонути."""
+    """Unrecognised district names are logged and reported to Sentry only once."""
     caplog.set_level(logging.WARNING)
     log_unrecognised_districts("Повітряна тривога в Бахчисарайський район")
     caplog.clear()

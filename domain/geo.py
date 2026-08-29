@@ -102,7 +102,7 @@ DISTRICT_CONFIG = {
     "zaporizhzhia": {
         "name": "Запорізький район",
         "oblast": "zaporizhzhia_oblast",
-        "aliases": ["м. Запоріжжя"],
+        "aliases": ["м. Запоріжжя", "Запоріжжя"],
         "display_name": "Zaporizhzhia",
     },
     "berdiansk": {"name": "Бердянський район", "oblast": "zaporizhzhia_oblast"},
@@ -180,7 +180,7 @@ DISTRICT_CONFIG = {
     "kharkiv": {
         "name": "Харківський район",
         "oblast": "kharkiv_oblast",
-        "aliases": ["м. Харків"],
+        "aliases": ["м. Харків", "Харків"],
         "display_name": "Kharkiv",
     },
     "berestyn": {

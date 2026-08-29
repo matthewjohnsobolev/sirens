@@ -54,7 +54,6 @@ log = logging.getLogger(__name__)
 logging.getLogger("telethon").setLevel(logging.WARNING)
 
 SESSION_NAME = "bi"
-SOURCE_KEY = "source"
 MAX_ATTEMPTS = 3
 CHANNEL_DELAY = 1
 MAX_FLOOD_WAIT = 300
@@ -81,7 +80,7 @@ def targets(channels: dict) -> list[tuple[str, int]]:
     picked: list[tuple[str, int]] = []
 
     for channel_key, channel_id in channels.items():
-        if channel_key == SOURCE_KEY or channel_id in seen:
+        if channel_id in seen:
             continue
         seen.add(channel_id)
         picked.append((channel_key, channel_id))

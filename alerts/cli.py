@@ -1,7 +1,17 @@
 import argparse
 
-from config import APP_ENV_ALIASES, VERSION
-from domain import real_channels, test_channels
+from config import (
+    APP_ENV_ALIASES,
+    TELEGRAM_SOURCE_CHANNEL_ID,
+    TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID,
+    VERSION,
+)
+from domain import (
+    real_channels,
+    real_source_channels,
+    test_channels,
+    test_source_channels,
+)
 
 FULL_HELP = """Sirens - Air Raid Alert Monitoring System
 
@@ -17,12 +27,12 @@ Examples:
   sirens.py --version       Display version information
 
 Options:
-  -m, --mode MODE     Set running mode: dev (test channels) or prod (real channels)
-  -h, --help          Show this help message and exit
-  --version           Show program version and exit
+  -m, --mode MODE               Set running mode: dev (test channels) or prod (real channels)
+  -h, --help                    Show this help message and exit
+  --version                     Show program version and exit
 
 The bot will:
-  • Monitor source channel for air raid alerts
+  • Monitor source channels (primary & fallback) for air raid alerts
   • Update channel photos based on alert status
   • Send alert messages to appropriate city channels
 
@@ -73,5 +83,14 @@ def get_args():
 
 
 def get_mode_config(args):
-    channels = real_channels if args.mode == "prod" else test_channels
-    return channels, channels["source"]
+    mode = getattr(args, "mode", "dev") if args else "dev"
+    if mode == "prod":
+        channels = real_channels
+        sources = real_source_channels
+    else:
+        channels = test_channels
+        sources = test_source_channels
+
+    primary_source = TELEGRAM_SOURCE_CHANNEL_ID or sources.get("primary")
+    fallback_source = TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID or sources.get("fallback")
+    return channels, primary_source, fallback_source

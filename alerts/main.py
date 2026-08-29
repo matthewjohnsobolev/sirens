@@ -412,9 +412,7 @@ async def _record_alert_state(
             log.error("Failed to insert alert history into PG: %s", e)
 
 
-async def send_alert(
-    channel_id: int, region: str, alert_type: str, source_type: str = "primary"
-):
+async def send_alert(channel_id: int, region: str, alert_type: str, source_type: str = "primary"):
     message_text = MESSAGES.get(alert_type)
     if not message_text:
         log.error("Unknown alert type: %s", alert_type)
@@ -748,7 +746,11 @@ async def record_source_message(
     moment: datetime.datetime | None = None, source_type: str = "primary"
 ) -> None:
     """Records the timestamp of the latest source message received from primary or fallback source."""
-    global last_source_message_at, last_primary_message_at, last_fallback_message_at, active_source_name
+    global \
+        last_source_message_at, \
+        last_primary_message_at, \
+        last_fallback_message_at, \
+        active_source_name
 
     seen_at = moment.timestamp() if isinstance(moment, datetime.datetime) else time.time()
     last_source_message_at = seen_at
@@ -793,11 +795,15 @@ async def record_broadcast(succeeded: bool) -> None:
     request_telemetry_sync()
 
 
-async def _prime_monitoring_state(
-    primary_source: int, fallback_source: int | None = None
-) -> None:
+async def _prime_monitoring_state(primary_source: int, fallback_source: int | None = None) -> None:
     """Restores the monitoring state for input and output silence clocks on startup."""
-    global last_broadcast_at, last_source_message_at, last_primary_message_at, last_fallback_message_at, last_alert_payload, active_source_name
+    global \
+        last_broadcast_at, \
+        last_source_message_at, \
+        last_primary_message_at, \
+        last_fallback_message_at, \
+        last_alert_payload, \
+        active_source_name
 
     stored_source_seen_at = None
     stored_primary_seen_at = None
@@ -923,9 +929,7 @@ def build_message_handler(
         is_fallback = fallback_source is not None and chat_id == fallback_source
         source_type = "fallback" if is_fallback else "primary"
 
-        await record_source_message(
-            getattr(event.message, "date", None), source_type=source_type
-        )
+        await record_source_message(getattr(event.message, "date", None), source_type=source_type)
 
         if not event.message or not getattr(event.message, "message", None):
             return
@@ -1055,7 +1059,11 @@ def _report_source_silence(
                 )
             else:
                 log.error("Primary source channel silent for %.1f h", primary_silence / 3600)
-    elif primary_silence_reported and primary_silence is not None and primary_silence < SOURCE_SILENCE_THRESHOLD:
+    elif (
+        primary_silence_reported
+        and primary_silence is not None
+        and primary_silence < SOURCE_SILENCE_THRESHOLD
+    ):
         primary_silence_reported = False
         log.info("Primary source channel is posting again")
 
@@ -1103,9 +1111,7 @@ async def _healthcheck_loop(client: TelegramClient, has_fallback: bool = True) -
         p_silence = await _primary_silence_seconds()
         fb_silence = await _fallback_silence_seconds()
         overall_silence = await _source_silence_seconds()
-        _report_source_silence(
-            p_silence, fb_silence, overall_silence, has_fallback=has_fallback
-        )
+        _report_source_silence(p_silence, fb_silence, overall_silence, has_fallback=has_fallback)
 
         if not client.is_connected():
             continue

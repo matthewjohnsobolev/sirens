@@ -719,9 +719,9 @@ def test_partial_cancellation_samples_name_the_silenced_channels(sample):
 
     note = sample.message.split("ще триває", 1)[1]
     for region in sample.silenced:
-        assert any(trigger in note for trigger in REGION_CONFIG[region]["triggers"]), (
-            f"note does not name anything {region} listens for"
-        )
+        assert any(
+            trigger in note for trigger in REGION_CONFIG[region]["triggers"]
+        ), f"note does not name anything {region} listens for"
 
 
 @pytest.mark.asyncio
@@ -1928,9 +1928,6 @@ async def test_build_message_handler_handles_fallback_source(mock_redis, mock_te
     mock_send.assert_awaited_once_with(9001, "kyiv", "air_raid_alert", source_type="fallback")
 
 
-
-
-
 @pytest.mark.asyncio
 async def test_dual_source_deduplication_between_primary_and_fallback(
     mock_redis, mock_pg_pool, mock_telegram_client
@@ -2000,7 +1997,9 @@ async def test_prime_monitoring_state_fetches_from_telegram_when_no_redis(mock_t
     mock_msg1 = MagicMock(date=datetime.datetime(2026, 8, 29, 10, 0, tzinfo=datetime.timezone.utc))
     mock_msg2 = MagicMock(date=datetime.datetime(2026, 8, 29, 10, 5, tzinfo=datetime.timezone.utc))
 
-    mock_telegram_client.get_messages.side_effect = lambda cid, limit: [mock_msg1] if cid == 111111 else [mock_msg2]
+    mock_telegram_client.get_messages.side_effect = (
+        lambda cid, limit: [mock_msg1] if cid == 111111 else [mock_msg2]
+    )
 
     with patch("alerts.main.push_telemetry_to_kv", new_callable=AsyncMock):
         await alerts_main._prime_monitoring_state(111111, fallback_source=222222)

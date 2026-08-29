@@ -53,6 +53,8 @@ from domain import (
     MESSAGES,
     REGION_CONFIG,
     real_channels,
+    real_source_channels,
+    test_source_channels,
 )
 from tests.samples.source_messages import (
     ALL_SAMPLES,
@@ -594,7 +596,7 @@ async def test_send_alert_skips_photo_update_without_mapping(
 
 ALL_REGION_CHANNELS = {region: 9000 + i for i, region in enumerate(REGION_CONFIG)}
 
-SOURCE_CHANNEL = real_channels["source"]
+SOURCE_CHANNEL = real_source_channels["primary"]
 SOURCE_USERNAME = "air_alert_ua"
 SOURCE_MESSAGE_ID = 500
 SOURCE_LINK = f"https://t.me/{SOURCE_USERNAME}/{SOURCE_MESSAGE_ID}"
@@ -763,7 +765,7 @@ def test_strip_ongoing_notice(message_text, expected):
 
 @pytest.mark.asyncio
 async def test_main_wires_up_clients_and_handler():
-    _, expected_source = get_mode_config(argparse.Namespace(mode="dev"))
+    _, expected_source, expected_fallback = get_mode_config(argparse.Namespace(mode="dev"))
 
     with (
         patch("alerts.main.redis.from_url") as mock_redis_from_url,
@@ -787,7 +789,7 @@ async def test_main_wires_up_clients_and_handler():
     mock_client_instance.start.assert_not_awaited()
     mock_client_instance.add_event_handler.assert_called_once()
     _, event_filter = mock_client_instance.add_event_handler.call_args.args
-    assert event_filter.chats == [expected_source]
+    assert set(event_filter.chats) == {cid for cid in (expected_source, expected_fallback) if cid}
     mock_client_instance.run_until_disconnected.assert_awaited_once()
     assert alerts_main.client is mock_client_instance
 
@@ -1014,9 +1016,14 @@ async def test_record_source_message_prefers_the_post_time(mock_redis):
     await alerts_main.record_source_message(posted_at)
 
     assert alerts_main.last_source_message_at == posted_at.timestamp()
-    mock_redis.set.assert_awaited_once_with(
+    assert alerts_main.last_primary_message_at == posted_at.timestamp()
+    mock_redis.set.assert_any_await(
         alerts_main.LAST_SOURCE_MESSAGE_KEY, str(int(posted_at.timestamp()))
     )
+    mock_redis.set.assert_any_await(
+        alerts_main.LAST_PRIMARY_MESSAGE_KEY, str(int(posted_at.timestamp()))
+    )
+    mock_redis.set.assert_any_await(alerts_main.ACTIVE_SOURCE_KEY, "primary")
 
 
 @pytest.mark.asyncio
@@ -1685,6 +1692,10 @@ def test_match_districts(message_text, expected):
         pytest.param("Новоград-Волинський район", "zviahel", id="former-name"),
         pytest.param("Звягельський район", "zviahel", id="current-name"),
         pytest.param("Новомосковський район", "samar", id="former-name-samar"),
+        pytest.param("Харків", "kharkiv", id="kharkiv-without-m"),
+        pytest.param("м. Харків", "kharkiv", id="kharkiv-with-m"),
+        pytest.param("Запоріжжя", "zaporizhzhia", id="zaporizhzhia-without-m"),
+        pytest.param("м. Запоріжжя", "zaporizhzhia", id="zaporizhzhia-with-m"),
     ],
 )
 def test_match_districts_accepts_every_spelling(name, expected_key):
@@ -1885,3 +1896,214 @@ def test_location_locative_formats_proper_ukrainian_cases():
     assert alerts_main.location_locative("odesa") == "в Одесі"
     assert alerts_main.location_locative("vyshhorod") == "у Вишгороді"
     assert alerts_main.location_locative("obukhiv") == "в Обухові"
+
+
+def test_location_locative_unconfigured_fallback():
+    assert alerts_main.location_locative("unknown") == "у unknown"
+    assert alerts_main.location_locative("unconfigured") == "у unconfigured"
+
+
+@pytest.mark.asyncio
+async def test_build_message_handler_handles_fallback_source(mock_redis, mock_telegram_client):
+    primary_id = 111111
+    fallback_id = 222222
+    handler = build_message_handler(
+        {"kyiv": 9001}, primary_source=primary_id, fallback_source=fallback_id
+    )
+
+    event = MagicMock()
+    event.chat_id = fallback_id
+    event.message.message = "м. Київ Повітряна тривога"
+    event.message.id = 55
+    event.message.date = datetime.datetime(2026, 8, 29, 12, 0, tzinfo=datetime.timezone.utc)
+
+    with (
+        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send,
+        patch("alerts.main.resolve_channel_username", new_callable=AsyncMock) as mock_uname,
+    ):
+        mock_uname.return_value = "fallback_channel"
+        await handler(event)
+        await _drain_background_tasks()
+
+    assert alerts_main.last_fallback_message_at == event.message.date.timestamp()
+    assert alerts_main.active_source_name == "fallback"
+    mock_send.assert_awaited_once_with(9001, "kyiv", "air_raid_alert", source_type="fallback")
+
+
+
+
+
+@pytest.mark.asyncio
+async def test_dual_source_deduplication_between_primary_and_fallback(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    primary_id = 111111
+    fallback_id = 222222
+    handler = build_message_handler(
+        {"kyiv": 9001}, primary_source=primary_id, fallback_source=fallback_id
+    )
+
+    # Message from fallback arrives first
+    event_fb = MagicMock()
+    event_fb.chat_id = fallback_id
+    event_fb.message.message = "м. Київ Повітряна тривога"
+    event_fb.message.id = 100
+    mock_redis.get.return_value = None
+
+    with (
+        patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock),
+        patch("alerts.main.resolve_channel_username", new_callable=AsyncMock),
+    ):
+        await handler(event_fb)
+        await _drain_background_tasks()
+
+    assert mock_telegram_client.send_message.await_count == 1
+
+    # Message from primary arrives shortly after for the same alert
+    mock_redis.get.return_value = "air_raid_alert"
+    event_prim = MagicMock()
+    event_prim.chat_id = primary_id
+    event_prim.message.message = "м. Київ Повітряна тривога"
+    event_prim.message.id = 200
+
+    with (
+        patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock),
+        patch("alerts.main.resolve_channel_username", new_callable=AsyncMock),
+    ):
+        await handler(event_prim)
+        await _drain_background_tasks()
+
+    # send_message should NOT be called a second time
+    assert mock_telegram_client.send_message.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_prime_monitoring_state_with_fallback(mock_redis, mock_telegram_client):
+    mock_redis.get.side_effect = lambda k: {
+        alerts_main.LAST_SOURCE_MESSAGE_KEY: "1700000000",
+        alerts_main.LAST_PRIMARY_MESSAGE_KEY: "1700000000",
+        alerts_main.LAST_FALLBACK_MESSAGE_KEY: "1700000050",
+        alerts_main.LAST_BROADCAST_AT_KEY: "1700000010",
+        alerts_main.ACTIVE_SOURCE_KEY: "fallback",
+    }.get(k)
+
+    with patch("alerts.main.push_telemetry_to_kv", new_callable=AsyncMock):
+        await alerts_main._prime_monitoring_state(111111, fallback_source=222222)
+
+    assert alerts_main.last_source_message_at == 1700000000.0
+    assert alerts_main.last_primary_message_at == 1700000000.0
+    assert alerts_main.last_fallback_message_at == 1700000050.0
+    assert alerts_main.active_source_name == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_prime_monitoring_state_fetches_from_telegram_when_no_redis(mock_telegram_client):
+    alerts_main.redis_client = None
+    mock_msg1 = MagicMock(date=datetime.datetime(2026, 8, 29, 10, 0, tzinfo=datetime.timezone.utc))
+    mock_msg2 = MagicMock(date=datetime.datetime(2026, 8, 29, 10, 5, tzinfo=datetime.timezone.utc))
+
+    mock_telegram_client.get_messages.side_effect = lambda cid, limit: [mock_msg1] if cid == 111111 else [mock_msg2]
+
+    with patch("alerts.main.push_telemetry_to_kv", new_callable=AsyncMock):
+        await alerts_main._prime_monitoring_state(111111, fallback_source=222222)
+
+    assert alerts_main.last_primary_message_at == mock_msg1.date.timestamp()
+    assert alerts_main.last_fallback_message_at == mock_msg2.date.timestamp()
+
+
+def test_silence_reporting_for_primary_and_fallback(caplog):
+    caplog.set_level(logging.INFO)
+    threshold = alerts_main.SOURCE_SILENCE_THRESHOLD
+
+    alerts_main.primary_silence_reported = False
+    alerts_main.fallback_silence_reported = False
+    alerts_main.source_silence_reported = False
+
+    # 1. Primary is silent, but fallback is active
+    alerts_main._report_source_silence(
+        primary_silence=threshold + 10,
+        fallback_silence=100,
+        overall_silence=100,
+        has_fallback=True,
+    )
+    assert "Primary source silent" in caplog.text
+    assert "operating via fallback source" in caplog.text
+    assert alerts_main.primary_silence_reported is True
+
+    # 2. Fallback becomes silent, primary active
+    caplog.clear()
+    alerts_main.primary_silence_reported = False
+    alerts_main._report_source_silence(
+        primary_silence=100,
+        fallback_silence=threshold + 10,
+        overall_silence=100,
+        has_fallback=True,
+    )
+    assert "Fallback source channel silent" in caplog.text
+    assert alerts_main.fallback_silence_reported is True
+
+    # 3. Fallback recovers
+    caplog.clear()
+    alerts_main._report_source_silence(
+        primary_silence=100,
+        fallback_silence=50,
+        overall_silence=50,
+        has_fallback=True,
+    )
+    assert "Fallback source channel is posting again" in caplog.text
+    assert alerts_main.fallback_silence_reported is False
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_loop_pings_fallback_url(monkeypatch):
+    monkeypatch.setattr(
+        alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/primary"
+    )
+    monkeypatch.setattr(
+        alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_FALLBACK_PING_URL", "https://hc-ping.com/fallback"
+    )
+    mock_client = MagicMock()
+    mock_client.is_connected.return_value = True
+
+    alerts_main.last_source_message_at = 1_700_000_000.0
+    alerts_main.last_primary_message_at = 1_700_000_000.0
+    alerts_main.last_fallback_message_at = (
+        1_700_000_000.0 - alerts_main.SOURCE_SILENCE_THRESHOLD - 10
+    )
+
+    with (
+        patch("alerts.main.time.time", return_value=1_700_000_000.0),
+        patch("alerts.main._ping_healthcheck") as mock_primary_ping,
+        patch("alerts.main._ping_fb_healthcheck") as mock_fb_ping,
+    ):
+        await _run_one_cycle(alerts_main._healthcheck_loop(mock_client, has_fallback=True))
+
+    mock_primary_ping.assert_called_once_with()
+    mock_fb_ping.assert_called_once_with("/fail")
+
+
+@pytest.mark.asyncio
+async def test_push_telemetry_to_kv_includes_fallback_data(monkeypatch):
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_ACCOUNT_ID", "acc_123")
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "ns_456")
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_API_TOKEN", "token_789")
+
+    alerts_main.last_primary_message_at = 1_700_000_100.0
+    alerts_main.last_fallback_message_at = 1_700_000_200.0
+    alerts_main.last_source_message_at = 1_700_000_200.0
+    alerts_main.active_source_name = "fallback"
+
+    mock_client = MagicMock()
+    mock_client.is_connected.return_value = True
+    alerts_main.client = mock_client
+
+    with patch("requests.put") as mock_put:
+        await alerts_main.push_telemetry_to_kv()
+
+    assert mock_put.called
+    body = json.loads(mock_put.call_args.kwargs["data"])
+    assert body["active_source"] == "fallback"
+    assert body["primary_source_connected"] is True
+    assert body["fallback_source_connected"] is True
+    assert "last_primary_message_at" in body
+    assert "last_fallback_message_at" in body

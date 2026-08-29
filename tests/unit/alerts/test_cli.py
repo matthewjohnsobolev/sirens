@@ -5,7 +5,12 @@ import pytest
 
 from alerts.cli import FULL_HELP, CustomHelpFormatter, get_args, get_mode_config
 from config import VERSION
-from domain import real_channels, test_channels
+from domain import (
+    real_channels,
+    real_source_channels,
+    test_channels,
+    test_source_channels,
+)
 
 
 @pytest.mark.parametrize(
@@ -56,21 +61,40 @@ def test_custom_help_formatter_returns_full_help():
     assert CustomHelpFormatter("sirens.py").format_help() == FULL_HELP
 
 
-def test_get_mode_config_dev_uses_test_channels():
-    channels, source = get_mode_config(argparse.Namespace(mode="dev"))
+def test_get_mode_config_dev_uses_test_channels(monkeypatch):
+    monkeypatch.setattr("alerts.cli.TELEGRAM_SOURCE_CHANNEL_ID", None)
+    monkeypatch.setattr("alerts.cli.TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID", None)
+    channels, source, fallback = get_mode_config(argparse.Namespace(mode="dev"))
 
     assert channels is test_channels
-    assert source == test_channels["source"] == -1001843473515
+    assert source == test_source_channels["primary"] == -1001843473515
+    assert fallback is None
 
 
-def test_get_mode_config_prod_uses_real_channels():
-    channels, source = get_mode_config(argparse.Namespace(mode="prod"))
+def test_get_mode_config_prod_uses_real_channels(monkeypatch):
+    monkeypatch.setattr("alerts.cli.TELEGRAM_SOURCE_CHANNEL_ID", None)
+    monkeypatch.setattr("alerts.cli.TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID", None)
+    channels, source, fallback = get_mode_config(argparse.Namespace(mode="prod"))
 
     assert channels is real_channels
-    assert source == real_channels["source"] == -1001766138888
+    assert source == real_source_channels["primary"]
+    assert fallback == real_source_channels["fallback"]
 
 
-def test_get_mode_config_defaults_to_test_channels_for_unknown_mode():
-    channels, _ = get_mode_config(argparse.Namespace(mode="something-else"))
+def test_get_mode_config_defaults_to_test_channels_for_unknown_mode(monkeypatch):
+    monkeypatch.setattr("alerts.cli.TELEGRAM_SOURCE_CHANNEL_ID", None)
+    monkeypatch.setattr("alerts.cli.TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID", None)
+    channels, source, fallback = get_mode_config(argparse.Namespace(mode="something-else"))
 
     assert channels is test_channels
+    assert source == test_source_channels["primary"]
+    assert fallback is None
+
+
+def test_get_mode_config_respects_env_overrides(monkeypatch):
+    monkeypatch.setattr("alerts.cli.TELEGRAM_SOURCE_CHANNEL_ID", 111111)
+    monkeypatch.setattr("alerts.cli.TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID", 222222)
+    channels, source, fallback = get_mode_config(argparse.Namespace(mode="prod"))
+
+    assert source == 111111
+    assert fallback == 222222

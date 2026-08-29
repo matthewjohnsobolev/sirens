@@ -43,7 +43,8 @@ KYIV_CHANNEL = real_channels["kyiv"]
 
 def test_get_region_by_channel_id():
     assert get_region_by_channel_id(real_channels["kyiv"]) == "kyiv"
-    assert get_region_by_channel_id(test_channels["source"]) == "source"
+    assert get_region_by_channel_id(real_channels["lviv"]) == "lviv"
+    assert get_region_by_channel_id(test_channels["poltava"]) == "poltava"
     assert get_region_by_channel_id(12345) is None
 
 
@@ -253,7 +254,7 @@ def test_update_alert_source_writes_single_field(mock_web_redis):
     "channel_id",
     [
         pytest.param(12345, id="unknown-channel"),
-        pytest.param(real_channels["source"], id="region-missing-from-region-config"),
+        pytest.param(999999999, id="region-missing-from-region-config"),
     ],
 )
 def test_update_alert_source_ignores_unmapped_channels(mock_web_redis, channel_id):
@@ -400,7 +401,7 @@ async def test_update_alert_status_unknown_text_updates_time_only(mock_web_redis
     "channel_id",
     [
         pytest.param(12345, id="unknown-channel"),
-        pytest.param(real_channels["source"], id="region-missing-from-region-config"),
+        pytest.param(999999999, id="region-missing-from-region-config"),
     ],
 )
 async def test_update_alert_status_ignores_unmapped_channels(

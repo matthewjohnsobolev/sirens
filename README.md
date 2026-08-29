@@ -180,7 +180,7 @@ the source. One check could not honestly stand for both.
 **Input.** The worker records the timestamp of every post it sees in the source
 channel (`service:alerts:last_source_message_at` in Redis, so a restart does not
 reset the clock). The healthcheck ping goes out only while that mark is fresher
-than `SOURCE_SILENCE_THRESHOLD` — six hours; past that the worker sends an
+than `SOURCE_SILENCE_THRESHOLD` — three hours; past that the worker sends an
 explicit `/fail` and raises one Sentry event per episode of silence. Before this
 existed, the check only proved the Telegram socket was connected, which a
 silently dead source looks exactly like.

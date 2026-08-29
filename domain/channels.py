@@ -4,8 +4,17 @@ Telegram channels configuration for real and test modes, broadcast districts and
 
 from domain.geo import DISTRICT_CONFIG, OBLAST_TRIGGERS
 
+real_source_channels = {
+    "primary": -1001766138888,
+    "fallback": -1001502899255,
+}
+
+test_source_channels = {
+    "primary": -1001843473515,
+    "fallback": None,
+}
+
 test_channels = {
-    "source": -1001843473515,
     "kremenchuk": -1001754447620,
     "cherkasy": -1001754447620,
     "kropyvnytskyi": -1001754447620,
@@ -44,7 +53,6 @@ test_channels = {
 }
 
 real_channels = {
-    "source": -1001766138888,
     "kremenchuk": -1001738859985,
     "cherkasy": -1001777493202,
     "kropyvnytskyi": -1001684581523,
@@ -82,7 +90,8 @@ real_channels = {
     "izmail": -1002062806630,
 }
 
-BROADCAST_DISTRICTS = frozenset(real_channels) - {"source"}
+SOURCE_KEYS = frozenset()
+BROADCAST_DISTRICTS = frozenset(real_channels)
 
 REGION_CONFIG = {
     key: {**conf, "triggers": conf["triggers"] + OBLAST_TRIGGERS.get(conf["oblast"], [])}

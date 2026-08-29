@@ -19,6 +19,7 @@ from bi.main import (
     main,
     run_snapshot,
     store,
+    targets,
 )
 from tests.samples.telethon_stats import NETWORK_CHANNELS, SHARED_CHANNELS, full_channel
 
@@ -91,17 +92,10 @@ async def test_collect_counts_every_network_channel():
     ]
 
 
-@pytest.mark.asyncio
-async def test_collect_skips_the_foreign_source_channel():
-    with (
-        patch("bi.main.fetch_subscribers", AsyncMock(return_value=1)) as mock_fetch,
-        patch("bi.main.asyncio.sleep", new_callable=AsyncMock),
-    ):
-        counts = await collect(AsyncMock(), NETWORK_CHANNELS)
-
-    counted_ids = [call.args[1] for call in mock_fetch.await_args_list]
-    assert NETWORK_CHANNELS["source"] not in counted_ids
-    assert "source" not in [c.channel_key for c in counts]
+def test_targets_builds_unique_channel_pairs():
+    result = targets(NETWORK_CHANNELS)
+    assert len(result) == len(NETWORK_CHANNELS)
+    assert set(k for k, _ in result) == set(NETWORK_CHANNELS)
 
 
 @pytest.mark.asyncio

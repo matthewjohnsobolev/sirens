@@ -42,6 +42,7 @@ from config import (
     CLOUDFLARE_TELEMETRY_NAMESPACE_ID,
     DATABASE_URL,
     HEALTHCHECKS_ALERTS_BROADCAST_PING_URL,
+    HEALTHCHECKS_ALERTS_SOURCE_FALLBACK_PING_URL,
     HEALTHCHECKS_ALERTS_SOURCE_PING_URL,
     IMAGES_PATH,
     LOGS_PATH,
@@ -59,6 +60,7 @@ from domain import (
     LOCATION_LOCATIVE,
     MESSAGES,
     OBLAST_TRIGGERS,
+    SOURCE_KEYS,
 )
 from web.db import DEFAULT_SOURCE, ensure_pg_tables, rehydrate_state_from_db
 
@@ -84,9 +86,14 @@ pg_pool = None
 client: TelegramClient = None
 
 last_source_message_at: float | None = None
+last_primary_message_at: float | None = None
+last_fallback_message_at: float | None = None
+active_source_name: str = "primary"
 last_broadcast_at: float | None = None
 last_alert_payload: dict | None = None
 source_silence_reported: bool = False
+primary_silence_reported: bool = False
+fallback_silence_reported: bool = False
 broadcast_silence_reported: bool = False
 
 CHANNEL_PHOTO_PATHS = {
@@ -289,6 +296,7 @@ async def _record_alert_state(
     alert_type: str,
     message_id: int | None = None,
     message_link: str | None = None,
+    source_type: str = "primary",
 ):
     global last_alert_payload
 
@@ -313,6 +321,7 @@ async def _record_alert_state(
             "timestamp": now_utc_iso,
             "message_id": message_id,
             "message_link": message_link,
+            "source_type": source_type,
         }
 
         if redis_client:
@@ -404,7 +413,9 @@ async def _record_alert_state(
             log.error("Failed to insert alert history into PG: %s", e)
 
 
-async def send_alert(channel_id: int, region: str, alert_type: str):
+async def send_alert(
+    channel_id: int, region: str, alert_type: str, source_type: str = "primary"
+):
     message_text = MESSAGES.get(alert_type)
     if not message_text:
         log.error("Unknown alert type: %s", alert_type)
@@ -456,6 +467,7 @@ async def send_alert(channel_id: int, region: str, alert_type: str):
             alert_type,
             message_id=message_id,
             message_link=message_link,
+            source_type=source_type,
         )
 
         if CHANNEL_PHOTO_PATHS.get(alert_type):
@@ -472,6 +484,7 @@ async def record_map_only_alert(
     alert_type: str,
     message_id: int | None = None,
     message_link: str | None = None,
+    source_type: str = "primary",
 ):
     """Records state for a non-broadcast district on the map."""
     if alert_type not in MESSAGES:
@@ -497,6 +510,7 @@ async def record_map_only_alert(
         alert_type,
         message_id=message_id,
         message_link=message_link,
+        source_type=source_type,
     )
     log.info("%s recorded for %s (map only)", alert_type.replace("_", " ").capitalize(), label)
 
@@ -589,8 +603,11 @@ def log_unrecognised_districts(message_text: str) -> None:
 
 
 LAST_SOURCE_MESSAGE_KEY = "service:alerts:last_source_message_at"
+LAST_PRIMARY_MESSAGE_KEY = "service:alerts:last_primary_message_at"
+LAST_FALLBACK_MESSAGE_KEY = "service:alerts:last_fallback_message_at"
 LAST_BROADCAST_AT_KEY = "service:alerts:last_broadcast_at"
 LAST_ALERT_INFO_KEY = "service:alerts:last_alert_info"
+ACTIVE_SOURCE_KEY = "service:alerts:active_source"
 
 
 async def push_telemetry_to_kv() -> None:
@@ -610,6 +627,20 @@ async def push_telemetry_to_kv() -> None:
                 last_source_message_at, tz=datetime.timezone.utc
             ).isoformat()
             if last_source_message_at is not None
+            else None
+        )
+        last_primary_iso = (
+            datetime.datetime.fromtimestamp(
+                last_primary_message_at, tz=datetime.timezone.utc
+            ).isoformat()
+            if last_primary_message_at is not None
+            else None
+        )
+        last_fallback_iso = (
+            datetime.datetime.fromtimestamp(
+                last_fallback_message_at, tz=datetime.timezone.utc
+            ).isoformat()
+            if last_fallback_message_at is not None
             else None
         )
 
@@ -641,8 +672,13 @@ async def push_telemetry_to_kv() -> None:
             "last_broadcast_at": last_bcast_iso,
             "last_alert": last_alert_payload,
             "last_source_message_at": last_src_iso,
+            "last_primary_message_at": last_primary_iso,
+            "last_fallback_message_at": last_fallback_iso,
+            "active_source": active_source_name,
             "active_alerts_count": active_count,
             "source_connected": source_connected,
+            "primary_source_connected": source_connected,
+            "fallback_source_connected": source_connected,
             "updated_at": now_dt.isoformat(),
         }
 
@@ -709,18 +745,32 @@ def request_telemetry_sync(delay: float | None = None) -> asyncio.Task:
     return task
 
 
-async def record_source_message(moment: datetime.datetime | None = None) -> None:
-    """Records the timestamp of the latest source message received."""
-    global last_source_message_at
+async def record_source_message(
+    moment: datetime.datetime | None = None, source_type: str = "primary"
+) -> None:
+    """Records the timestamp of the latest source message received from primary or fallback source."""
+    global last_source_message_at, last_primary_message_at, last_fallback_message_at, active_source_name
 
     seen_at = moment.timestamp() if isinstance(moment, datetime.datetime) else time.time()
     last_source_message_at = seen_at
+    active_source_name = source_type
+
+    if source_type == "fallback":
+        last_fallback_message_at = seen_at
+    else:
+        last_primary_message_at = seen_at
 
     if not redis_client:
         return
 
     try:
-        await redis_client.set(LAST_SOURCE_MESSAGE_KEY, str(int(seen_at)))
+        seen_str = str(int(seen_at))
+        await redis_client.set(LAST_SOURCE_MESSAGE_KEY, seen_str)
+        if source_type == "fallback":
+            await redis_client.set(LAST_FALLBACK_MESSAGE_KEY, seen_str)
+        else:
+            await redis_client.set(LAST_PRIMARY_MESSAGE_KEY, seen_str)
+        await redis_client.set(ACTIVE_SOURCE_KEY, source_type)
     except Exception:
         log.warning("Failed to store the source message timestamp in Redis", exc_info=True)
 
@@ -744,17 +794,26 @@ async def record_broadcast(succeeded: bool) -> None:
     request_telemetry_sync()
 
 
-async def _prime_monitoring_state(source_channel) -> None:
+async def _prime_monitoring_state(
+    primary_source: int, fallback_source: int | None = None
+) -> None:
     """Restores the monitoring state for input and output silence clocks on startup."""
-    global last_broadcast_at, last_source_message_at, last_alert_payload
+    global last_broadcast_at, last_source_message_at, last_primary_message_at, last_fallback_message_at, last_alert_payload, active_source_name
 
     stored_source_seen_at = None
+    stored_primary_seen_at = None
+    stored_fallback_seen_at = None
     stored_broadcast_at = None
     if redis_client:
         try:
             raw_seen_at = await redis_client.get(LAST_SOURCE_MESSAGE_KEY)
+            raw_primary_at = await redis_client.get(LAST_PRIMARY_MESSAGE_KEY)
+            raw_fallback_at = await redis_client.get(LAST_FALLBACK_MESSAGE_KEY)
             raw_bcast_at = await redis_client.get(LAST_BROADCAST_AT_KEY)
             raw_alert_json = await redis_client.get(LAST_ALERT_INFO_KEY)
+            raw_active_src = await redis_client.get(ACTIVE_SOURCE_KEY)
+            if raw_active_src:
+                active_source_name = raw_active_src
             if raw_alert_json:
                 data = json.loads(raw_alert_json)
                 if isinstance(data, dict) and data.get("district") in BROADCAST_DISTRICTS:
@@ -766,6 +825,14 @@ async def _prime_monitoring_state(source_channel) -> None:
                 stored_source_seen_at = float(raw_seen_at) if raw_seen_at else None
             except (TypeError, ValueError):
                 log.warning("Stored source message timestamp is malformed: %r", raw_seen_at)
+            try:
+                stored_primary_seen_at = float(raw_primary_at) if raw_primary_at else None
+            except (TypeError, ValueError):
+                pass
+            try:
+                stored_fallback_seen_at = float(raw_fallback_at) if raw_fallback_at else None
+            except (TypeError, ValueError):
+                pass
             try:
                 stored_broadcast_at = float(raw_bcast_at) if raw_bcast_at else None
             except (TypeError, ValueError):
@@ -809,27 +876,57 @@ async def _prime_monitoring_state(source_channel) -> None:
     else:
         last_broadcast_at = time.time()
 
+    if stored_primary_seen_at is not None:
+        last_primary_message_at = stored_primary_seen_at
+
+    if stored_fallback_seen_at is not None:
+        last_fallback_message_at = stored_fallback_seen_at
+
     if stored_source_seen_at is not None:
         last_source_message_at = stored_source_seen_at
     else:
         moment = None
         try:
-            messages = await client.get_messages(source_channel, limit=1)
+            messages = await client.get_messages(primary_source, limit=1)
             moment = getattr(messages[0], "date", None) if messages else None
         except Exception:
-            log.warning("Could not read the last source message from Telegram", exc_info=True)
+            log.warning(
+                "Could not read the last primary source message from Telegram", exc_info=True
+            )
 
         if moment is None:
-            log.warning("Starting the silence clock from now: the last source post is unknown")
+            log.warning(
+                "Starting the silence clock from now: the last primary source post is unknown"
+            )
 
-        await record_source_message(moment)
+        await record_source_message(moment, source_type="primary")
+
+    if fallback_source is not None and stored_fallback_seen_at is None:
+        moment_fb = None
+        try:
+            fb_msgs = await client.get_messages(fallback_source, limit=1)
+            moment_fb = getattr(fb_msgs[0], "date", None) if fb_msgs else None
+        except Exception:
+            pass
+        if moment_fb:
+            await record_source_message(moment_fb, source_type="fallback")
 
     spawn_tracked_task(push_telemetry_to_kv(), "Initial telemetry sync on start")
 
 
-def build_message_handler(region_channels: dict):
+def build_message_handler(
+    region_channels: dict,
+    primary_source: int | None = None,
+    fallback_source: int | None = None,
+):
     async def handle_incoming_message(event):
-        await record_source_message(getattr(event.message, "date", None))
+        chat_id = getattr(event, "chat_id", None)
+        is_fallback = fallback_source is not None and chat_id == fallback_source
+        source_type = "fallback" if is_fallback else "primary"
+
+        await record_source_message(
+            getattr(event.message, "date", None), source_type=source_type
+        )
 
         if not event.message or not getattr(event.message, "message", None):
             return
@@ -851,13 +948,15 @@ def build_message_handler(region_channels: dict):
 
             if channel_id:
                 spawn_tracked_task(
-                    send_alert(channel_id, district_key, alert_type),
-                    f"Alert broadcast of {alert_type} to {district_key}",
+                    send_alert(channel_id, district_key, alert_type, source_type=source_type),
+                    f"Alert broadcast of {alert_type} to {district_key} via {source_type}",
                 )
             else:
                 spawn_tracked_task(
-                    record_map_only_alert(district_key, alert_type, *source_ref),
-                    f"Map-only record of {alert_type} for {district_key}",
+                    record_map_only_alert(
+                        district_key, alert_type, *source_ref, source_type=source_type
+                    ),
+                    f"Map-only record of {alert_type} for {district_key} via {source_type}",
                 )
 
     return handle_incoming_message
@@ -869,7 +968,7 @@ TRANSIENT_CONNECTION_ERRORS = (OSError,)
 HEALTHCHECK_PING_INTERVAL = 60
 HEALTHCHECK_PING_TIMEOUT = 10
 
-SOURCE_SILENCE_THRESHOLD = 6 * 3600
+SOURCE_SILENCE_THRESHOLD = 3 * 3600
 BROADCAST_SILENCE_THRESHOLD = 6 * 3600
 
 
@@ -886,8 +985,24 @@ def _ping_healthcheck(suffix: str = "") -> None:
     _ping_url(HEALTHCHECKS_ALERTS_SOURCE_PING_URL, suffix)
 
 
+def _ping_fb_healthcheck(suffix: str = "") -> None:
+    _ping_url(HEALTHCHECKS_ALERTS_SOURCE_FALLBACK_PING_URL, suffix)
+
+
 def _ping_tg_healthcheck(suffix: str = "") -> None:
     _ping_url(HEALTHCHECKS_ALERTS_BROADCAST_PING_URL, suffix)
+
+
+async def _primary_silence_seconds() -> float | None:
+    if last_primary_message_at is None:
+        return None
+    return max(0.0, time.time() - last_primary_message_at)
+
+
+async def _fallback_silence_seconds() -> float | None:
+    if last_fallback_message_at is None:
+        return None
+    return max(0.0, time.time() - last_fallback_message_at)
 
 
 async def _source_silence_seconds() -> float | None:
@@ -902,22 +1017,64 @@ async def _broadcast_silence_seconds() -> float | None:
     return max(0.0, time.time() - last_broadcast_at)
 
 
-def _report_source_silence(silence: float | None) -> None:
-    global source_silence_reported
+def _report_source_silence(
+    primary_silence: float | None,
+    fallback_silence: float | None = None,
+    overall_silence: float | None = None,
+    has_fallback: bool = True,
+) -> None:
+    global source_silence_reported, primary_silence_reported, fallback_silence_reported
 
-    if silence is None:
+    if overall_silence is None:
+        overall_silence = primary_silence
+
+    if overall_silence is None:
         return
 
-    if silence >= SOURCE_SILENCE_THRESHOLD:
+    if overall_silence >= SOURCE_SILENCE_THRESHOLD:
         if not source_silence_reported:
             source_silence_reported = True
             log.error(
                 "No message from the source channel for %.1f h; alerts are not reaching us",
-                silence / 3600,
+                overall_silence / 3600,
             )
     elif source_silence_reported:
         source_silence_reported = False
         log.info("The source channel is posting again")
+
+    if primary_silence is not None and primary_silence >= SOURCE_SILENCE_THRESHOLD:
+        if not primary_silence_reported:
+            primary_silence_reported = True
+            if (
+                has_fallback
+                and fallback_silence is not None
+                and fallback_silence < SOURCE_SILENCE_THRESHOLD
+            ):
+                log.warning(
+                    "Primary source silent for %.1f h; alerts operating via fallback source",
+                    primary_silence / 3600,
+                )
+            else:
+                log.error("Primary source channel silent for %.1f h", primary_silence / 3600)
+    elif primary_silence_reported and primary_silence is not None and primary_silence < SOURCE_SILENCE_THRESHOLD:
+        primary_silence_reported = False
+        log.info("Primary source channel is posting again")
+
+    if (
+        has_fallback
+        and fallback_silence is not None
+        and fallback_silence >= SOURCE_SILENCE_THRESHOLD
+    ):
+        if not fallback_silence_reported:
+            fallback_silence_reported = True
+            log.warning("Fallback source channel silent for %.1f h", fallback_silence / 3600)
+    elif (
+        fallback_silence_reported
+        and fallback_silence is not None
+        and fallback_silence < SOURCE_SILENCE_THRESHOLD
+    ):
+        fallback_silence_reported = False
+        log.info("Fallback source channel is posting again")
 
 
 def _report_broadcast_silence(silence: float | None) -> None:
@@ -938,22 +1095,32 @@ def _report_broadcast_silence(silence: float | None) -> None:
         log.info("Alerts broadcasting resumed")
 
 
-async def _healthcheck_loop(client: TelegramClient) -> None:
+async def _healthcheck_loop(client: TelegramClient, has_fallback: bool = True) -> None:
     if not HEALTHCHECKS_ALERTS_SOURCE_PING_URL:
         log.warning("HEALTHCHECKS_ALERTS_SOURCE_PING_URL not set; skipping healthcheck pings")
 
     while True:
         await asyncio.sleep(HEALTHCHECK_PING_INTERVAL)
-        silence = await _source_silence_seconds()
-        _report_source_silence(silence)
+        p_silence = await _primary_silence_seconds()
+        fb_silence = await _fallback_silence_seconds()
+        overall_silence = await _source_silence_seconds()
+        _report_source_silence(
+            p_silence, fb_silence, overall_silence, has_fallback=has_fallback
+        )
 
         if not client.is_connected():
             continue
 
-        if silence is not None and silence >= SOURCE_SILENCE_THRESHOLD:
+        if overall_silence is not None and overall_silence >= SOURCE_SILENCE_THRESHOLD:
             await asyncio.to_thread(_ping_healthcheck, "/fail")
         else:
             await asyncio.to_thread(_ping_healthcheck)
+
+        if HEALTHCHECKS_ALERTS_SOURCE_FALLBACK_PING_URL and has_fallback:
+            if fb_silence is not None and fb_silence >= SOURCE_SILENCE_THRESHOLD:
+                await asyncio.to_thread(_ping_fb_healthcheck, "/fail")
+            else:
+                await asyncio.to_thread(_ping_fb_healthcheck)
 
 
 async def _broadcast_watchdog_loop(client: TelegramClient) -> None:
@@ -1010,9 +1177,13 @@ async def main():
     except Exception as e:
         log.error("Failed database initialization / rehydration: %s", e)
 
-    region_channels, source_channel = cli.get_mode_config(args)
+    region_channels, primary_source, fallback_source = cli.get_mode_config(args)
     os.makedirs(SESSION_PATH, exist_ok=True)
     session_file = os.path.join(SESSION_PATH, "sirens")
+
+    monitored_chats = [cid for cid in (primary_source, fallback_source) if cid]
+    if not monitored_chats and primary_source is not None:
+        monitored_chats.append(primary_source)
 
     try:
         async with TelegramClient(session_file, TELEGRAM_API_ID, TELEGRAM_API_HASH) as tg_client:
@@ -1025,13 +1196,20 @@ async def main():
             log.info("Sirens started in %s mode", args.mode)
 
             client.add_event_handler(
-                build_message_handler(region_channels), events.NewMessage(chats=[source_channel])
+                build_message_handler(
+                    region_channels,
+                    primary_source=primary_source,
+                    fallback_source=fallback_source,
+                ),
+                events.NewMessage(chats=monitored_chats),
             )
 
-            await _prime_monitoring_state(source_channel)
+            await _prime_monitoring_state(primary_source, fallback_source=fallback_source)
 
             monitoring_tasks = [
-                asyncio.create_task(_healthcheck_loop(client)),
+                asyncio.create_task(
+                    _healthcheck_loop(client, has_fallback=(fallback_source is not None))
+                ),
                 asyncio.create_task(_broadcast_watchdog_loop(client)),
             ]
             try:

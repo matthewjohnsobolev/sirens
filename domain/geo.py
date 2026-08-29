@@ -60,7 +60,7 @@ DISTRICT_CONFIG = {
     },
     "nikopol": {
         "name": "Нікопольський район",
-        "aliases": ["м. Нікополь"],
+        "aliases": ["м. Нікополь", "Нікополь"],
         "oblast": "dnipropetrovsk_oblast",
         "display_name": "Nikopol",
         "alert_triggers": {

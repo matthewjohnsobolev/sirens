@@ -13,7 +13,12 @@ def apostrophe_variants(name: str) -> list[str]:
 
 
 DISTRICT_CONFIG = {
-    "kyiv": {"name": "м. Київ", "oblast": "kyiv", "display_name": "Kyiv"},
+    "kyiv": {
+        "name": "м. Київ",
+        "aliases": ["Київ"],
+        "oblast": "kyiv",
+        "display_name": "Kyiv",
+    },
     "bilatserkva": {
         "name": "Білоцерківський район",
         "oblast": "kyiv_oblast",

@@ -656,6 +656,11 @@ def _expected_records(districts, alert_type):
             id="kyiv-fallback-alert",
         ),
         pytest.param(
+            "Київ Повітряна тривога",
+            [(1111, "kyiv", "air_raid_alert")],
+            id="kyiv-without-m-alert",
+        ),
+        pytest.param(
             "м. Київ Відбій тривоги",
             [(1111, "kyiv", "air_raid_alert_cancelled")],
             id="kyiv-fallback-cancellation",
@@ -1701,6 +1706,8 @@ def test_match_districts(message_text, expected):
         pytest.param("м. Запоріжжя", "zaporizhzhia", id="zaporizhzhia-with-m"),
         pytest.param("Нікополь", "nikopol", id="nikopol-without-m"),
         pytest.param("м. Нікополь", "nikopol", id="nikopol-with-m"),
+        pytest.param("Київ", "kyiv", id="kyiv-without-m"),
+        pytest.param("м. Київ", "kyiv", id="kyiv-with-m"),
     ],
 )
 def test_match_districts_accepts_every_spelling(name, expected_key):

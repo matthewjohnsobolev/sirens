@@ -60,7 +60,6 @@ from domain import (
     LOCATION_LOCATIVE,
     MESSAGES,
     OBLAST_TRIGGERS,
-    SOURCE_KEYS,
 )
 from web.db import DEFAULT_SOURCE, ensure_pg_tables, rehydrate_state_from_db
 

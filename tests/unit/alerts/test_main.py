@@ -670,6 +670,11 @@ def _expected_records(districts, alert_type):
             [(2222, "nikopol", "threat_of_shelling_cancelled")],
             id="nikopol-shelling-cancellation",
         ),
+        pytest.param(
+            "🚨 Нікополь (Дніпропетровська обл.)\nПовітряна тривога. Прямуйте в укриття",
+            [(2222, "nikopol", "air_raid_alert")],
+            id="nikopol-without-m-with-oblast-abbr",
+        ),
         pytest.param("Some random text", [], id="no-region-match"),
         pytest.param("м. Київ погода сьогодні гарна", [], id="region-without-alert-keyword"),
     ],
@@ -1694,6 +1699,8 @@ def test_match_districts(message_text, expected):
         pytest.param("м. Харків", "kharkiv", id="kharkiv-with-m"),
         pytest.param("Запоріжжя", "zaporizhzhia", id="zaporizhzhia-without-m"),
         pytest.param("м. Запоріжжя", "zaporizhzhia", id="zaporizhzhia-with-m"),
+        pytest.param("Нікополь", "nikopol", id="nikopol-without-m"),
+        pytest.param("м. Нікополь", "nikopol", id="nikopol-with-m"),
     ],
 )
 def test_match_districts_accepts_every_spelling(name, expected_key):

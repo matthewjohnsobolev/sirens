@@ -52,9 +52,7 @@ from domain import (
     DISTRICTS_BY_OBLAST,
     MESSAGES,
     REGION_CONFIG,
-    real_channels,
     real_source_channels,
-    test_source_channels,
 )
 from tests.samples.source_messages import (
     ALL_SAMPLES,

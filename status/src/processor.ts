@@ -286,7 +286,7 @@ export async function computeStatusData(env: Env) {
         return ` з ${p.day} ${UK_MONTHS[p.month]}, ${hh}:${mm}`;
     };
 
-    const coreFailing = components.filter(c => (c.key === "alerts" || c.key === "tg") && ["down", "major", "minor"].includes(c.state) && c.monitored);
+    const coreFailing = components.filter(c => (c.key === "source" || c.key === "broadcast") && ["down", "major", "minor"].includes(c.state) && c.monitored);
     const auxFailing = components.filter(c => (c.key === "map" || c.key === "api") && ["down", "major", "minor"].includes(c.state) && c.monitored);
 
     let lastAlertDt: Date | null = null;

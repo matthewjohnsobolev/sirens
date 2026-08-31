@@ -29,7 +29,7 @@ export function healthchecksApiKey(env: Env): string | undefined {
 }
 
 export function healthchecksSlug(env: Env, componentKey: string): string | undefined {
-    return componentKey === "alerts"
+    return componentKey === "source"
         ? env.HEALTHCHECKS_ALERTS_SOURCE_SLUG || env.HEALTHCHECKS_SLUG_ALERTS_SOURCE
         : env.HEALTHCHECKS_ALERTS_BROADCAST_SLUG || env.HEALTHCHECKS_SLUG_ALERTS_BROADCAST;
 }
@@ -62,8 +62,8 @@ export interface TelemetryData {
 }
 
 export const COMPONENTS_SPEC = [
-    { key: "tg", name: "Канали Telegram", source: "healthchecks" },
-    { key: "alerts", name: "Обробка тривог", source: "healthchecks" },
+    { key: "broadcast", name: "Канали Telegram", source: "healthchecks" },
+    { key: "source", name: "Обробка тривог", source: "healthchecks" },
     { key: "map", name: "Мапа тривог", source: "uptimerobot" },
     { key: "api", name: "API", source: "uptimerobot" },
 ];

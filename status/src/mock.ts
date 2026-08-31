@@ -68,7 +68,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
                     downCount++;
                 }
             } else if (normScenario === "service_down") {
-                if ((specKey === "tg" || specKey === "alerts") && i >= 22) {
+                if ((specKey === "broadcast" || specKey === "source") && i >= 22) {
                     state = "down";
                     downCount++;
                 }

@@ -699,6 +699,7 @@ async def push_telemetry_to_kv() -> None:
 
 
 TELEMETRY_SYNC_DELAY = 2.0
+TELEMETRY_PERIODIC_SYNC_INTERVAL = 900
 _telemetry_sync_task: asyncio.Task | None = None
 
 
@@ -1135,6 +1136,8 @@ async def _broadcast_watchdog_loop(client: TelegramClient) -> None:
             "HEALTHCHECKS_ALERTS_BROADCAST_PING_URL not set; skipping broadcast health pings"
         )
 
+    last_periodic_sync = 0.0
+
     while True:
         await asyncio.sleep(HEALTHCHECK_PING_INTERVAL)
         silence = await _broadcast_silence_seconds()
@@ -1148,7 +1151,10 @@ async def _broadcast_watchdog_loop(client: TelegramClient) -> None:
         else:
             await asyncio.to_thread(_ping_tg_healthcheck)
 
-        spawn_tracked_task(push_telemetry_to_kv(), "Periodic telemetry sync")
+        now_ts = time.time()
+        if now_ts - last_periodic_sync >= TELEMETRY_PERIODIC_SYNC_INTERVAL:
+            last_periodic_sync = now_ts
+            spawn_tracked_task(push_telemetry_to_kv(), "Periodic telemetry sync")
 
 
 async def main():

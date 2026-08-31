@@ -171,6 +171,12 @@ export async function computeStatusData(env: Env) {
             intervals = getDownIntervals(probe.flips, windowStart, now, initialUp);
         }
 
+        const intervalStates = intervals.map(({start, end}) => ({
+            start,
+            end,
+            isDown: (end.getTime() - start.getTime()) / 1000 >= THRESHOLD_MAJOR
+        }));
+
         const hours = [];
         let trackedSeconds = 0;
         let downSeconds = 0;
@@ -181,7 +187,7 @@ export async function computeStatusData(env: Env) {
             const hourEnd = new Date(hourStart.getTime() + 3600 * 1000);
             const actualStart = new Date(Math.max(hourStart.getTime(), windowStart.getTime()));
             const actualEnd = new Date(Math.min(hourEnd.getTime(), now.getTime()));
-            
+
             const dateIso = hourStart.toISOString();
 
             if (!historyKnown || actualEnd <= actualStart) {
@@ -197,17 +203,20 @@ export async function computeStatusData(env: Env) {
             }
 
             let down = 0;
-            for (const {start, end} of intervals) {
-                down += overlapSeconds(actualStart, actualEnd, start, end);
+            let hasDownInterval = false;
+            for (const interval of intervalStates) {
+                const overlap = overlapSeconds(actualStart, actualEnd, interval.start, interval.end);
+                down += overlap;
+                if (overlap > 0 && interval.isDown) hasDownInterval = true;
             }
             trackedHours++;
             trackedSeconds += (actualEnd.getTime() - actualStart.getTime()) / 1000;
             downSeconds += down;
 
             let state = "ok";
-            if (down >= THRESHOLD_MAJOR) state = "down";
+            if (hasDownInterval) state = "down";
             else if (down > 0) state = "minor";
-            
+
             const parts = formatHourParts(dateIso, state);
             hours.push({
                 date: dateIso,

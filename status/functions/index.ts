@@ -49,7 +49,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const url = new URL(request.url);
     const mockParam = url.searchParams.get("mock");
 
-    if (mockParam) {
+    if (mockParam && env.ENVIRONMENT === "development") {
         const mockData = getMockStatusData(mockParam, new Date());
         const html = renderHtml(mockData);
         return new Response(html, {

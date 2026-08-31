@@ -22,7 +22,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
     let data: any = null;
 
-    if (mockParam) {
+    if (mockParam && env.ENVIRONMENT === "development") {
         data = getMockStatusData(mockParam, new Date());
     } else {
         try {

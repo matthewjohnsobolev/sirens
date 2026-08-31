@@ -37,6 +37,7 @@ from telethon.tl.types import (
 
 from alerts import cli
 from config import (
+    BROADCAST_SILENCE_THRESHOLD,
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_API_TOKEN,
     CLOUDFLARE_TELEMETRY_NAMESPACE_ID,
@@ -47,11 +48,12 @@ from config import (
     IMAGES_PATH,
     LOGS_PATH,
     REDIS_URL,
+    RELEASE,
     SENTRY_DSN,
     SESSION_PATH,
+    SOURCE_SILENCE_THRESHOLD,
     TELEGRAM_API_HASH,
     TELEGRAM_API_ID,
-    VERSION,
 )
 from domain import (
     BROADCAST_CITIES,
@@ -153,6 +155,24 @@ async def source_reference(event) -> tuple[int | None, str | None]:
 
     username = await resolve_channel_username(chat_id)
     return message_id, build_message_link(chat_id, message_id, username)
+
+
+active_failures: set[str] = set()
+
+
+def report_failure(scope: str, message: str, *args) -> None:
+    """Logs a repeating failure once per episode, keeping the rest at debug."""
+    if scope in active_failures:
+        log.debug(message, *args, exc_info=True)
+        return
+    active_failures.add(scope)
+    log.error(message, *args, exc_info=True)
+
+
+def clear_failure(scope: str, message: str) -> None:
+    if scope in active_failures:
+        active_failures.discard(scope)
+        log.info(message)
 
 
 def spawn_tracked_task(coro, description: str):
@@ -385,8 +405,9 @@ async def _record_alert_state(
                         "updated_at": now_epoch,
                     },
                 )
+            clear_failure("redis:alert-state", "Redis is accepting alert state again")
         except Exception:
-            log.exception("Failed to update Redis state for %s", district_key)
+            report_failure("redis:alert-state", "Failed to update Redis state for %s", district_key)
 
     request_telemetry_sync()
 
@@ -408,8 +429,9 @@ async def _record_alert_state(
                     message_id,
                     message_link,
                 )
-        except Exception as e:
-            log.error("Failed to insert alert history into PG: %s", e)
+            clear_failure("pg:alert-history", "PostgreSQL is accepting alert history again")
+        except Exception:
+            report_failure("pg:alert-history", "Failed to insert alert history into PG")
 
 
 async def send_alert(channel_id: int, region: str, alert_type: str, source_type: str = "primary"):
@@ -674,8 +696,6 @@ async def push_telemetry_to_kv() -> None:
             "active_source": active_source_name,
             "active_alerts_count": active_count,
             "source_connected": source_connected,
-            "primary_source_connected": source_connected,
-            "fallback_source_connected": source_connected,
             "updated_at": now_dt.isoformat(),
         }
 
@@ -972,9 +992,6 @@ TRANSIENT_CONNECTION_ERRORS = (OSError,)
 HEALTHCHECK_PING_INTERVAL = 60
 HEALTHCHECK_PING_TIMEOUT = 10
 
-SOURCE_SILENCE_THRESHOLD = int(1.5 * 3600)
-BROADCAST_SILENCE_THRESHOLD = 3 * 3600
-
 
 def _ping_url(base: str, suffix: str = "") -> None:
     if not base:
@@ -1164,9 +1181,9 @@ async def main():
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.WARNING)],
+        integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)],
         environment=args.mode,
-        release=VERSION,
+        release=RELEASE,
         traces_sample_rate=0.0,
         send_default_pii=False,
     )

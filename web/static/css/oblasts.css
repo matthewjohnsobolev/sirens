@@ -123,7 +123,6 @@
     align-items: center;
     color: #000;
     background-color: var(--pill-orange);
-    /* Fallback for browsers without color-mix support */
     background-image: repeating-linear-gradient(115deg,
         #FFCA9A 0 8px, #F0BE91 8px 16px);
     background-image: repeating-linear-gradient(115deg,
@@ -225,7 +224,6 @@
     overflow-y: auto;
     overflow-x: hidden;
     margin-right: -10px;
-    /* Prevent scroll chaining to the underlying map */
     touch-action: pan-y;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -286,7 +284,6 @@
     background-clip: padding-box;
 }
 
-/* Firefox fallback for custom scrollbar (isolated to avoid overriding ::-webkit-scrollbar in Chrome 121+) */
 @supports not selector(::-webkit-scrollbar) {
     .scrollable-content {
         scrollbar-width: thin;

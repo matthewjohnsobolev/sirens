@@ -895,14 +895,16 @@ def sentry(monkeypatch):
         yield mock_scope, mock_capture, mock_flush
 
 
-def test_sentry_forward_is_skipped_when_unconfigured(monkeypatch):
-    """Skips forwarding to Sentry without error when DSN is unconfigured."""
+def test_an_unconfigured_sentry_is_reported_as_a_failure(monkeypatch, caplog):
+    """Without a DSN there is no sink at all, so a report must not be called delivered."""
     monkeypatch.setattr(web_server, "SENTRY_DSN", "")
+    caplog.set_level(logging.ERROR)
 
     with patch("web.server.sentry_sdk.capture_message") as mock_capture:
-        assert web_server._report_to_sentry(REPORT) is True
+        assert web_server._report_to_sentry(REPORT) is False
 
     mock_capture.assert_not_called()
+    assert "SENTRY_DSN not set" in caplog.text
 
 
 def test_sentry_title_is_english(sentry):
@@ -1117,3 +1119,44 @@ def test_missing_dsn_is_announced_at_startup(caplog):
     create_app(init_db=False, start_healthcheck=False)
 
     assert "issue reports will not be delivered anywhere" in caplog.text
+
+
+def test_a_report_is_stored_locally_before_it_is_forwarded():
+    """Sentry is the only sink, so a local copy must exist before the network call."""
+    with patch.object(web_server.report_log, "info") as mock_store:
+        web_server._store_report(REPORT)
+
+    stored = json.loads(mock_store.call_args.args[0])
+    assert stored == REPORT
+
+
+def test_the_local_copy_keeps_ukrainian_readable():
+    with patch.object(web_server.report_log, "info") as mock_store:
+        web_server._store_report(REPORT)
+
+    assert "\\u" not in mock_store.call_args.args[0]
+
+
+def test_a_failing_local_store_does_not_block_the_submission(client, report_deps, caplog):
+    """A full disk must not cost the user their report: forwarding still happens."""
+    caplog.set_level(logging.ERROR)
+
+    with patch.object(web_server.report_log, "info", side_effect=OSError("disk full")):
+        response = client.post("/issue", data=VALID_REPORT)
+
+    assert "Failed to store an issue report locally" in caplog.text
+    assert response.status_code == 200
+    report_deps.assert_called_once()
+
+
+def test_the_report_is_stored_before_sentry_is_asked(client):
+    calls = []
+
+    with (
+        patch("web.server._claim_report_slot", return_value=True),
+        patch("web.server._store_report", side_effect=lambda r: calls.append("stored")),
+        patch("web.server._report_to_sentry", side_effect=lambda r: calls.append("sent") or True),
+    ):
+        client.post("/issue", data=VALID_REPORT)
+
+    assert calls == ["stored", "sent"]

@@ -7,12 +7,13 @@
     "dev": "wrangler pages dev public",
     "dev:remote": "wrangler pages dev public --remote",
     "deploy": "wrangler pages deploy public --project-name sirens-status",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
-  "dependencies": {},
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240512.0",
-    "wrangler": "^3.56.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.9",
+    "wrangler": "^3.56.0"
   }
 }

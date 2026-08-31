@@ -1,7 +1,7 @@
-import { COMPONENTS_SPEC } from "./api";
-import { formatHourParts, formatHourTitle, summarizeHours, getKyivParts } from "./helpers";
+import { COMPONENTS_SPEC, Severity, StatusData } from "./api";
+import { formatHourParts, getKyivParts } from "./helpers";
 
-export function getMockStatusData(scenario: string = "ok", now: Date = new Date()) {
+export function getMockStatusData(scenario: string = "ok", now: Date = new Date()): StatusData {
     const WINDOW_HOURS = 24;
     const nowKyiv = getKyivParts(now);
     const currentHourStart = new Date(Math.floor(now.getTime() / (3600 * 1000)) * (3600 * 1000));
@@ -110,6 +110,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         };
     });
 
+    let severity: Severity = "none";
     let headline = "Сповіщення працюють";
     const lastAlertHour = ((nowKyiv.hour - 4 + 24) % 24).toString().padStart(2, "0");
     const lastAlertMin = "12";
@@ -118,18 +119,23 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
     const outageTimeStr = `з ${((nowKyiv.hour - 2 + 24) % 24).toString().padStart(2, "0")}:00`;
 
     if (normScenario === "unknown") {
+        severity = "unknown";
         headline = "Стан невідомий";
         subtitle = "Моніторинг тимчасово не відповідає";
     } else if (normScenario === "service_down") {
+        severity = "major";
         headline = "Сервіс не працює";
         subtitle = `Сповіщення не надходять ${outageTimeStr}. Перевіряйте офіційний канал вашої області.`;
     } else if (normScenario === "map_api_down") {
+        severity = "minor";
         headline = "Сповіщення працюють, мапа й API — ні";
         subtitle = `Мапа та API недоступні ${outageTimeStr}. Сповіщення в Telegram надходять як зазвичай.`;
     } else if (normScenario === "map_down") {
+        severity = "minor";
         headline = "Сповіщення працюють, мапа — ні";
         subtitle = `Мапа недоступна ${outageTimeStr}. Сповіщення в Telegram надходять як зазвичай.`;
     } else if (normScenario === "mnt") {
+        severity = "maintenance";
         headline = "Планові роботи";
         subtitle = "Тривають планові технічні роботи.";
     }
@@ -153,12 +159,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         updated_at: now.toISOString()
     };
 
-    return {
-        headline,
-        subtitle,
-        components,
-        telemetry,
-        hour_title: formatHourTitle,
-        hours_summary: summarizeHours
-    };
+    const outageSince = components.map(c => c.outage_since).filter(Boolean).sort()[0] || null;
+
+    return { headline, subtitle, severity, outage_since: outageSince, components, telemetry };
 }

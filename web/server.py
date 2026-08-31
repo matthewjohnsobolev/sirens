@@ -1,6 +1,8 @@
 import hashlib
+import json
 import logging
 import os
+import re
 import threading
 import time
 from functools import cache
@@ -17,6 +19,7 @@ from config import (
     APP_ENV,
     HEALTHCHECKS_WEB_PING_URL,
     LOGS_PATH,
+    RELEASE,
     SENTRY_DSN,
     VERSION,
 )
@@ -45,6 +48,17 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
+
+REPORT_LOG_FILE = os.path.join(LOGS_PATH, "issue-reports.log")
+
+report_log = logging.getLogger("web.issue_reports")
+report_log.setLevel(logging.INFO)
+report_log.propagate = False
+_report_handler = RotatingFileHandler(
+    REPORT_LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
+)
+_report_handler.setFormatter(logging.Formatter("[%(asctime)s] %(message)s", "%Y-%m-%d %H:%M:%S"))
+report_log.addHandler(_report_handler)
 
 HEALTHCHECK_PING_INTERVAL = 60
 HEALTHCHECK_PING_TIMEOUT = 10
@@ -175,8 +189,6 @@ def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
         else:
             return {}, "Вкажіть, будь ласка, дату і час."
     elif time_val and time_val not in TIME_NAMES:
-        import re
-
         if not re.match(
             r"^(?:(?:\d{4}-\d{2}-\d{2}|\d{1,2}\s+[^\d\s]+)\s+)?(?:[01]?\d|2[0-3]):[0-5]\d$",
             time_val,
@@ -206,9 +218,18 @@ def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
     }, ""
 
 
+def _store_report(report: dict[str, str]) -> None:
+    """Keeps a durable copy locally so a refused Sentry event is not the only record."""
+    try:
+        report_log.info(json.dumps(report, ensure_ascii=False))
+    except Exception:
+        log.exception("Failed to store an issue report locally")
+
+
 def _report_to_sentry(report: dict[str, str]) -> bool:
     if not SENTRY_DSN:
-        return True
+        log.error("SENTRY_DSN not set; an issue report could not be delivered")
+        return False
 
     try:
         category = CATEGORY_INFO[report["category"]]
@@ -310,6 +331,8 @@ def issue() -> Any:
         report.get("district", ""),
     )
 
+    _store_report(report)
+
     if not _report_to_sentry(report):
         return _render_issue_form(), 503
 
@@ -376,10 +399,10 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
         dsn=SENTRY_DSN,
         integrations=[
             FlaskIntegration(),
-            LoggingIntegration(level=logging.INFO, event_level=logging.WARNING),
+            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
         ],
         environment=APP_ENV,
-        release=VERSION,
+        release=RELEASE,
         traces_sample_rate=0.0,
         send_default_pii=False,
     )

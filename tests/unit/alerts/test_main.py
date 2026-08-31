@@ -541,7 +541,7 @@ async def test_send_alert_still_broadcasts_when_pg_insert_fails(
         await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert")
         await _drain_background_tasks()
 
-    assert "Failed to insert alert history into PG: DB Error" in caplog.text
+    assert "Failed to insert alert history into PG" in caplog.text
     mock_redis.hset.assert_called()
     mock_telegram_client.send_message.assert_awaited_once_with(
         CHANNEL_ID, MESSAGES["air_raid_alert"]
@@ -1952,7 +1952,6 @@ async def test_dual_source_deduplication_between_primary_and_fallback(
         {"kyiv": 9001}, primary_source=primary_id, fallback_source=fallback_id
     )
 
-    # Message from fallback arrives first
     event_fb = MagicMock()
     event_fb.chat_id = fallback_id
     event_fb.message.message = "м. Київ Повітряна тривога"
@@ -1968,7 +1967,6 @@ async def test_dual_source_deduplication_between_primary_and_fallback(
 
     assert mock_telegram_client.send_message.await_count == 1
 
-    # Message from primary arrives shortly after for the same alert
     mock_redis.get.return_value = "air_raid_alert"
     event_prim = MagicMock()
     event_prim.chat_id = primary_id
@@ -1982,7 +1980,6 @@ async def test_dual_source_deduplication_between_primary_and_fallback(
         await handler(event_prim)
         await _drain_background_tasks()
 
-    # send_message should NOT be called a second time
     assert mock_telegram_client.send_message.await_count == 1
 
 
@@ -2030,7 +2027,6 @@ def test_silence_reporting_for_primary_and_fallback(caplog):
     alerts_main.fallback_silence_reported = False
     alerts_main.source_silence_reported = False
 
-    # 1. Primary is silent, but fallback is active
     alerts_main._report_source_silence(
         primary_silence=threshold + 10,
         fallback_silence=100,
@@ -2041,7 +2037,6 @@ def test_silence_reporting_for_primary_and_fallback(caplog):
     assert "operating via fallback source" in caplog.text
     assert alerts_main.primary_silence_reported is True
 
-    # 2. Fallback becomes silent, primary active
     caplog.clear()
     alerts_main.primary_silence_reported = False
     alerts_main._report_source_silence(
@@ -2053,7 +2048,6 @@ def test_silence_reporting_for_primary_and_fallback(caplog):
     assert "Fallback source channel silent" in caplog.text
     assert alerts_main.fallback_silence_reported is True
 
-    # 3. Fallback recovers
     caplog.clear()
     alerts_main._report_source_silence(
         primary_silence=100,
@@ -2114,7 +2108,51 @@ async def test_push_telemetry_to_kv_includes_fallback_data(monkeypatch):
     assert mock_put.called
     body = json.loads(mock_put.call_args.kwargs["data"])
     assert body["active_source"] == "fallback"
-    assert body["primary_source_connected"] is True
-    assert body["fallback_source_connected"] is True
+    assert body["source_connected"] is True
     assert "last_primary_message_at" in body
     assert "last_fallback_message_at" in body
+    assert "primary_source_connected" not in body
+    assert "fallback_source_connected" not in body
+
+
+def test_a_repeating_failure_raises_one_event_per_episode(caplog):
+    """A burst of identical failures must not become a burst of Sentry events."""
+    caplog.set_level(logging.DEBUG)
+
+    for _ in range(3):
+        alerts_main.report_failure("redis:alert-state", "Failed for %s", "kyiv")
+
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    debugs = [r for r in caplog.records if r.levelno == logging.DEBUG]
+    assert len(errors) == 1
+    assert len(debugs) == 2
+
+
+def test_recovery_closes_the_episode_and_the_next_failure_reports_again(caplog):
+    caplog.set_level(logging.INFO)
+
+    alerts_main.report_failure("pg:alert-history", "Failed once")
+    alerts_main.clear_failure("pg:alert-history", "PostgreSQL is back")
+    alerts_main.report_failure("pg:alert-history", "Failed again")
+
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 2
+    assert "PostgreSQL is back" in caplog.text
+
+
+def test_recovery_of_a_healthy_scope_says_nothing(caplog):
+    caplog.set_level(logging.INFO)
+
+    alerts_main.clear_failure("redis:alert-state", "Redis is back")
+
+    assert "Redis is back" not in caplog.text
+
+
+def test_failures_of_different_scopes_are_reported_separately(caplog):
+    caplog.set_level(logging.ERROR)
+
+    alerts_main.report_failure("redis:alert-state", "Redis failed")
+    alerts_main.report_failure("pg:alert-history", "PostgreSQL failed")
+
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 2

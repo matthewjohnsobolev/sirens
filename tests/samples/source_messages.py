@@ -215,9 +215,6 @@ COMBINED_SAMPLES = (
 
 ALL_SAMPLES = MESSAGES_SAMPLES + COMBINED_SAMPLES
 
-# Alerts are cleared per hromada, so a district's channels can hear an all-clear
-# for one town while the district around it is still under alert. The source
-# says so in a trailing note, which names places the post is *not* clearing.
 PARTIAL_CANCELLATION_SAMPLES = (
     PartialCancellationSample(
         id="nikopol-city-cleared-while-oblast-runs-on",

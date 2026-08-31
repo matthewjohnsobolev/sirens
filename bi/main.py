@@ -35,11 +35,11 @@ from config import (
     DATABASE_URL,
     GITHUB_PAT,
     GITHUB_REPO,
+    RELEASE,
     SENTRY_DSN,
     SESSION_PATH,
     TELEGRAM_API_HASH,
     TELEGRAM_API_ID,
-    VERSION,
 )
 from domain import REGION_CONFIG
 from web.db import ensure_pg_tables
@@ -276,9 +276,9 @@ async def main() -> int:
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.WARNING)],
+        integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)],
         environment=args.mode,
-        release=VERSION,
+        release=RELEASE,
         traces_sample_rate=0.0,
         send_default_pii=False,
     )

@@ -1,4 +1,4 @@
-import { Env } from "../src/api";
+import { Env, StatusData, getLastGoodStatus } from "../src/api";
 import { computeStatusData } from "../src/processor";
 import { getMockStatusData } from "../src/mock";
 
@@ -10,6 +10,52 @@ const CORS_HEADERS: Record<string, string> = {
     "X-Content-Type-Options": "nosniff",
 };
 
+const NO_STORE = "no-cache, no-store, must-revalidate";
+
+const COMPONENT_STATUS: Record<string, string> = {
+    ok: "operational",
+    minor: "degraded_performance",
+    down: "major_outage",
+    major: "major_outage",
+    mnt: "under_maintenance",
+};
+
+function buildPayload(data: StatusData) {
+    return {
+        page: {
+            id: "sirens-status",
+            name: "Сирени",
+            url: "https://status.sirens.live",
+            time_zone: "Europe/Kyiv",
+            updated_at: new Date().toISOString()
+        },
+        status: {
+            indicator: data.severity,
+            headline: data.headline,
+            description: data.subtitle,
+            outage_since: data.outage_since
+        },
+        stale: Boolean(data.snapshot_at),
+        snapshot_at: data.snapshot_at || null,
+        telemetry: data.telemetry || null,
+        components: data.components.map(c => ({
+            id: c.key,
+            name: c.name,
+            status: COMPONENT_STATUS[c.state] || "unknown",
+            uptime_pct_24h: c.uptime,
+            monitored: c.monitored,
+            outage_since: c.outage_since
+        }))
+    };
+}
+
+function jsonResponse(body: unknown, status: number, cacheControl: string): Response {
+    return new Response(JSON.stringify(body, null, 2), {
+        status,
+        headers: { ...CORS_HEADERS, "Cache-Control": cacheControl }
+    });
+}
+
 export const onRequest: PagesFunction<Env> = async (context) => {
     const { env, request } = context;
 
@@ -20,75 +66,40 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const url = new URL(request.url);
     const mockParam = url.searchParams.get("mock");
 
-    let data: any = null;
-
     if (mockParam && env.ENVIRONMENT === "development") {
-        data = getMockStatusData(mockParam, new Date());
-    } else {
-        try {
-            data = await computeStatusData(env);
-        } catch (error) {
-            console.error("Error computing status data for status.json:", error);
-        }
+        return jsonResponse(buildPayload(getMockStatusData(mockParam, new Date())), 200, NO_STORE);
     }
 
-    if (!data) {
-        return new Response(JSON.stringify({
-            status: {
-                indicator: "critical",
-                description: "Стан невідомий: сервіс моніторингу тимчасово не відповідає",
-                outage_since: null
-            },
-            updated_at: new Date().toISOString()
-        }, null, 2), {
-            status: 503,
-            headers: {
-                ...CORS_HEADERS,
-                "Cache-Control": "no-cache, no-store, must-revalidate"
-            }
-        });
+    const cacheKey = new Request(`${url.origin}${url.pathname}`, { method: "GET" });
+    const cache = caches.default;
+
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
+
+    let data: StatusData | null = null;
+    try {
+        data = await computeStatusData(env);
+    } catch (error) {
+        console.error("Error computing status data for status.json:", error);
     }
 
-    const isServiceDown = data.headline === "Сервіс не працює";
-    const isDegraded = data.headline.includes("— ні") || data.headline.includes("перебо");
-    const isMnt = data.headline === "Планові роботи";
-    const isUnknown = data.headline === "Стан невідомий";
+    if (data) {
+        const response = jsonResponse(buildPayload(data), 200, "public, max-age=30");
+        context.waitUntil(cache.put(cacheKey, response.clone()));
+        return response;
+    }
 
-    let indicator = "none";
-    if (isServiceDown) indicator = "major";
-    else if (isDegraded) indicator = "minor";
-    else if (isMnt) indicator = "maintenance";
-    else if (isUnknown) indicator = "unknown";
+    const lastGood = await getLastGoodStatus(env);
+    if (lastGood) {
+        return jsonResponse(buildPayload(lastGood), 200, NO_STORE);
+    }
 
-    const responsePayload = {
-        page: {
-            id: "sirens-status",
-            name: "Сирени",
-            url: "https://status.sirens.live",
-            time_zone: "Europe/Kyiv",
-            updated_at: new Date().toISOString()
-        },
+    return jsonResponse({
         status: {
-            indicator,
-            headline: data.headline,
-            description: data.subtitle,
-            outage_since: data.components.find((c: any) => c.outage_since)?.outage_since || null
+            indicator: "unknown",
+            description: "Стан невідомий: сервіс моніторингу тимчасово не відповідає",
+            outage_since: null
         },
-        telemetry: data.telemetry || null,
-        components: data.components.map((c: any) => ({
-            id: c.key,
-            name: c.name,
-            status: c.state === "ok" ? "operational" : c.state === "minor" ? "degraded_performance" : c.state === "down" ? "major_outage" : c.state === "mnt" ? "under_maintenance" : "unknown",
-            uptime_pct_24h: c.uptime,
-            monitored: c.monitored,
-            outage_since: c.outage_since
-        }))
-    };
-
-    return new Response(JSON.stringify(responsePayload, null, 2), {
-        headers: {
-            ...CORS_HEADERS,
-            "Cache-Control": "public, max-age=30"
-        }
-    });
+        updated_at: new Date().toISOString()
+    }, 503, NO_STORE);
 };

@@ -44,7 +44,6 @@ jobs:
           else
             test -n "${SSHPASS:-}" || { echo "Set DEPLOY_PASSWORD or DEPLOY_SSH_KEY"; exit 1; }
             sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
-            # sshpass reads $SSHPASS itself, so the password never lands in argv.
             sshpass -e ssh -p "$PORT" \
               -o PreferredAuthentications=password,keyboard-interactive \
               -o PubkeyAuthentication=no \

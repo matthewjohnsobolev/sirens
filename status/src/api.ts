@@ -1,44 +1,26 @@
-// Both spellings are declared on purpose: the names on the left are the ones
-// wrangler.toml and the .env now use, the ones on the right are what a Pages
-// project provisioned before the rename still has bound. Reads go through the
-// accessors below so neither half goes stale.
 export interface Env {
     HEALTHCHECKS_API_KEY?: string;
-    HEALTHCHECKS_API?: string;
     HEALTHCHECKS_ALERTS_SOURCE_SLUG?: string;
-    HEALTHCHECKS_SLUG_ALERTS_SOURCE?: string;
     HEALTHCHECKS_ALERTS_BROADCAST_SLUG?: string;
-    HEALTHCHECKS_SLUG_ALERTS_BROADCAST?: string;
     UPTIMEROBOT_WEB_MONITOR_KEY?: string;
-    UPTIMEROBOT_SIRENS_WEB_API?: string;
     UPTIMEROBOT_API_MONITOR_KEY?: string;
-    UPTIMEROBOT_SIRENS_API_API?: string;
     STATUS_START_DATE?: string;
     ENVIRONMENT?: string;
     TELEMETRY?: KVNamespace;
-    STATUS_KV?: KVNamespace;
-    SIRENS_TELEMETRY?: KVNamespace;
-    "sirens-telemetry"?: KVNamespace;
 }
 
-export function telemetryKv(env: Env): KVNamespace | undefined {
-    return env.TELEMETRY || env.STATUS_KV || env.SIRENS_TELEMETRY || env["sirens-telemetry"];
-}
-
-export function healthchecksApiKey(env: Env): string | undefined {
-    return env.HEALTHCHECKS_API_KEY || env.HEALTHCHECKS_API;
-}
+export type Severity = "none" | "minor" | "major" | "maintenance" | "unknown";
 
 export function healthchecksSlug(env: Env, componentKey: string): string | undefined {
     return componentKey === "source"
-        ? env.HEALTHCHECKS_ALERTS_SOURCE_SLUG || env.HEALTHCHECKS_SLUG_ALERTS_SOURCE
-        : env.HEALTHCHECKS_ALERTS_BROADCAST_SLUG || env.HEALTHCHECKS_SLUG_ALERTS_BROADCAST;
+        ? env.HEALTHCHECKS_ALERTS_SOURCE_SLUG
+        : env.HEALTHCHECKS_ALERTS_BROADCAST_SLUG;
 }
 
 export function uptimeRobotKey(env: Env, componentKey: string): string | undefined {
     return componentKey === "map"
-        ? env.UPTIMEROBOT_WEB_MONITOR_KEY || env.UPTIMEROBOT_SIRENS_WEB_API
-        : env.UPTIMEROBOT_API_MONITOR_KEY || env.UPTIMEROBOT_SIRENS_API_API;
+        ? env.UPTIMEROBOT_WEB_MONITOR_KEY
+        : env.UPTIMEROBOT_API_MONITOR_KEY;
 }
 
 export interface TelemetryAlert {
@@ -51,15 +33,52 @@ export interface TelemetryAlert {
     timestamp: string;
     message_id?: number | null;
     message_link?: string | null;
+    source_type?: string;
 }
 
 export interface TelemetryData {
     last_broadcast_at?: string | null;
     last_alert?: TelemetryAlert | null;
     last_source_message_at?: string | null;
+    last_primary_message_at?: string | null;
+    last_fallback_message_at?: string | null;
+    active_source?: string;
     active_alerts_count?: number;
     source_connected?: boolean;
     updated_at?: string;
+}
+
+export interface StatusHour {
+    date: string;
+    state: string;
+    timeText: string;
+    statusText: string;
+    title: string;
+}
+
+export interface StatusComponent {
+    key: string;
+    name: string;
+    uptime: number | null;
+    hours: StatusHour[];
+    monitored: boolean;
+    state: string;
+    outage_since: string | null;
+}
+
+export interface StatusData {
+    headline: string;
+    subtitle: string;
+    severity: Severity;
+    outage_since: string | null;
+    components: StatusComponent[];
+    telemetry?: TelemetryData | null;
+    snapshot_at?: string;
+}
+
+export interface Flip {
+    timestamp: Date;
+    up: number;
 }
 
 export const COMPONENTS_SPEC = [
@@ -69,25 +88,44 @@ export const COMPONENTS_SPEC = [
     { key: "api", name: "API", source: "uptimerobot" },
 ];
 
+const LAST_GOOD_KEY = "status:last_good";
+
 export async function fetchTelemetry(env: Env): Promise<TelemetryData | null> {
-    const kv = telemetryKv(env);
-    if (!kv) return null;
+    if (!env.TELEMETRY) return null;
     try {
-        const data = await kv.get<TelemetryData>("telemetry:latest", "json");
-        return data;
+        return await env.TELEMETRY.get<TelemetryData>("telemetry:latest", "json");
     } catch (e) {
         console.warn("Failed to fetch telemetry from KV:", e);
         return null;
     }
 }
 
+export async function putLastGoodStatus(env: Env, data: StatusData): Promise<void> {
+    if (!env.TELEMETRY) return;
+    try {
+        const snapshot: StatusData = { ...data, snapshot_at: new Date().toISOString() };
+        await env.TELEMETRY.put(LAST_GOOD_KEY, JSON.stringify(snapshot));
+    } catch (e) {
+        console.warn("Failed to store the last good status snapshot:", e);
+    }
+}
+
+export async function getLastGoodStatus(env: Env): Promise<StatusData | null> {
+    if (!env.TELEMETRY) return null;
+    try {
+        return await env.TELEMETRY.get<StatusData>(LAST_GOOD_KEY, "json");
+    } catch (e) {
+        console.warn("Failed to read the last good status snapshot:", e);
+        return null;
+    }
+}
+
 export async function fetchHealthchecks(env: Env) {
-    const apiKey = healthchecksApiKey(env);
-    if (!apiKey) return [];
-    
+    if (!env.HEALTHCHECKS_API_KEY) return [];
+
     try {
         const res = await fetch("https://healthchecks.io/api/v3/checks/", {
-            headers: { "X-Api-Key": apiKey }
+            headers: { "X-Api-Key": env.HEALTHCHECKS_API_KEY }
         });
         if (!res.ok) return null;
         const data = await res.json() as any;
@@ -97,16 +135,15 @@ export async function fetchHealthchecks(env: Env) {
     }
 }
 
-export async function fetchHealthcheckFlips(apiId: string, env: Env) {
+export async function fetchHealthcheckFlips(apiId: string, env: Env): Promise<Flip[] | null> {
     try {
         const res = await fetch(`https://healthchecks.io/api/v3/checks/${apiId}/flips/`, {
-            headers: { "X-Api-Key": healthchecksApiKey(env)! }
+            headers: { "X-Api-Key": env.HEALTHCHECKS_API_KEY! }
         });
         if (!res.ok) return null;
         const data = await res.json() as any;
-        // The API usually returns an array, or an object with a "flips" array.
-        let raw = Array.isArray(data) ? data : (data.flips || []);
-        const flips = [];
+        const raw = Array.isArray(data) ? data : (data.flips || []);
+        const flips: Flip[] = [];
         for (const item of raw) {
             if (item && item.timestamp) {
                 flips.push({
@@ -140,9 +177,9 @@ export async function fetchUptimeRobot(apiKey: string) {
         if (!res.ok) return null;
         const data = await res.json() as any;
         if (data.stat !== "ok" || !data.monitors || data.monitors.length === 0) return null;
-        
+
         const monitor = data.monitors[0];
-        const flips = [];
+        const flips: Flip[] = [];
         for (const log of (monitor.logs || [])) {
             if (log.type === 1 || log.type === 2) {
                 flips.push({
@@ -152,7 +189,7 @@ export async function fetchUptimeRobot(apiKey: string) {
             }
         }
         flips.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-        
+
         return {
             status: monitor.status,
             create_datetime: monitor.create_datetime ? new Date(monitor.create_datetime * 1000) : null,
@@ -162,4 +199,3 @@ export async function fetchUptimeRobot(apiKey: string) {
         return null;
     }
 }
-

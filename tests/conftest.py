@@ -7,9 +7,6 @@ for _external in (
     "HEALTHCHECKS_WEB_PING_URL",
     "HEALTHCHECKS_BACKUP_PING_URL",
     "HEALTHCHECKS_BI_PING_URL",
-    "HEALTHCHECKS_API_KEY",
-    "UPTIMEROBOT_API_MONITOR_KEY",
-    "UPTIMEROBOT_WEB_MONITOR_KEY",
     "CLOUDFLARE_API_TOKEN",
     "CLOUDFLARE_TELEMETRY_NAMESPACE_ID",
 ):
@@ -45,6 +42,7 @@ def _isolate_alerts_globals():
 
     saved = (alerts_main.client, alerts_main.redis_client, alerts_main.pg_pool)
     alerts_main.running_tasks.clear()
+    alerts_main.active_failures.clear()
     alerts_main.last_source_message_at = None
     alerts_main.last_broadcast_at = None
     alerts_main.source_silence_reported = False
@@ -52,6 +50,7 @@ def _isolate_alerts_globals():
     yield
     alerts_main.client, alerts_main.redis_client, alerts_main.pg_pool = saved
     alerts_main.running_tasks.clear()
+    alerts_main.active_failures.clear()
     alerts_main.last_source_message_at = None
     alerts_main.last_broadcast_at = None
     alerts_main.source_silence_reported = False

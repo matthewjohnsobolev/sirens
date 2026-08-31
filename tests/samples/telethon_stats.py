@@ -12,14 +12,12 @@ def full_channel(participants_count):
     return SimpleNamespace(full_chat=SimpleNamespace(participants_count=participants_count))
 
 
-# A slice of real_channels: distinct ids.
 NETWORK_CHANNELS = {
     "kyiv": -1001712561448,
     "lviv": -1001703250824,
     "odesa": -1001337824256,
 }
 
-# The shape test_channels has: every city pointing at one test channel.
 SHARED_CHANNELS = {
     "kyiv": -1001754447620,
     "lviv": -1001754447620,

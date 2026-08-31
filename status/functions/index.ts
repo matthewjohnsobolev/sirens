@@ -1,7 +1,7 @@
-import { Env, COMPONENTS_SPEC } from "../src/api";
+import { COMPONENTS_SPEC, Env, StatusData, getLastGoodStatus, putLastGoodStatus } from "../src/api";
 import { computeStatusData } from "../src/processor";
 import { renderHtml } from "../src/template";
-import { formatHourParts, formatHourTitle, summarizeHours } from "../src/helpers";
+import { formatHourParts } from "../src/helpers";
 import { getMockStatusData } from "../src/mock";
 
 const SECURITY_HEADERS: Record<string, string> = {
@@ -12,7 +12,9 @@ const SECURITY_HEADERS: Record<string, string> = {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
 };
 
-function getFallbackStatusData(now: Date) {
+const NO_STORE = "no-cache, no-store, must-revalidate";
+
+function getFallbackStatusData(now: Date): StatusData {
     const hours = Array.from({ length: 24 }, (_, i) => {
         const d = new Date(now.getTime() - (23 - i) * 3600 * 1000);
         const iso = d.toISOString();
@@ -29,6 +31,8 @@ function getFallbackStatusData(now: Date) {
     return {
         headline: "Стан невідомий",
         subtitle: "Моніторинг тимчасово не відповідає",
+        severity: "unknown",
+        outage_since: null,
         components: COMPONENTS_SPEC.map(s => ({
             key: s.key,
             name: s.name,
@@ -37,9 +41,7 @@ function getFallbackStatusData(now: Date) {
             monitored: false,
             state: "nodata",
             outage_since: null
-        })),
-        hour_title: formatHourTitle,
-        hours_summary: summarizeHours
+        }))
     };
 }
 
@@ -50,58 +52,42 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const mockParam = url.searchParams.get("mock");
 
     if (mockParam && env.ENVIRONMENT === "development") {
-        const mockData = getMockStatusData(mockParam, new Date());
-        const html = renderHtml(mockData);
-        return new Response(html, {
-            headers: {
-                ...SECURITY_HEADERS,
-                "Cache-Control": "no-cache, no-store, must-revalidate"
-            }
+        return new Response(renderHtml(getMockStatusData(mockParam, new Date())), {
+            headers: { ...SECURITY_HEADERS, "Cache-Control": NO_STORE }
         });
     }
 
-    const cacheKey = new Request(url.toString(), { method: "GET" });
+    const cacheKey = new Request(`${url.origin}${url.pathname}`, { method: "GET" });
     const cache = caches.default;
 
-    let response = await cache.match(cacheKey);
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
 
-    if (!response) {
-        try {
-            const data = await computeStatusData(env);
-            if (!data) {
-                const fallbackHtml = renderHtml(getFallbackStatusData(new Date()));
-                return new Response(fallbackHtml, {
-                    status: 503,
-                    headers: {
-                        ...SECURITY_HEADERS,
-                        "Cache-Control": "no-cache, no-store, must-revalidate"
-                    }
-                });
-            }
-            
-            const html = renderHtml(data);
-            
-            response = new Response(html, {
-                headers: {
-                    ...SECURITY_HEADERS,
-                    "Cache-Control": "public, max-age=60"
-                }
-            });
-            
-            context.waitUntil(cache.put(cacheKey, response.clone()));
-            
-        } catch (error) {
-            console.error("Error generating status page:", error);
-            const fallbackHtml = renderHtml(getFallbackStatusData(new Date()));
-            return new Response(fallbackHtml, {
-                status: 500,
-                headers: {
-                    ...SECURITY_HEADERS,
-                    "Cache-Control": "no-cache, no-store, must-revalidate"
-                }
-            });
-        }
+    let data: StatusData | null = null;
+    try {
+        data = await computeStatusData(env);
+    } catch (error) {
+        console.error("Error generating status page:", error);
     }
 
-    return response;
+    if (data) {
+        const response = new Response(renderHtml(data), {
+            headers: { ...SECURITY_HEADERS, "Cache-Control": "public, max-age=60" }
+        });
+        context.waitUntil(putLastGoodStatus(env, data));
+        context.waitUntil(cache.put(cacheKey, response.clone()));
+        return response;
+    }
+
+    const lastGood = await getLastGoodStatus(env);
+    if (lastGood) {
+        return new Response(renderHtml(lastGood), {
+            headers: { ...SECURITY_HEADERS, "Cache-Control": NO_STORE }
+        });
+    }
+
+    return new Response(renderHtml(getFallbackStatusData(new Date())), {
+        status: 503,
+        headers: { ...SECURITY_HEADERS, "Cache-Control": NO_STORE }
+    });
 };

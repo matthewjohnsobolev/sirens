@@ -63,8 +63,10 @@ def test_config_cloudflare_kv_keys(monkeypatch):
 
 
 def test_config_healthchecks_keys(monkeypatch):
-    monkeypatch.setenv("HEALTHCHECKS_API_KEY", "hc-key")
     monkeypatch.setenv("HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/source")
+    monkeypatch.setenv(
+        "HEALTHCHECKS_ALERTS_SOURCE_FALLBACK_PING_URL", "https://hc-ping.com/fallback"
+    )
     monkeypatch.setenv("HEALTHCHECKS_ALERTS_BROADCAST_PING_URL", "https://hc-ping.com/bcast")
     monkeypatch.setenv("HEALTHCHECKS_WEB_PING_URL", "https://hc-ping.com/web")
     monkeypatch.setenv("HEALTHCHECKS_BACKUP_PING_URL", "https://hc-ping.com/backup")
@@ -72,22 +74,48 @@ def test_config_healthchecks_keys(monkeypatch):
 
     importlib.reload(config)
 
-    assert config.HEALTHCHECKS_API_KEY == "hc-key"
     assert config.HEALTHCHECKS_ALERTS_SOURCE_PING_URL == "https://hc-ping.com/source"
+    assert config.HEALTHCHECKS_ALERTS_SOURCE_FALLBACK_PING_URL == "https://hc-ping.com/fallback"
     assert config.HEALTHCHECKS_ALERTS_BROADCAST_PING_URL == "https://hc-ping.com/bcast"
     assert config.HEALTHCHECKS_WEB_PING_URL == "https://hc-ping.com/web"
     assert config.HEALTHCHECKS_BACKUP_PING_URL == "https://hc-ping.com/backup"
     assert config.HEALTHCHECKS_BI_PING_URL == "https://hc-ping.com/bi"
 
 
-def test_config_uptimerobot_keys(monkeypatch):
-    monkeypatch.setenv("UPTIMEROBOT_API_MONITOR_KEY", "ur-api")
-    monkeypatch.setenv("UPTIMEROBOT_WEB_MONITOR_KEY", "ur-web")
+def test_config_silence_thresholds_are_tunable(monkeypatch):
+    monkeypatch.setenv("SOURCE_SILENCE_THRESHOLD_HOURS", "2.5")
+    monkeypatch.setenv("BROADCAST_SILENCE_THRESHOLD_HOURS", "4")
 
     importlib.reload(config)
 
-    assert config.UPTIMEROBOT_API_MONITOR_KEY == "ur-api"
-    assert config.UPTIMEROBOT_WEB_MONITOR_KEY == "ur-web"
+    assert config.SOURCE_SILENCE_THRESHOLD == 9000
+    assert config.BROADCAST_SILENCE_THRESHOLD == 14400
+
+
+def test_config_silence_thresholds_default_to_the_documented_values(monkeypatch):
+    monkeypatch.delenv("SOURCE_SILENCE_THRESHOLD_HOURS", raising=False)
+    monkeypatch.delenv("BROADCAST_SILENCE_THRESHOLD_HOURS", raising=False)
+
+    importlib.reload(config)
+
+    assert config.SOURCE_SILENCE_THRESHOLD == 5400
+    assert config.BROADCAST_SILENCE_THRESHOLD == 10800
+
+
+def test_config_release_prefers_the_deployed_commit(monkeypatch):
+    monkeypatch.setenv("GIT_SHA", "a1b2c3d")
+
+    importlib.reload(config)
+
+    assert config.RELEASE == "a1b2c3d"
+
+
+def test_config_release_falls_back_to_the_version(monkeypatch):
+    monkeypatch.delenv("GIT_SHA", raising=False)
+
+    importlib.reload(config)
+
+    assert config.RELEASE == config.VERSION
 
 
 def test_config_app_and_database(monkeypatch):

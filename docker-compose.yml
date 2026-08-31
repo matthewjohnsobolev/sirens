@@ -10,6 +10,11 @@ services:
       TZ: Europe/Kyiv
     volumes:
       - pgdata:/var/lib/postgresql/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-sirens}"]
       interval: 10s
@@ -25,6 +30,11 @@ services:
     command: redis-server --save 60 1 --loglevel warning
     volumes:
       - redisdata:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -49,8 +59,14 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sirens}
       - TZ=Europe/Kyiv
+      - GIT_SHA=${GIT_SHA:-}
     env_file:
       - .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     command: gunicorn --workers 3 --bind 0.0.0.0:5000 web.server:app
 
   alerts:
@@ -69,8 +85,14 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sirens}
       - TZ=Europe/Kyiv
+      - GIT_SHA=${GIT_SHA:-}
     env_file:
       - .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     stdin_open: true
     tty: true
     command: python run_alerts.py -m ${APP_ENV:-dev}
@@ -88,8 +110,14 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sirens}
       - TZ=Europe/Kyiv
+      - GIT_SHA=${GIT_SHA:-}
     env_file:
       - .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     stdin_open: true
     tty: true
     command: python run_bi.py -m ${APP_ENV:-dev}

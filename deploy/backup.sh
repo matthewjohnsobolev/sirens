@@ -43,7 +43,6 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
-# Never let a slow upload overlap with the next cron tick.
 if command -v flock >/dev/null 2>&1; then
     exec 9>"$LOCK_FILE"
     flock -n 9 || die "another backup is still running"
@@ -68,8 +67,6 @@ docker compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" db \
 
 step "Verifying archive"
 gzip -t "$TMP" || die "archive is corrupt"
-# A dump that produced no schema means pg_dump silently wrote nothing useful.
-# grep -c (not -q) so it drains the stream instead of killing gunzip with SIGPIPE.
 TABLES="$(gunzip -c "$TMP" | grep -c '^CREATE TABLE' || true)"
 [[ "$TABLES" -gt 0 ]] || die "dump contains no tables - refusing to upload"
 

@@ -3,7 +3,6 @@ const IMMUTABLE_PREFIX = '_app/immutable/';
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 const MUTABLE_CACHE = 'public, max-age=300, must-revalidate';
 
-// Explicit MIME types required by duckdb-wasm and static assets
 const CONTENT_TYPES = {
     css: 'text/css; charset=utf-8',
     csv: 'text/csv; charset=utf-8',
@@ -68,8 +67,6 @@ function buildHeaders(object, key) {
 
 async function serve(bucket, key, request) {
     const object = await bucket.get(key, {
-        // Range so duckdb-wasm can read parquet in pieces instead of pulling
-        // whole files; onlyIf so a repeat visitor gets a 304 rather than 40 MB.
         range: request.headers,
         onlyIf: request.headers,
     });
@@ -80,13 +77,7 @@ async function serve(bucket, key, request) {
 
     const headers = buildHeaders(object, key);
 
-    // A failed precondition comes back as a plain R2Object: the docs say `body`
-    // is undefined, the canonical example tests `"body" in object`. Cover both,
-    // or an unlucky shape slips through and we answer 200 with an empty body.
     if (!('body' in object) || object.body == null) {
-        // R2 reports every failed precondition identically, so only the request
-        // says which answer is right: a browser revalidating with If-None-Match
-        // wants 304, while a failed If-Match is 412.
         const revalidating =
             request.headers.has('if-none-match') || request.headers.has('if-modified-since');
         return new Response(null, { status: revalidating ? 304 : 412, headers });

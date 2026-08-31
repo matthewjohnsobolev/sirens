@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# cron hands a job a nearly empty environment - commonly just PATH=/usr/bin:/bin.
-# /snap/bin is not in it, and docker on this host is a snap, so a job that
-# inherits cron's PATH cannot find it at all. Silently, at 6am.
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:${PATH:-}"
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -33,16 +30,12 @@ set -a
 source ./.env
 set +a
 
-# Resolved after .env so the snapshot follows the same environment the workers
-# run in instead of hardcoding prod.
 MODE="${MODE:-${APP_ENV:-prod}}"
 
 [[ -f "$SESSION_FILE" ]] || die "no snapshot session - run ./deploy/setup.sh bi first"
 
 mkdir -p logs
 
-# The snapshot talks to Telegram over a session that tolerates exactly one user.
-# Two overlapping runs would fight over it.
 if command -v flock >/dev/null 2>&1; then
     exec 9>"$LOCK_FILE"
     flock -n 9 || die "another snapshot is still running"
@@ -53,7 +46,6 @@ fi
 ping_healthcheck /start
 
 step "Counting subscribers ($MODE)"
-# -T is required: without a TTY attached, `run` refuses to start under cron.
 docker compose run --rm -T bi python run_bi.py -m "$MODE" \
     || die "snapshot failed (see the output above; is the db container running?)"
 

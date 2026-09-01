@@ -125,10 +125,10 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         headline = "Сповіщення не надходять";
         subtitle = `Не працюють ${outageTimeStr}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
     } else if (normScenario === "map_api_down") {
-        headline = "Сповіщення працюють, мапа й API — ні";
+        headline = "Сповіщення надходять, мапа й API — ні";
         subtitle = `Мапа та API недоступні ${outageTimeStr}. Сповіщення в Telegram надходять як зазвичай.`;
     } else if (normScenario === "map_down") {
-        headline = "Сповіщення працюють, мапа — ні";
+        headline = "Сповіщення надходять, мапа — ні";
         subtitle = `Мапа недоступна ${outageTimeStr}. Сповіщення в Telegram надходять як зазвичай.`;
     } else if (normScenario === "mnt") {
         headline = "Планові роботи";

@@ -23,6 +23,27 @@ def test_index_route(client):
     assert response.headers.get("Cache-Control") == "no-cache, must-revalidate"
 
 
+def test_index_meta_tags(client):
+    html = client.get("/").get_data(as_text=True)
+    assert 'property="og:url" content="https://sirens.live"' in html
+    assert 'property="og:image" content="https://sirens.live/static/img/og-banner.png"' in html
+    assert 'property="twitter:domain" content="sirens.live"' in html
+    assert 'property="twitter:url" content="https://sirens.live"' in html
+    assert 'name="twitter:image" content="https://sirens.live/static/img/og-banner.png"' in html
+    assert "ngrok" not in html
+    assert "sirens.add" not in html
+
+
+def test_issue_meta_tags(client):
+    html = client.get("/issue").get_data(as_text=True)
+    assert 'property="og:url" content="https://sirens.live/issue"' in html
+    assert 'property="og:image" content="https://sirens.live/static/img/og-banner.png"' in html
+    assert 'property="twitter:url" content="https://sirens.live/issue"' in html
+    assert 'name="twitter:image" content="https://sirens.live/static/img/og-banner.png"' in html
+    assert "ngrok" not in html
+    assert "sirens.add" not in html
+
+
 def test_api_route(client):
     payload = {"kyiv": {"alert": {"status": True}}}
     with patch("web.server.get_all_threats_data", return_value=payload) as mock_data:

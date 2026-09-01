@@ -56,7 +56,7 @@ export function renderHtml(data: any): string {
         ${comp.desc ? `<p class="comp-desc">${comp.desc}</p>` : ''}
         <div class="bars" role="group" aria-label="${comp.name}: ${summaryText}">
           ${hoursList.map((hour: any) => {
-            const title = hour.title || getTitle(hour.date, hour.state);
+            const title = hour.title || getTitle(hour.date, hour.state, comp.key);
             const timeAttr = hour.timeText ? ` data-time="${hour.timeText}"` : '';
             const statusAttr = hour.statusText ? ` data-status-text="${hour.statusText}"` : '';
             return `<div class="bar" role="button" tabindex="0" data-state="${hour.state}"${timeAttr}${statusAttr} data-title="${title}" aria-label="${title}"></div>`;

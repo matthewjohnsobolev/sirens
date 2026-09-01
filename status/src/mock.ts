@@ -14,7 +14,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
             const hours = Array.from({ length: WINDOW_HOURS }, (_, i) => {
                 const d = new Date(firstHourStart.getTime() + i * 3600 * 1000);
                 const iso = d.toISOString();
-                const parts = formatHourParts(iso, "nodata");
+                const parts = formatHourParts(iso, "nodata", specKey);
                 return {
                     date: iso,
                     state: "nodata",
@@ -31,7 +31,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
                 const d = new Date(firstHourStart.getTime() + i * 3600 * 1000);
                 const iso = d.toISOString();
                 const state = i >= 22 ? "mnt" : "ok";
-                const parts = formatHourParts(iso, state);
+                const parts = formatHourParts(iso, state, specKey);
                 return {
                     date: iso,
                     state,
@@ -74,7 +74,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
                 }
             }
 
-            const parts = formatHourParts(iso, state);
+            const parts = formatHourParts(iso, state, specKey);
             hours.push({
                 date: iso,
                 state,

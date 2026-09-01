@@ -402,6 +402,7 @@ function select(i){
   restoreTabState(tab);
   document.body.classList.toggle('tab-other', isOther());
   comboClose();
+  if (hintCity) hintCity.hidden = true;
 
   bIssue.classList.remove('invalid');
   if (bTime) bTime.classList.remove('invalid', 'picker-invalid');
@@ -485,6 +486,7 @@ function attachScrollbar(view){
 
 const combo      = document.getElementById('combo-city');
 const cityList   = document.getElementById('city-list');
+const hintCity   = document.getElementById('hint-city');
 const cityScroll = attachScrollbar(cityList);
 let comboItems  = [];
 let comboIndex  = -1;
@@ -508,16 +510,8 @@ function comboMatch(q){
 function comboRender(q){
   comboItems = comboMatch(q);
   comboIndex = -1;
-  if(!comboItems.length){
-    if(tab === 'alerts' && q){
-      cityList.innerHTML = '<li class="combo-empty" role="presentation">Не знайшли такого міста — можна ввести свою назву</li>';
-      comboOpen();
-      if(cityScroll) cityScroll.update();
-    } else {
-      comboClose();
-    }
-    return;
-  }
+  if(hintCity) hintCity.hidden = !(tab === 'alerts' && q && !comboItems.length);
+  if(!comboItems.length){ comboClose(); return; }
 
   const n = norm(q);
   cityList.innerHTML = comboItems.map((c, i) => {
@@ -598,6 +592,7 @@ city.addEventListener('keydown', e => {
     }
   } else if(e.key === 'Escape' || e.key === 'Tab'){
     comboClose();
+    if(hintCity) hintCity.hidden = true;
   }
 });
 
@@ -615,7 +610,10 @@ cityList.addEventListener('mousemove', e => {
 });
 
 document.addEventListener('pointerdown', e => {
-  if(!combo.contains(e.target)) comboClose();
+  if(!combo.contains(e.target)){
+    comboClose();
+    if(hintCity) hintCity.hidden = true;
+  }
 });
 
 const COMMENT_MAX = 1000;

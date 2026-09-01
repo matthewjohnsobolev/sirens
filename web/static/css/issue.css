@@ -287,12 +287,6 @@ body.tab-other .textarea{
 .combo-option:hover,
 .combo-option[aria-selected="true"]{background:var(--page)}
 .combo-option b{font-weight:600}
-.combo-empty{
-  display:flex;align-items:center;min-height:40px;
-  padding:0 12px;
-  font-size:var(--text-body);color:var(--ink-muted);
-  cursor:default;
-}
 
 .scroller{position:relative}
 .scroller.is-live .scroller-view{scrollbar-width:none}

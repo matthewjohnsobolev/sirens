@@ -24,7 +24,7 @@
   --surface: #fff;
   --surface-hover: #F4F4F4;
   --page: #F4F4F4;
-  --tip-surface: #16181A;
+  --ink-solid: #16181A;
   --tip-ink: #fff;
 
   --control-h: 48px;
@@ -312,7 +312,7 @@ body {
 .bar:focus-visible {
   transform: translateY(calc(-1 * var(--bar-lift)));
   z-index: 5;
-  box-shadow: inset 0 0 0 1px var(--hairline-dark);
+  box-shadow: inset 0 0 0 1px var(--ink-solid);
   border-radius: 2px;
   outline: none;
 }
@@ -399,7 +399,7 @@ body {
   gap: 8px;
   padding: 6px 12px;
   border-radius: 6px;
-  background: var(--tip-surface);
+  background: var(--ink-solid);
   color: var(--tip-ink);
   font-family: var(--font-mono);
   font-size: var(--text-footer);
@@ -440,7 +440,7 @@ body {
   bottom: 0;
   width: var(--tip-arrow-box);
   height: var(--tip-arrow-box);
-  background: var(--tip-surface);
+  background: var(--ink-solid);
   transform: translate(-50%, 50%) rotate(45deg);
   pointer-events: none;
 }

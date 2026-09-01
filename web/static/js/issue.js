@@ -508,7 +508,16 @@ function comboMatch(q){
 function comboRender(q){
   comboItems = comboMatch(q);
   comboIndex = -1;
-  if(!comboItems.length){ comboClose(); return; }
+  if(!comboItems.length){
+    if(tab === 'alerts' && q){
+      cityList.innerHTML = '<li class="combo-empty" role="presentation">Не знайшли такого міста — можна ввести свою назву</li>';
+      comboOpen();
+      if(cityScroll) cityScroll.update();
+    } else {
+      comboClose();
+    }
+    return;
+  }
 
   const n = norm(q);
   cityList.innerHTML = comboItems.map((c, i) => {
@@ -818,7 +827,7 @@ const NOTICE_MS = 20000;
 let noticeTimer;
 
 const MSG = {
-  ok:      'Повідомлення надіслано — перевіримо найближчим часом.',
+  ok:      'Дякуємо, повідомлення отримали. Розберемось.',
   failed:  'Щось пішло не так — повідомлення не надіслалось. Спробуйте, будь ласка, пізніше.',
   tooMany: 'Забагато повідомлень поспіль. Спробуйте, будь ласка, за годину — попередні вже в роботі.',
   offline: 'Немає зʼєднання. Перевірте інтернет і спробуйте ще раз.'

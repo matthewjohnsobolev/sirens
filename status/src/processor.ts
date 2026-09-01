@@ -1,5 +1,5 @@
 import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry, healthchecksSlug, uptimeRobotKey } from "./api";
-import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts, formatLocationLocative } from "./helpers";
+import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts, formatLocationLocative, relativeDayLabel } from "./helpers";
 
 const WINDOW_HOURS = 24;
 const THRESHOLD_MAJOR = 900;
@@ -279,11 +279,12 @@ export async function computeStatusData(env: Env) {
         const dt = new Date(dtStr);
         if (isNaN(dt.getTime())) return "";
         const p = getKyivParts(dt);
-        
-        const isToday = p.year === nowKyiv.year && p.month === nowKyiv.month && p.day === nowKyiv.day;
+
+        const dayLabel = relativeDayLabel(p, nowKyiv);
         const hh = p.hour.toString().padStart(2, '0');
         const mm = p.minute.toString().padStart(2, '0');
-        if (isToday) return ` з ${hh}:${mm}`;
+        if (dayLabel === "сьогодні") return ` з ${hh}:${mm}`;
+        if (dayLabel === "вчора") return ` з вчора, ${hh}:${mm}`;
         return ` з ${p.day} ${UK_MONTHS[p.month]}, ${hh}:${mm}`;
     };
 
@@ -335,8 +336,7 @@ export async function computeStatusData(env: Env) {
     } else {
         if (lastAlertDt && !isNaN(lastAlertDt.getTime())) {
             const p = getKyivParts(lastAlertDt);
-            const isToday = p.year === nowKyiv.year && p.month === nowKyiv.month && p.day === nowKyiv.day;
-            const dateStr = isToday ? "сьогодні" : `${p.day} ${UK_MONTHS[p.month]}`;
+            const dateStr = relativeDayLabel(p, nowKyiv) ?? `${p.day} ${UK_MONTHS[p.month]}`;
             const hh = p.hour.toString().padStart(2, '0');
             const mm = p.minute.toString().padStart(2, '0');
             const locPhrase = formatLocationLocative(

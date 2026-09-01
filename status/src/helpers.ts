@@ -4,7 +4,7 @@ export const UK_MONTHS = [
 ];
 
 // [однина, множина] — форма підбирається під назву компонента:
-// «Сповіщення в Telegram» і «Джерела тривог» — множина, решта — однина.
+// «Сповіщення в Telegram» — множина, решта — однина.
 export const STATUS_WORDS: Record<string, [string, string]> = {
     "ok": ["працює", "працюють"],
     "minor": ["часткові збої", "часткові збої"],
@@ -14,7 +14,7 @@ export const STATUS_WORDS: Record<string, [string, string]> = {
     "nodata": ["немає даних", "немає даних"],
 };
 
-const PLURAL_COMPONENTS = new Set(["broadcast", "source"]);
+const PLURAL_COMPONENTS = new Set(["broadcast"]);
 
 export function statusWord(state: string, componentKey?: string): string {
     const forms = STATUS_WORDS[state];
@@ -117,6 +117,22 @@ export function getKyivParts(date: Date) {
         minute: parseInt(map.minute, 10),
         second: parseInt(map.second, 10)
     };
+}
+
+function kyivDayIndex(p: { year: number; month: number; day: number }): number {
+    return Date.UTC(p.year, p.month - 1, p.day) / 86400000;
+}
+
+// Порівнює дві дати за календарним днем у Києві (а не за різницею в годинах),
+// щоб подія з 23:59 і "зараз" о 00:05 наступної доби коректно ставали "вчора", а не "сьогодні".
+export function relativeDayLabel(
+    p: { year: number; month: number; day: number },
+    nowP: { year: number; month: number; day: number }
+): "сьогодні" | "вчора" | null {
+    const diff = kyivDayIndex(nowP) - kyivDayIndex(p);
+    if (diff === 0) return "сьогодні";
+    if (diff === 1) return "вчора";
+    return null;
 }
 
 export function pluralHours(count: number): string {

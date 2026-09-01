@@ -227,7 +227,7 @@ body {
 
 .comp-val {
   font-family: var(--font-mono);
-  font-size: var(--text-footer);
+  font-size: var(--text-ui);
   font-weight: 500;
   color: var(--ink-muted);
   letter-spacing: .04em;

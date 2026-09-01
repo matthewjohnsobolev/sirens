@@ -180,11 +180,11 @@
     let left = Math.round(barCenterX - tipWidth / 2);
     left = Math.max(margin, Math.min(left, window.innerWidth - tipWidth - margin));
 
-    // --arrow-x відлічується від padding-box, як і самі псевдоелементи;
-    // вказівник не заходить на заокруглені кути.
-    const borderLeft = tip.clientLeft || 1;
+    // --arrow-x відлічується від padding-box, як і сам вказівник;
+    // він не заходить на заокруглені кути.
+    const borderLeft = tip.clientLeft;
     const tipInnerWidth = tipWidth - borderLeft * 2;
-    const arrowEdge = metrics.arrow + 1 + metrics.radius;
+    const arrowEdge = metrics.arrow + metrics.radius;
     const rawArrowX = barCenterX - left - borderLeft;
     const arrowX = Math.max(arrowEdge, Math.min(tipInnerWidth - arrowEdge, rawArrowX));
     tip.style.setProperty('--arrow-x', arrowX.toFixed(2) + 'px');

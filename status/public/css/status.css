@@ -47,11 +47,12 @@
      до його вістря. Єдині значення для всіх екранів: у медіа-запитах не
      перевизначаються, тож відступ однаковий на мобільних і на десктопі. */
   --bar-lift: 3px;
+  --tip-border: 1px;
   --tip-arrow: 6px;
   --tip-gap: 5px;
-  /* сторона поверненого на 45° квадрата, у якого половина діагоналі
-     дорівнює --tip-arrow + 1px рамки */
-  --tip-arrow-box: calc((var(--tip-arrow) + 1px) * 1.41421);
+  /* сторона поверненого на 45° квадрата: половина його діагоналі дорівнює
+     --tip-arrow, тобто виступу вказівника за зовнішній край рамки */
+  --tip-arrow-box: calc(var(--tip-arrow) * 1.41421);
 }
 
 * {
@@ -396,7 +397,7 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border: 1px solid var(--hairline-dark);
+  border: var(--tip-border) solid var(--hairline-dark);
   border-radius: 6px;
   background: var(--surface);
   color: var(--ink);
@@ -424,30 +425,33 @@ body {
   transform: translateY(0);
 }
 
-/* Вказівник — квадрат, повернутий на 45°: дві його зовнішні сторони дають
-   контур, а верхня половина заходить усередину тултипа на висоту вказівника
-   і перекриває лінію рамки із запасом. Стик «край у край» не годився: рамка
+/* Вказівник — квадрат, повернутий на 45°: дві його зовнішні сторони
+   продовжують рамку, а верхня половина заходить усередину тултипа й
+   перекриває лінію рамки із запасом (стик «край у край» не годився — рамка
    й заливка потрапляли в сусідні пікселі пристрою, і при зумі між ними
-   проступала лінія. z-index: -1 лишає квадрат над рамкою, але під текстом. */
+   проступала лінія). Центр квадрата лежить на зовнішньому краї рамки, тож
+   контури тултипа й вказівника утворюють один суцільний обвід.
+   z-index: -1 лишає квадрат над рамкою, але під текстом. */
 .tip::after {
   content: "";
   position: absolute;
   z-index: -1;
+  box-sizing: border-box;
   left: var(--arrow-x, 50%);
-  bottom: 0;
+  bottom: calc(-1 * var(--tip-border));
   width: var(--tip-arrow-box);
   height: var(--tip-arrow-box);
   background: var(--surface);
   border: 0 solid var(--hairline-dark);
-  border-width: 0 1px 1px 0;
+  border-width: 0 var(--tip-border) var(--tip-border) 0;
   transform: translate(-50%, 50%) rotate(45deg);
   pointer-events: none;
 }
 
 .tip--below::after {
-  top: 0;
+  top: calc(-1 * var(--tip-border));
   bottom: auto;
-  border-width: 1px 0 0 1px;
+  border-width: var(--tip-border) 0 0 var(--tip-border);
   transform: translate(-50%, -50%) rotate(45deg);
 }
 

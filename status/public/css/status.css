@@ -49,6 +49,9 @@
   --bar-lift: 3px;
   --tip-arrow: 6px;
   --tip-gap: 5px;
+  /* сторона поверненого на 45° квадрата, у якого половина діагоналі
+     дорівнює --tip-arrow + 1px рамки */
+  --tip-arrow-box: calc((var(--tip-arrow) + 1px) * 1.41421);
 }
 
 * {
@@ -190,9 +193,11 @@ body {
   color: var(--ink-muted);
 }
 
+/* Висота цифр JetBrains Mono (0.665em) збігається з висотою великих літер
+   Inter (0.6625em), тож однаковий кегль дає однакову висоту на око. */
 .notice-desc .mono-time {
   font-family: var(--font-mono);
-  font-size: .9em;
+  font-size: 1em;
   font-weight: 500;
   letter-spacing: .01em;
   color: inherit;
@@ -419,48 +424,31 @@ body {
   transform: translateY(0);
 }
 
-/* Вказівник: ::before малює контур у колір рамки, ::after кладе поверх нього
-   трикутник кольору фону — він же перекриває лінію рамки в місці стику. */
-.tip::before,
+/* Вказівник — квадрат, повернутий на 45°: дві його зовнішні сторони дають
+   контур, а верхня половина заходить усередину тултипа на висоту вказівника
+   і перекриває лінію рамки із запасом. Стик «край у край» не годився: рамка
+   й заливка потрапляли в сусідні пікселі пристрою, і при зумі між ними
+   проступала лінія. z-index: -1 лишає квадрат над рамкою, але під текстом. */
 .tip::after {
   content: "";
   position: absolute;
+  z-index: -1;
   left: var(--arrow-x, 50%);
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-color: transparent;
+  bottom: 0;
+  width: var(--tip-arrow-box);
+  height: var(--tip-arrow-box);
+  background: var(--surface);
+  border: 0 solid var(--hairline-dark);
+  border-width: 0 1px 1px 0;
+  transform: translate(-50%, 50%) rotate(45deg);
   pointer-events: none;
 }
 
-.tip::before {
-  bottom: calc(-1 * (var(--tip-arrow) + 1px));
-  margin-left: calc(-1 * (var(--tip-arrow) + 1px));
-  border-width: calc(var(--tip-arrow) + 1px) calc(var(--tip-arrow) + 1px) 0;
-  border-top-color: var(--hairline-dark);
-}
-
-.tip::after {
-  bottom: calc(-1 * var(--tip-arrow));
-  margin-left: calc(-1 * var(--tip-arrow));
-  border-width: var(--tip-arrow) var(--tip-arrow) 0;
-  border-top-color: var(--surface);
-}
-
-.tip--below::before {
-  top: calc(-1 * (var(--tip-arrow) + 1px));
-  bottom: auto;
-  border-width: 0 calc(var(--tip-arrow) + 1px) calc(var(--tip-arrow) + 1px);
-  border-top-color: transparent;
-  border-bottom-color: var(--hairline-dark);
-}
-
 .tip--below::after {
-  top: calc(-1 * var(--tip-arrow));
+  top: 0;
   bottom: auto;
-  border-width: 0 var(--tip-arrow) var(--tip-arrow);
-  border-top-color: transparent;
-  border-bottom-color: var(--surface);
+  border-width: 1px 0 0 1px;
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 
 .tip-state {

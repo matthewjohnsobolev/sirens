@@ -24,6 +24,8 @@
   --surface: #fff;
   --surface-hover: #F4F4F4;
   --page: #F4F4F4;
+  --tip-surface: #16181A;
+  --tip-ink: #fff;
 
   --control-h: 48px;
   --radius-control: 12px;
@@ -397,8 +399,8 @@ body {
   gap: 8px;
   padding: 6px 12px;
   border-radius: 6px;
-  background: var(--surface);
-  color: var(--ink);
+  background: var(--tip-surface);
+  color: var(--tip-ink);
   font-family: var(--font-mono);
   font-size: var(--text-footer);
   font-weight: 500;
@@ -407,12 +409,8 @@ body {
   text-transform: uppercase;
   white-space: nowrap;
   pointer-events: none;
-  /* Замість рамки — кромка тінню: filter обводить силует усієї фігури разом
-     із вказівником, тому лінії стику всередині не буває в принципі. */
-  filter: drop-shadow(0 0 .5px rgba(0, 0, 0, .26))
-          drop-shadow(0 0 .5px rgba(0, 0, 0, .16))
-          drop-shadow(0 2px 5px rgba(0, 0, 0, .10))
-          drop-shadow(0 6px 14px rgba(0, 0, 0, .10));
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .20))
+          drop-shadow(0 8px 18px rgba(0, 0, 0, .14));
   opacity: 0;
   transform: translateY(3px);
   transition: opacity var(--motion-fade),
@@ -428,8 +426,8 @@ body {
   transform: translateY(0);
 }
 
-/* Вказівник — квадрат кольору фону, повернутий на 45°: його центр лежить на
-   краю тултипа, тож верхня половина ховається всередині й зливається з
+/* Вказівник — квадрат кольору тултипа, повернутий на 45°: його центр лежить
+   на краю тултипа, тож верхня половина ховається всередині й зливається з
    заливкою, а нижня виступає гострим кутом. Обидві фігури одного кольору й
    перекриваються на 6px, тому жодне округлення до пікселів пристрою не може
    лишити між ними шва. z-index: -1 тримає квадрат під текстом. */
@@ -442,7 +440,7 @@ body {
   bottom: 0;
   width: var(--tip-arrow-box);
   height: var(--tip-arrow-box);
-  background: var(--surface);
+  background: var(--tip-surface);
   transform: translate(-50%, 50%) rotate(45deg);
   pointer-events: none;
 }

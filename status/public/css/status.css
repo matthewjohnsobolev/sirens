@@ -1,4 +1,7 @@
+/* ── Токени ─────────────────────────────────────────────────────────── */
+
 :root {
+  /* Заливка плашки стану */
   --status-green: #B9FFA8;
   --status-green-hover: #C8FFBB;
   --status-orange: #FFCA9A;
@@ -10,6 +13,7 @@
   --status-gray: #E8E8E8;
   --status-gray-hover: #EEEEEE;
 
+  /* Смужки історії й крапка в тултипі */
   --status-green-bar: #2EAD1A;
   --status-orange-bar: #FF831A;
   --status-red-bar: #FF1A1A;
@@ -27,20 +31,50 @@
   --ink-solid: #16181A;
   --tip-ink: #fff;
 
+  /* Розміри */
   --control-h: 48px;
+  --logo-size: 60px;
   --radius-control: 12px;
   --radius-card: 14px;
+  --radius-bar: 2px;
 
-  --gap-tight: 8px;
-  --gap-block: 24px;
-  --gap-section: 32px;
+  /* Шкала відступів із кроком 4px. Усі відступи беруться звідси:
+     значення поза шкалою — привід перевірити, чи воно справді потрібне. */
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-32: 32px;
 
+  /* Ролі відступів у ритмі сторінки */
+  --gap-tight: var(--space-8);    /* усередині блока */
+  --gap-block: var(--space-24);   /* між блоками картки */
+  --gap-section: var(--space-32); /* між секціями сторінки */
+
+  /* Типографіка */
   --font: 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --text-title: 20px;
   --text-body: 16px;
   --text-ui: 14px;
   --text-footer: 11px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --leading-tight: 1.35; /* однорядкові підписи */
+  --leading-body: 1.45;  /* абзаци кеглем --text-ui */
+  --leading-small: 1.55; /* абзаци кеглем --text-footer */
+  --track-tight: -.01em; /* заголовки Inter */
+  --track-mono: .04em;   /* капітель JetBrains Mono */
+
+  /* Фокус з клавіатури — однаковий на всіх інтерактивних елементах */
+  --focus-ring: 2px solid var(--ink);
+  --focus-offset: 2px;
 
   --motion: 0.15s ease;
   --motion-fade: .14s ease-out;
@@ -56,7 +90,11 @@
   --tip-arrow-box: calc(var(--tip-arrow) * 1.41421);
 }
 
-* {
+/* ── Основа ─────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
@@ -73,8 +111,8 @@ body {
   -webkit-font-smoothing: antialiased;
   padding-top: max(clamp(24px, 6vw, 56px), env(safe-area-inset-top));
   padding-bottom: max(clamp(24px, 6vw, 56px), env(safe-area-inset-bottom));
-  padding-left: max(20px, env(safe-area-inset-left));
-  padding-right: max(20px, env(safe-area-inset-right));
+  padding-left: max(var(--space-20), env(safe-area-inset-left));
+  padding-right: max(var(--space-20), env(safe-area-inset-right));
   min-height: 100vh;
 }
 
@@ -83,25 +121,29 @@ body {
   margin: 0 auto;
 }
 
+/* ── Логотип ────────────────────────────────────────────────────────── */
+
 .logo {
   display: block;
-  width: 60px;
-  height: 60px;
-  margin: 0 auto 24px;
+  width: var(--logo-size);
+  height: var(--logo-size);
+  margin: 0 auto var(--gap-block);
   text-decoration: none;
 }
 
 .logo:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 3px;
-  border-radius: 14px;
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--radius-card);
 }
 
 .logo img {
-  width: 60px;
-  height: 60px;
+  width: var(--logo-size);
+  height: var(--logo-size);
   display: block;
 }
+
+/* ── Картка ─────────────────────────────────────────────────────────── */
 
 .card {
   background: var(--surface);
@@ -114,16 +156,18 @@ body {
   margin: 0 0 var(--gap-block);
   text-align: center;
   font-size: var(--text-title);
-  font-weight: 700;
-  letter-spacing: -.01em;
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--track-tight);
   color: var(--ink);
 }
+
+/* ── Плашка стану ───────────────────────────────────────────────────── */
 
 .notice {
   margin: 0 0 var(--gap-block);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--gap-tight);
 }
 
 .notice-pill {
@@ -131,13 +175,11 @@ body {
   height: var(--control-h);
   display: flex;
   align-items: center;
-  padding: 0 16px 0 0;
+  padding: 0 var(--space-16) 0 0;
   border-radius: var(--radius-control);
-  border: none;
   background-color: var(--status-green);
   color: var(--ink);
   transition: background-color var(--motion);
-  box-sizing: border-box;
 }
 
 .notice--ok .notice-pill      { background-color: var(--status-green); }
@@ -155,6 +197,8 @@ body {
 .notice--nodata .notice-pill  { background-color: var(--status-gray); }
 .notice--nodata .notice-pill:hover  { background-color: var(--status-gray-hover); }
 
+/* Квадрат на всю висоту плашки: іконка центрована в ньому, тож ліворуч
+   від неї лишається (--control-h - 24px) / 2 = 12px. */
 .notice-icon {
   flex: none;
   width: var(--control-h);
@@ -162,7 +206,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0;
 }
 
 .notice-icon img {
@@ -177,9 +220,9 @@ body {
   text-align: left;
   font-family: var(--font);
   font-size: var(--text-ui);
-  font-weight: 500;
-  line-height: 1.35;
-  letter-spacing: -.01em;
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--track-tight);
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
@@ -188,10 +231,9 @@ body {
 
 .notice-desc {
   margin: 0;
-  padding: 0 2px;
   font-size: var(--text-ui);
-  font-weight: 400;
-  line-height: 1.5;
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-body);
   color: var(--ink-muted);
 }
 
@@ -200,17 +242,19 @@ body {
 .notice-desc .mono-time {
   font-family: var(--font-mono);
   font-size: 1em;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: .01em;
   color: inherit;
 }
+
+/* ── Список компонентів ─────────────────────────────────────────────── */
 
 .list {
   border-top: 1px solid var(--hairline);
 }
 
 .comp {
-  padding: 20px 0;
+  padding: var(--space-20) 0;
   border-bottom: 1px solid var(--hairline);
 }
 
@@ -218,13 +262,13 @@ body {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-12);
   margin-bottom: var(--gap-tight);
 }
 
 .comp-name {
   font-size: var(--text-ui);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--ink);
   margin: 0;
   min-width: 0;
@@ -234,9 +278,9 @@ body {
 .comp-desc {
   margin: 0 0 var(--gap-tight);
   font-size: var(--text-ui);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   color: var(--ink-muted);
-  line-height: 1.45;
+  line-height: var(--leading-body);
 }
 
 /* Розмір і вага збігаються з .comp-name: у Inter та JetBrains Mono
@@ -245,19 +289,19 @@ body {
 .comp-val {
   font-family: var(--font-mono);
   font-size: var(--text-ui);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--ink);
-  letter-spacing: .04em;
+  letter-spacing: var(--track-mono);
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
+/* Не показник, а примітка: та сама сітка, але звичайний текст. */
 .comp[data-monitored="false"] .comp-val {
   font-family: var(--font);
-  font-size: var(--text-ui);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   color: var(--ink-muted);
   letter-spacing: normal;
   text-transform: none;
@@ -271,10 +315,12 @@ body {
   display: none;
 }
 
+/* ── Смужки історії ─────────────────────────────────────────────────── */
+
 .bars {
   display: grid;
   grid-template-columns: repeat(24, minmax(0, 1fr));
-  gap: 2px;
+  gap: var(--space-2);
   height: 34px;
   align-items: stretch;
   position: relative;
@@ -286,18 +332,13 @@ body {
 .bar {
   width: 100%;
   height: 100%;
-  border-radius: 2px;
+  border-radius: var(--radius-bar);
   background: var(--status-green-bar);
   cursor: pointer;
   position: relative;
   transition: transform var(--motion),
               box-shadow var(--motion);
   transform-origin: center bottom;
-  box-sizing: border-box;
-  outline: none;
-}
-
-.bar:focus {
   outline: none;
 }
 
@@ -308,13 +349,15 @@ body {
 .bar[data-state="mnt"]    { background: var(--status-blue-bar); }
 .bar[data-state="nodata"] { background: var(--status-gray-bar); }
 
+/* Смужка вузька, тож замість outline контур малює внутрішня тінь —
+   вона не з'їдає проміжок між сусідніми смужками. Заокруглення
+   лишається успадкованим, щоб активна смужка не відрізнялася
+   від сусідніх на дотикових екранах. */
 .bar.is-active,
 .bar:focus-visible {
   transform: translateY(calc(-1 * var(--bar-lift)));
   z-index: 5;
   box-shadow: inset 0 0 0 1px var(--ink-solid);
-  border-radius: 2px;
-  outline: none;
 }
 
 .bars.has-active .bar:not(.is-active) {
@@ -328,11 +371,13 @@ body {
   margin-top: var(--gap-tight);
   font-family: var(--font-mono);
   font-size: var(--text-footer);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--ink-muted);
-  letter-spacing: .04em;
+  letter-spacing: var(--track-mono);
   text-transform: uppercase;
 }
+
+/* ── Заклик повідомити про збій ─────────────────────────────────────── */
 
 .card-action {
   margin-top: var(--gap-block);
@@ -346,9 +391,9 @@ body {
 .card-action-text {
   margin: 0;
   font-size: var(--text-ui);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   color: var(--ink-muted);
-  line-height: 1.45;
+  line-height: var(--leading-body);
 }
 
 .btn-report {
@@ -359,20 +404,19 @@ body {
   justify-content: center;
   width: auto;
   min-height: var(--control-h);
-  padding: 12px 24px;
+  padding: var(--space-12) var(--space-24);
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-control);
   font-family: var(--font);
   font-size: var(--text-ui);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   text-decoration: none;
   cursor: pointer;
   transition: border-color var(--motion),
               background-color var(--motion),
               transform var(--motion);
-  box-sizing: border-box;
 }
 
 .btn-report:hover {
@@ -387,24 +431,26 @@ body {
 }
 
 .btn-report:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
+
+/* ── Тултип смужки ──────────────────────────────────────────────────── */
 
 .tip {
   position: fixed;
   z-index: 9999;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-12);
   border-radius: 6px;
   background: var(--ink-solid);
   color: var(--tip-ink);
   font-family: var(--font-mono);
   font-size: var(--text-footer);
-  font-weight: 500;
-  letter-spacing: .04em;
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--track-mono);
   line-height: 1;
   text-transform: uppercase;
   white-space: nowrap;
@@ -435,7 +481,6 @@ body {
   content: "";
   position: absolute;
   z-index: -1;
-  box-sizing: border-box;
   left: var(--arrow-x, 50%);
   bottom: 0;
   width: var(--tip-arrow-box);
@@ -454,7 +499,7 @@ body {
 .tip-state {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .tip-dot {
@@ -471,11 +516,13 @@ body {
 .tip-dot[data-state="mnt"]    { background: var(--status-blue-bar); }
 .tip-dot[data-state="nodata"] { background: var(--status-gray-bar); }
 
+/* ── Підвал ─────────────────────────────────────────────────────────── */
+
 .foot {
   margin-top: var(--gap-section);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-12);
 }
 
 .foot-main {
@@ -483,24 +530,24 @@ body {
   align-items: baseline;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: var(--space-8) var(--space-16);
 }
 
 .foot-copy {
   font-family: var(--font-mono);
   font-size: var(--text-footer);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--ink-muted);
-  letter-spacing: .04em;
+  letter-spacing: var(--track-mono);
   text-transform: uppercase;
 }
 
 .foot-nav {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   font-size: var(--text-ui);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .foot-nav a {
@@ -508,7 +555,7 @@ body {
   text-decoration: underline;
   text-underline-offset: 3px;
   transition: color var(--motion);
-  padding: 2px 0;
+  padding: var(--space-2) 0;
   display: inline-flex;
   align-items: center;
 }
@@ -517,43 +564,49 @@ body {
   color: var(--ink);
 }
 
+.foot-nav a:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
 .foot-sep {
   color: var(--hairline-hover);
   user-select: none;
 }
 
 .foot-disclaimer {
-  padding-top: 12px;
+  padding-top: var(--space-12);
   border-top: 1px solid var(--hairline);
 }
 
 .foot-disclaimer p {
   margin: 0;
   font-size: var(--text-footer);
-  line-height: 1.55;
+  line-height: var(--leading-small);
   color: var(--ink-muted);
 }
+
+/* ── Адаптив ────────────────────────────────────────────────────────── */
 
 @media (max-width: 600px) {
   body {
     padding-top: max(clamp(20px, 5vw, 36px), env(safe-area-inset-top));
     padding-bottom: max(clamp(28px, 7vw, 48px), env(safe-area-inset-bottom));
-    padding-left: max(16px, env(safe-area-inset-left));
-    padding-right: max(16px, env(safe-area-inset-right));
+    padding-left: max(var(--space-16), env(safe-area-inset-left));
+    padding-right: max(var(--space-16), env(safe-area-inset-right));
   }
 
   .card {
-    padding: 24px 16px;
+    padding: var(--gap-block) var(--space-16);
   }
 
   .bars {
-    grid-template-columns: repeat(24, minmax(0, 1fr));
     height: 32px;
     gap: 1.5px;
   }
 
   .comp {
-    padding: 16px 0;
+    padding: var(--space-16) 0;
   }
 }
 
@@ -566,18 +619,16 @@ body {
     display: inline;
   }
 
-  .card-action,
   .btn-report {
     width: 100%;
   }
 
+  /* Підвал перебудовується в одну центровану колонку: .foot-main
+     розчиняється, а його діти стають рядками .foot і шикуються за order. */
   .foot {
     margin-top: clamp(28px, 7vw, 36px);
-    display: flex;
-    flex-direction: column;
     text-align: center;
     align-items: center;
-    gap: 12px;
   }
 
   .foot-main {
@@ -587,13 +638,7 @@ body {
   .foot-nav {
     order: 1;
     justify-content: center;
-    gap: 8px;
     width: 100%;
-  }
-
-  .foot-nav a {
-    padding: 2px 0;
-    text-underline-offset: 3px;
   }
 
   .foot-disclaimer {
@@ -602,11 +647,9 @@ body {
     width: 100%;
     max-width: 420px;
     margin: 0 auto;
-    padding-top: 12px;
   }
 
   .foot-disclaimer p {
-    line-height: 1.55;
     text-wrap: balance;
   }
 
@@ -614,20 +657,20 @@ body {
     order: 3;
     width: 100%;
     text-align: center;
-    padding-top: 2px;
+    padding-top: var(--space-2);
   }
 }
 
 @media (max-width: 420px) {
   .comp-head {
-    gap: 8px;
+    gap: var(--space-8);
   }
 }
 
 @media (max-width: 360px) {
   body {
-    padding-left: max(12px, env(safe-area-inset-left));
-    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(var(--space-12), env(safe-area-inset-left));
+    padding-right: max(var(--space-12), env(safe-area-inset-right));
   }
 
   .card {
@@ -641,17 +684,14 @@ body {
 }
 
 @media (pointer: coarse) {
+  /* Смужки тонші за проміжок між ними, тож заокруглення теж зменшуємо. */
+  :root {
+    --radius-bar: 1.5px;
+  }
+
   .bars {
-    padding: 4px 0;
-    margin: -4px 0;
-  }
-
-  .bar {
-    border-radius: 1.5px;
-  }
-
-  .btn-report {
-    min-height: 48px;
+    padding: var(--space-4) 0;
+    margin: calc(-1 * var(--space-4)) 0;
   }
 }
 

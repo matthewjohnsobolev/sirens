@@ -39,6 +39,7 @@ from alerts.main import (
     resolve_channel_username,
     send_alert,
     source_reference,
+    split_alert_sections,
     strip_ongoing_notice,
     update_channel_photo,
 )
@@ -1736,6 +1737,62 @@ def test_match_districts_does_not_match_inside_a_longer_name(name, expected_key)
 def test_match_districts_from_the_oblast_name():
     assert match_districts(oblast_message("Полтавська область")) == {
         key: "air_raid_alert" for key in DISTRICTS_BY_OBLAST["poltava_oblast"]
+    }
+
+
+STACKED_HEADERS_MESSAGE = (
+    "🚨 Повітряна тривога\n"
+    "Бучанський район (Київська обл.)\n"
+    "\n"
+    "🟢 Відбій тривоги\n"
+    "Охтирський район (Сумська обл.)\n"
+    "Кам'янський район (Дніпропетровська обл.)\n"
+    "Самарівський район (Дніпропетровська обл."
+)
+
+
+def test_split_alert_sections_splits_on_standalone_header_lines():
+    sections = split_alert_sections(STACKED_HEADERS_MESSAGE)
+
+    assert len(sections) == 2
+    assert "Повітряна тривога" in sections[0]
+    assert "Бучанський район" in sections[0]
+    assert "Відбій тривоги" not in sections[0]
+    assert "Відбій тривоги" in sections[1]
+    assert "Охтирський район" in sections[1]
+    assert "Кам'янський район" in sections[1]
+    assert "Самарівський район" in sections[1]
+
+
+def test_split_alert_sections_leaves_a_single_section_message_untouched():
+    message = "🔴 04:31 Повітряна тривога в м. Київ\nСлідкуйте за подальшими повідомленнями."
+    assert split_alert_sections(message) == [message]
+
+
+def test_match_districts_keeps_stacked_sections_apart():
+    """A post stacking a standalone alert header and a standalone cancellation
+    header must not let 'Повітряна тривога' (found first in the whole text)
+    leak its alert type onto the districts listed under 'Відбій тривоги'."""
+    assert match_districts(STACKED_HEADERS_MESSAGE) == {
+        "bucha": "air_raid_alert",
+        "okhtyrka": "air_raid_alert_cancelled",
+        "kamianske": "air_raid_alert_cancelled",
+        "samar": "air_raid_alert_cancelled",
+    }
+
+
+@pytest.mark.asyncio
+async def test_build_message_handler_dispatches_stacked_sections_separately():
+    dispatched = await _dispatch(
+        STACKED_HEADERS_MESSAGE,
+        {"bucha": 1111, "okhtyrka": 2222, "kamianske": 3333, "samar": 4444},
+    )
+
+    assert set(dispatched.broadcast) == {
+        (1111, "bucha", "air_raid_alert"),
+        (2222, "okhtyrka", "air_raid_alert_cancelled"),
+        (3333, "kamianske", "air_raid_alert_cancelled"),
+        (4444, "samar", "air_raid_alert_cancelled"),
     }
 
 

@@ -554,8 +554,51 @@ def _alert_type_for(district_key: str, message_text: str) -> str | None:
     return None
 
 
+_HEADER_TRIGGER_PHRASES = sorted(
+    {"Повітряна тривога", "Відбій тривоги"}
+    | {
+        keyword
+        for conf in DISTRICT_CONFIG.values()
+        for keywords in conf.get("alert_triggers", {}).values()
+        for keyword in keywords
+    },
+    key=len,
+    reverse=True,
+)
+
+SECTION_HEADER_RE = re.compile(
+    r"^[^\w\n]*(?:\d{1,2}:\d{2}[^\w\n]*)?(?:"
+    + "|".join(re.escape(phrase) for phrase in _HEADER_TRIGGER_PHRASES)
+    + r")[^\w\n]*$",
+    re.MULTILINE,
+)
+
+
+def split_alert_sections(message_text: str) -> list[str]:
+    """Splits a post into per-event sections.
+
+    A single post can stack several standalone header lines (e.g. "🚨 Повітряна
+    тривога" followed by "🟢 Відбій тривоги"), each followed by its own list of
+    districts. Splitting keeps each district's alert type tied to the header
+    above it instead of whichever keyword happens to appear first in the post.
+    """
+    headers = list(SECTION_HEADER_RE.finditer(message_text))
+    if len(headers) < 2:
+        return [message_text]
+
+    boundaries = [0, *(h.start() for h in headers[1:]), len(message_text)]
+    return [message_text[start:end] for start, end in zip(boundaries, boundaries[1:])]
+
+
 def match_districts(message_text: str) -> dict[str, str]:
     """Maps mentioned districts to their alert event type."""
+    matched: dict[str, str] = {}
+    for section in split_alert_sections(message_text):
+        matched.update(_match_districts_in_section(section))
+    return matched
+
+
+def _match_districts_in_section(message_text: str) -> dict[str, str]:
     oblast_hit = {
         oblast: any(pattern.search(message_text) for pattern in patterns)
         for oblast, patterns in OBLAST_PATTERNS.items()

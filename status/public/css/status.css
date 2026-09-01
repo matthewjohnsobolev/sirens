@@ -47,11 +47,10 @@
      до його вістря. Єдині значення для всіх екранів: у медіа-запитах не
      перевизначаються, тож відступ однаковий на мобільних і на десктопі. */
   --bar-lift: 3px;
-  --tip-border: 1px;
   --tip-arrow: 6px;
   --tip-gap: 5px;
   /* сторона поверненого на 45° квадрата: половина його діагоналі дорівнює
-     --tip-arrow, тобто виступу вказівника за зовнішній край рамки */
+     --tip-arrow, тобто виступу вказівника за край тултипа */
   --tip-arrow-box: calc(var(--tip-arrow) * 1.41421);
 }
 
@@ -397,7 +396,6 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border: var(--tip-border) solid var(--hairline-dark);
   border-radius: 6px;
   background: var(--surface);
   color: var(--ink);
@@ -409,7 +407,12 @@ body {
   text-transform: uppercase;
   white-space: nowrap;
   pointer-events: none;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.09)) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.05));
+  /* Замість рамки — кромка тінню: filter обводить силует усієї фігури разом
+     із вказівником, тому лінії стику всередині не буває в принципі. */
+  filter: drop-shadow(0 0 .5px rgba(0, 0, 0, .26))
+          drop-shadow(0 0 .5px rgba(0, 0, 0, .16))
+          drop-shadow(0 2px 5px rgba(0, 0, 0, .10))
+          drop-shadow(0 6px 14px rgba(0, 0, 0, .10));
   opacity: 0;
   transform: translateY(3px);
   transition: opacity var(--motion-fade),
@@ -425,33 +428,28 @@ body {
   transform: translateY(0);
 }
 
-/* Вказівник — квадрат, повернутий на 45°: дві його зовнішні сторони
-   продовжують рамку, а верхня половина заходить усередину тултипа й
-   перекриває лінію рамки із запасом (стик «край у край» не годився — рамка
-   й заливка потрапляли в сусідні пікселі пристрою, і при зумі між ними
-   проступала лінія). Центр квадрата лежить на зовнішньому краї рамки, тож
-   контури тултипа й вказівника утворюють один суцільний обвід.
-   z-index: -1 лишає квадрат над рамкою, але під текстом. */
+/* Вказівник — квадрат кольору фону, повернутий на 45°: його центр лежить на
+   краю тултипа, тож верхня половина ховається всередині й зливається з
+   заливкою, а нижня виступає гострим кутом. Обидві фігури одного кольору й
+   перекриваються на 6px, тому жодне округлення до пікселів пристрою не може
+   лишити між ними шва. z-index: -1 тримає квадрат під текстом. */
 .tip::after {
   content: "";
   position: absolute;
   z-index: -1;
   box-sizing: border-box;
   left: var(--arrow-x, 50%);
-  bottom: calc(-1 * var(--tip-border));
+  bottom: 0;
   width: var(--tip-arrow-box);
   height: var(--tip-arrow-box);
   background: var(--surface);
-  border: 0 solid var(--hairline-dark);
-  border-width: 0 var(--tip-border) var(--tip-border) 0;
   transform: translate(-50%, 50%) rotate(45deg);
   pointer-events: none;
 }
 
 .tip--below::after {
-  top: calc(-1 * var(--tip-border));
+  top: 0;
   bottom: auto;
-  border-width: var(--tip-border) 0 0 var(--tip-border);
   transform: translate(-50%, -50%) rotate(45deg);
 }
 

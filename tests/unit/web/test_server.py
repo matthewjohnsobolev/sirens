@@ -14,7 +14,7 @@ from web import issue
 from web import server as web_server
 from web.server import create_app
 
-SUCCESS_MARKER = "Повідомлення надіслано"
+SUCCESS_MARKER = "Дякуємо, повідомлення отримали"
 
 
 def test_index_route(client):
@@ -55,7 +55,7 @@ def test_issue_footer_contains_status_link_and_disclaimer(client):
     assert "https://status.sirens.live" in html
     assert "Стан системи" in html
     assert "Мапа тривог" in html
-    assert "«Сирени» — незалежний агрегатор тривог." in html
+    assert "«Сирени» — незалежний сервіс агрегації повітряних тривог." in html
     assert "© 2026 «Сирени»" in html
 
 

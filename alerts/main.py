@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import time
+from itertools import pairwise
 from logging.handlers import RotatingFileHandler
 
 import asyncpg
@@ -587,7 +588,7 @@ def split_alert_sections(message_text: str) -> list[str]:
         return [message_text]
 
     boundaries = [0, *(h.start() for h in headers[1:]), len(message_text)]
-    return [message_text[start:end] for start, end in zip(boundaries, boundaries[1:])]
+    return [message_text[start:end] for start, end in pairwise(boundaries)]
 
 
 def match_districts(message_text: str) -> dict[str, str]:

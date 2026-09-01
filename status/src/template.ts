@@ -32,9 +32,9 @@ function getStateInfo(headline: string) {
 export function renderHtml(data: any): string {
     const formatUptime = (uptime: number | null) => {
         if (uptime === null) return '—';
-        if (uptime >= 100) return '100% часу';
+        if (uptime >= 100) return '100%';
         const formatted = (uptime > 99.9 && uptime < 100) ? '99,9' : uptime.toFixed(1).replace('.', ',');
-        return formatted + '% часу';
+        return formatted + '%';
     };
 
     const stateInfo = getStateInfo(data.headline);

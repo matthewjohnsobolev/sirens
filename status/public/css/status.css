@@ -232,11 +232,14 @@ body {
   line-height: 1.45;
 }
 
+/* Розмір і вага збігаються з .comp-name: у Inter та JetBrains Mono
+   висота великих літер і цифр однакова (0.74em), тож 14px/600 дає
+   однаковий кегль на око. */
 .comp-val {
   font-family: var(--font-mono);
   font-size: var(--text-ui);
-  font-weight: 500;
-  color: var(--ink-muted);
+  font-weight: 600;
+  color: var(--ink);
   letter-spacing: .04em;
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;

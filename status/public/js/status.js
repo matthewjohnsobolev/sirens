@@ -16,13 +16,38 @@
       tip.className = 'tip';
       tip.setAttribute('role', 'tooltip');
       tip.hidden = true;
-      tip.innerHTML = '<span class="tip-time"></span><span class="tip-state"><span class="tip-dot" data-state="ok"></span><span class="tip-text"></span></span><svg class="tip-arrow" width="20" height="6" viewBox="0 0 20 6" aria-hidden="true"><path d="M 5 0.5 L 10 5.5 L 15 0.5 Z" fill="#fff"></path><rect x="0" y="0" width="20" height="1" fill="#fff"></rect><path class="tip-arrow-stroke" d="M 0 0.5 L 5 0.5 L 10 5.5 L 15 0.5 L 20 0.5" fill="none" stroke-width="1" stroke-linecap="square" stroke-linejoin="miter"></path></svg>';
+      tip.innerHTML = '<span class="tip-time"></span><span class="tip-state"><span class="tip-dot" data-state="ok"></span><span class="tip-text"></span></span>';
     }
     const root = document.body || document.documentElement;
     if (root && tip.parentElement !== root) {
       root.appendChild(tip);
     }
     return tip;
+  }
+
+  const FALLBACK_METRICS = { arrow: 6, gap: 5, lift: 3, radius: 6 };
+  const reducedMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  let tipMetricsCache = null;
+
+  // --tip-arrow / --tip-gap / --bar-lift живуть у CSS і однакові на всіх
+  // екранах, тому відступ до вістря вказівника не залежить від пристрою.
+  function tipMetrics() {
+    if (tipMetricsCache) return tipMetricsCache;
+    const styles = window.getComputedStyle(ensureTip());
+    const arrow = parseFloat(styles.getPropertyValue('--tip-arrow'));
+    const gap = parseFloat(styles.getPropertyValue('--tip-gap'));
+    const lift = parseFloat(styles.getPropertyValue('--bar-lift'));
+    const radius = parseFloat(styles.borderTopLeftRadius);
+    if (!isFinite(arrow) || !isFinite(gap) || !isFinite(lift) || !isFinite(radius)) {
+      return FALLBACK_METRICS;
+    }
+    tipMetricsCache = { arrow: arrow, gap: gap, lift: lift, radius: radius };
+    return tipMetricsCache;
+  }
+
+  // Під reduced-motion смужка не піднімається, тож підйом не компенсуємо.
+  function barLift(metrics) {
+    return reducedMotion && reducedMotion.matches ? 0 : metrics.lift;
   }
 
   function initBars() {
@@ -89,6 +114,10 @@
 
     ensureTip();
 
+    // Знімаємо геометрію до .is-active: інакше в рект потрапляє незавершений
+    // підйом смужки і відступ виходить різним при кожному показі.
+    const barBox = bar.getBoundingClientRect();
+
     if (document.activeElement && document.activeElement !== bar && document.activeElement.classList && document.activeElement.classList.contains('bar')) {
       if (typeof document.activeElement.blur === 'function') {
         document.activeElement.blur();
@@ -140,8 +169,8 @@
 
     tip.hidden = false;
 
-    const barBox = bar.getBoundingClientRect();
     const tipBox = tip.getBoundingClientRect();
+    const metrics = tipMetrics();
     const margin = 8;
 
     const barCenterX = barBox.left + barBox.width / 2;
@@ -151,18 +180,23 @@
     let left = Math.round(barCenterX - tipWidth / 2);
     left = Math.max(margin, Math.min(left, window.innerWidth - tipWidth - margin));
 
+    // --arrow-x відлічується від padding-box, як і самі псевдоелементи;
+    // вказівник не заходить на заокруглені кути.
     const borderLeft = tip.clientLeft || 1;
-    const minArrowX = 14;
-    const maxArrowX = tipWidth - borderLeft - 15;
+    const tipInnerWidth = tipWidth - borderLeft * 2;
+    const arrowEdge = metrics.arrow + 1 + metrics.radius;
     const rawArrowX = barCenterX - left - borderLeft;
-    const arrowX = Math.max(minArrowX, Math.min(maxArrowX, rawArrowX));
+    const arrowX = Math.max(arrowEdge, Math.min(tipInnerWidth - arrowEdge, rawArrowX));
     tip.style.setProperty('--arrow-x', arrowX.toFixed(2) + 'px');
 
-    const verticalOffset = 7;
+    // Вказівник виступає за рамку рівно на --tip-arrow, далі йде --tip-gap.
+    // barBox знято до підйому смужки, тому додаємо його вручну — інакше
+    // просвіт над смужкою й під нею вийшов би різним.
+    const verticalOffset = metrics.arrow + metrics.gap + barLift(metrics);
     let top = Math.round(barBox.top - tipHeight - verticalOffset);
 
     if (top < margin) {
-      top = Math.round(barBox.bottom + verticalOffset);
+      top = Math.round(barBox.bottom + metrics.arrow + metrics.gap - barLift(metrics));
       tip.classList.add('tip--below');
     } else {
       tip.classList.remove('tip--below');

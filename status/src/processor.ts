@@ -320,13 +320,13 @@ export async function computeStatusData(env: Env) {
         const timeStr = formatSince(earliest);
 
         if (keys.has("map") && keys.has("api")) {
-            headline = "Сповіщення працюють, мапа й API — ні";
+            headline = "Сповіщення надходять, мапа й API — ні";
             subtitle = `Мапа та API недоступні${timeStr}. Сповіщення в Telegram надходять як зазвичай.`;
         } else if (keys.has("map")) {
-            headline = "Сповіщення працюють, мапа — ні";
+            headline = "Сповіщення надходять, мапа — ні";
             subtitle = `Мапа недоступна${timeStr}. Сповіщення в Telegram надходять як зазвичай.`;
         } else {
-            headline = "Сповіщення працюють, API — ні";
+            headline = "Сповіщення надходять, API — ні";
             subtitle = `API недоступний${timeStr}. Сповіщення в Telegram надходять як зазвичай.`;
         }
     } else if (monitored.some(c => c.state === "mnt")) {

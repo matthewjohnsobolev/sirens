@@ -85,7 +85,11 @@ export function renderHtml(data: any): string {
 <meta property="og:description" content="Поточний стан та історія доступності компонентів системи «Сирени» за останні 24 години.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://status.sirens.live">
+<meta property="og:site_name" content="Сирени">
+<meta property="og:locale" content="uk_UA">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Стан системи | Сирени">
+<meta name="twitter:description" content="Поточний стан та історія доступності компонентів системи «Сирени» за останні 24 години.">
 <link rel="shortcut icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

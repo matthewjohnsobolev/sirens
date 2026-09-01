@@ -14,24 +14,28 @@
         
         <base target="_top">
         <meta charset="utf-8">
-        <meta name='viewport' content='initial-scale=1, viewport-fit=cover'>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
         <meta name="description" content="Інформація про повітряні тривоги на мапі України."> 
         <title>Сирени</title>  
 
-        <!-- Facebook Meta Tags -->
+        <!-- Open Graph / Facebook Meta Tags -->
         <meta property="og:url" content="https://sirens.live">
         <meta property="og:type" content="website">
         <meta property="og:title" content="Сирени">
         <meta property="og:description" content="Інформація про повітряні тривоги на мапі України.">
-        <meta property="og:image" content="https://80be-217-138-220-210.ngrok-free.app/static/img/og-banner.png">
+        <meta property="og:image" content="https://sirens.live/static/img/og-banner.png">
+        <meta property="og:image:width" content="1200">
+        <meta property="og:image:height" content="630">
+        <meta property="og:site_name" content="Сирени">
+        <meta property="og:locale" content="uk_UA">
 
         <!-- Twitter Meta Tags -->
         <meta name="twitter:card" content="summary_large_image">
         <meta property="twitter:domain" content="sirens.live">
-        <meta property="twitter:url" content="https://sirens.add">
+        <meta property="twitter:url" content="https://sirens.live">
         <meta name="twitter:title" content="Сирени">
         <meta name="twitter:description" content="Інформація про повітряні тривоги на мапі України.">
-        <meta name="twitter:image" content="https://80be-217-138-220-210.ngrok-free.app/static/img/og-banner.png">
+        <meta name="twitter:image" content="https://sirens.live/static/img/og-banner.png">
 
         <link rel="stylesheet" href="{{ static_url('css/reset.css') }}">
         <link rel="shortcut icon" href="{{  url_for('static', filename='img/favicon.ico')  }}">

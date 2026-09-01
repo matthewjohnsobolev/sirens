@@ -1,5 +1,5 @@
 function getStateInfo(headline: string) {
-    if (headline === 'Сервіс не працює') {
+    if (headline === 'Сповіщення не надходять') {
         return {
             cls: 'error',
             icon: '/img/icons/explosion-icon.svg'
@@ -32,9 +32,9 @@ function getStateInfo(headline: string) {
 export function renderHtml(data: any): string {
     const formatUptime = (uptime: number | null) => {
         if (uptime === null) return '—';
-        if (uptime >= 100) return '100%';
+        if (uptime >= 100) return '100% часу';
         const formatted = (uptime > 99.9 && uptime < 100) ? '99,9' : uptime.toFixed(1).replace('.', ',');
-        return formatted + '%';
+        return formatted + '% часу';
     };
 
     const stateInfo = getStateInfo(data.headline);
@@ -53,6 +53,7 @@ export function renderHtml(data: any): string {
             ${!comp.monitored ? '<span class="val-full">моніторинг не налаштовано</span><span class="val-short">не налаштовано</span>' : formatUptime(comp.uptime)}
           </span>
         </div>
+        ${comp.desc ? `<p class="comp-desc">${comp.desc}</p>` : ''}
         <div class="bars" role="group" aria-label="${comp.name}: ${summaryText}">
           ${hoursList.map((hour: any) => {
             const title = hour.title || getTitle(hour.date, hour.state);
@@ -69,7 +70,7 @@ export function renderHtml(data: any): string {
     `;
     }).join('');
 
-    const hasSpecificFailure = data.headline.includes('— ні') || data.headline === 'Сервіс не працює' || data.headline.includes('перебо');
+    const hasSpecificFailure = data.headline.includes('— ні') || data.headline === 'Сповіщення не надходять' || data.headline.includes('перебо');
     const formattedSubtitle = data.subtitle ? data.subtitle.replace(/(\b\d{1,2}:\d{2}\b)/g, '<time class="mono-time">$1</time>') : '';
 
     return `<!DOCTYPE html>
@@ -78,7 +79,7 @@ export function renderHtml(data: any): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Стан системи | Сирени</title>
-<meta name="description" content="Поточний стан та історія доступності компонентів системи «Сирени»: канали Telegram, обробка тривог, мапа тривог та API за останні 24 години.">
+<meta name="description" content="Поточний стан та історія доступності компонентів системи «Сирени»: сповіщення в Telegram, джерела тривог, мапа тривог та API за останні 24 години.">
 <meta name="theme-color" content="#F4F4F4">
 <meta property="og:title" content="Стан системи | Сирени">
 <meta property="og:description" content="Поточний стан та історія доступності компонентів системи «Сирени» за останні 24 години.">

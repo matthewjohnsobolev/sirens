@@ -102,6 +102,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         return {
             key: spec.key,
             name: spec.name,
+            desc: spec.desc,
             uptime: gen.uptime,
             hours: gen.hours,
             monitored: gen.monitored,
@@ -110,10 +111,10 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         };
     });
 
-    let headline = "Сповіщення працюють";
+    let headline = "Сповіщення надходять";
     const lastAlertHour = ((nowKyiv.hour - 4 + 24) % 24).toString().padStart(2, "0");
     const lastAlertMin = "12";
-    let subtitle = `Останнє сповіщення — сьогодні о ${lastAlertHour}:${lastAlertMin} у Білій Церкві. Відтоді тривог не було.`;
+    let subtitle = `Останнє сповіщення ми надіслали сьогодні о ${lastAlertHour}:${lastAlertMin} у Білій Церкві. Відтоді тривог чи відбоїв не було.`;
 
     const outageTimeStr = `з ${((nowKyiv.hour - 2 + 24) % 24).toString().padStart(2, "0")}:00`;
 
@@ -121,8 +122,8 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         headline = "Стан невідомий";
         subtitle = "Моніторинг тимчасово не відповідає";
     } else if (normScenario === "service_down") {
-        headline = "Сервіс не працює";
-        subtitle = `Сповіщення не надходять ${outageTimeStr}. Перевіряйте офіційний канал вашої області.`;
+        headline = "Сповіщення не надходять";
+        subtitle = `Не працюють ${outageTimeStr}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
     } else if (normScenario === "map_api_down") {
         headline = "Сповіщення працюють, мапа й API — ні";
         subtitle = `Мапа та API недоступні ${outageTimeStr}. Сповіщення в Telegram надходять як зазвичай.`;

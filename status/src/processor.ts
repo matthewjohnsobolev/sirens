@@ -261,6 +261,7 @@ export async function computeStatusData(env: Env) {
         components.push({
             key: spec.key,
             name: spec.name,
+            desc: spec.desc,
             uptime: uptimePct,
             hours,
             monitored: probe.present,
@@ -270,7 +271,7 @@ export async function computeStatusData(env: Env) {
     }
 
     const monitored = components.filter(c => c.monitored);
-    let headline = "Сповіщення працюють";
+    let headline = "Сповіщення надходять";
     let subtitle = "Сповіщення в Telegram надходять як зазвичай.";
 
     const formatSince = (dtStr: string | null) => {
@@ -310,8 +311,8 @@ export async function computeStatusData(env: Env) {
     } else if (coreFailing.length > 0) {
         const dts = coreFailing.map(c => c.outage_since).filter(Boolean);
         const earliest = dts.length ? dts.sort()[0] : null;
-        headline = "Сервіс не працює";
-        subtitle = `Сповіщення не надходять${formatSince(earliest)}. Перевіряйте офіційний канал вашої області.`;
+        headline = "Сповіщення не надходять";
+        subtitle = `Не працюють${formatSince(earliest)}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
     } else if (auxFailing.length > 0) {
         const keys = new Set(auxFailing.map(c => c.key));
         const dts = auxFailing.map(c => c.outage_since).filter(Boolean);
@@ -344,7 +345,7 @@ export async function computeStatusData(env: Env) {
                 (telemetry?.last_alert as any)?.location_title
             );
             const locSuffix = locPhrase ? ` ${locPhrase}` : "";
-            subtitle = `Останнє сповіщення — ${dateStr} о ${hh}:${mm}${locSuffix}. Відтоді тривог не було.`;
+            subtitle = `Останнє сповіщення ми надіслали ${dateStr} о ${hh}:${mm}${locSuffix}. Відтоді тривог чи відбоїв не було.`;
         } else {
             subtitle = "Сповіщення в Telegram надходять як зазвичай.";
         }

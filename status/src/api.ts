@@ -63,10 +63,10 @@ export interface TelemetryData {
 }
 
 export const COMPONENTS_SPEC = [
-    { key: "broadcast", name: "Канали Telegram", source: "healthchecks" },
-    { key: "source", name: "Обробка тривог", source: "healthchecks" },
-    { key: "map", name: "Мапа тривог", source: "uptimerobot" },
-    { key: "api", name: "API", source: "uptimerobot" },
+    { key: "broadcast", name: "Сповіщення в Telegram", desc: "Канали, які надсилають вам тривогу.", source: "healthchecks" },
+    { key: "source", name: "Джерела тривог", desc: "Звідки ми дізнаємось, що тривогу оголосили.", source: "healthchecks" },
+    { key: "map", name: "Мапа тривог", desc: "Мапа, на якій видно тривоги по всій країні.", source: "uptimerobot" },
+    { key: "api", name: "API", desc: "Дані для сторонніх ботів і застосунків.", source: "uptimerobot" },
 ];
 
 export async function fetchTelemetry(env: Env): Promise<TelemetryData | null> {

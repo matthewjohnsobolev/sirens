@@ -32,6 +32,7 @@ function getFallbackStatusData(now: Date) {
         components: COMPONENTS_SPEC.map(s => ({
             key: s.key,
             name: s.name,
+            desc: s.desc,
             uptime: null,
             hours,
             monitored: false,

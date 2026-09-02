@@ -261,7 +261,7 @@ body {
 
 .comp-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-12);
   margin-bottom: var(--gap-tight);

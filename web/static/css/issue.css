@@ -151,7 +151,7 @@ body.tab-other .textarea{
 }
 .opt span:hover{border-color:var(--hairline-hover)}
 .opt input:checked + span{border-color:var(--ink);outline-color:var(--ink)}
-.opt input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
+.opt input:focus-visible + span{border-color:var(--ink);outline-color:var(--ink)}
 
 .input,.textarea{
   -webkit-appearance:none;appearance:none;
@@ -221,7 +221,9 @@ body.tab-other .textarea{
 .block.invalid .input:focus,
 .block.invalid .textarea:focus,
 .input.invalid:focus,
-.input-datetime.invalid:focus{
+.input-datetime.invalid:focus,
+.block.invalid .opt input:focus-visible + span,
+.block.invalid .opt input:checked + span{
   border-color:var(--ink);
   outline-color:var(--ink);
 }

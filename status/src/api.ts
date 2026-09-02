@@ -63,7 +63,7 @@ export interface TelemetryData {
 }
 
 export const COMPONENTS_SPEC = [
-    { key: "broadcast", name: "Сповіщення в Telegram", desc: "Канали, якими ми надсилаємо вам сповіщення про тривогу.", source: "healthchecks" },
+    { key: "broadcast", name: "Розсилка в Telegram", desc: "Канали, якими ми надсилаємо вам сповіщення про тривогу.", source: "healthchecks" },
     { key: "source", name: "Джерело тривог", desc: "Звідки ми дізнаємось, що тривогу оголосили.", source: "healthchecks" },
     { key: "map", name: "Мапа тривог", desc: "Показує тривоги по всій країні в реальному часі.", source: "uptimerobot" },
     { key: "api", name: "API", desc: "Дані для сторонніх ботів і застосунків.", source: "uptimerobot" },

@@ -167,7 +167,7 @@ because two different monitoring models feed it:
 | Мапа | UptimeRobot `GET /` | the site opens for a visitor: DNS, TLS, Cloudflare, nginx, render |
 | API | UptimeRobot `GET /api` | the endpoint answers with real JSON, not a 200 full of nothing |
 | Потік тривог | healthchecks `sirens-alerts-source` | posts from the source channel are reaching us |
-| Сповіщення в Telegram | healthchecks `sirens-alerts-broadcast` | our broadcasts into the network channels go through |
+| Розсилка в Telegram | healthchecks `sirens-alerts-broadcast` | our broadcasts into the network channels go through |
 
 The last two are the two ends of the same chain, and they break independently.
 A source channel that stopped posting, an account thrown out of it, a handler

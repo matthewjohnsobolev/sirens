@@ -272,7 +272,7 @@ export async function computeStatusData(env: Env) {
 
     const monitored = components.filter(c => c.monitored);
     let headline = "Сповіщення надходять";
-    let subtitle = "Сповіщення в Telegram надходять як зазвичай.";
+    let subtitle = "Розсилка в Telegram надходить як зазвичай.";
 
     const formatSince = (dtStr: string | null) => {
         if (!dtStr) return "";
@@ -322,13 +322,13 @@ export async function computeStatusData(env: Env) {
 
         if (keys.has("map") && keys.has("api")) {
             headline = "Сповіщення надходять, мапа й API — ні";
-            subtitle = `Мапа та API недоступні${timeStr}. Сповіщення в Telegram надходять як зазвичай.`;
+            subtitle = `Мапа та API недоступні${timeStr}. Розсилка в Telegram надходить як зазвичай.`;
         } else if (keys.has("map")) {
             headline = "Сповіщення надходять, мапа — ні";
-            subtitle = `Мапа недоступна${timeStr}. Сповіщення в Telegram надходять як зазвичай.`;
+            subtitle = `Мапа недоступна${timeStr}. Розсилка в Telegram надходить як зазвичай.`;
         } else {
             headline = "Сповіщення надходять, API — ні";
-            subtitle = `API недоступний${timeStr}. Сповіщення в Telegram надходять як зазвичай.`;
+            subtitle = `API недоступний${timeStr}. Розсилка в Telegram надходить як зазвичай.`;
         }
     } else if (monitored.some(c => c.state === "mnt")) {
         headline = "Планові роботи";
@@ -347,7 +347,7 @@ export async function computeStatusData(env: Env) {
             const locSuffix = locPhrase ? ` ${locPhrase}` : "";
             subtitle = `Останнє сповіщення ми надіслали ${dateStr} о ${hh}:${mm}${locSuffix}. Відтоді тривог чи відбоїв не було.`;
         } else {
-            subtitle = "Сповіщення в Telegram надходять як зазвичай.";
+            subtitle = "Розсилка в Telegram надходить як зазвичай.";
         }
     }
 

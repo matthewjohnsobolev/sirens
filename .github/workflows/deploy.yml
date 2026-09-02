@@ -35,7 +35,7 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
 
-          REMOTE_CMD="cd '$APP_PATH' && (git config http.version HTTP/1.1 2>/dev/null || true) && ./deploy/deploy.sh"
+          REMOTE_CMD="cd '$APP_PATH' && git remote set-url origin https://github.com/matthewjohnsobolev/sirens.git && git config http.version HTTP/1.1 && ./deploy/deploy.sh"
 
           if [ -n "$SSH_KEY" ]; then
             printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy

@@ -471,12 +471,13 @@ async def test_send_alert_skips_duplicate_when_state_unchanged(
     mock_redis, mock_pg_pool, mock_telegram_client, caplog
 ):
     caplog.set_level(logging.INFO)
-    mock_redis.get.return_value = "air_raid_alert"
+    mock_redis.set.return_value = "air_raid_alert"
 
     await send_alert(CHANNEL_ID, "nikopol", "air_raid_alert")
 
-    mock_redis.get.assert_awaited_once_with(f"channel_state:{CHANNEL_ID}")
-    mock_redis.set.assert_not_awaited()
+    mock_redis.set.assert_awaited_once_with(
+        f"channel_state:{CHANNEL_ID}", "air_raid_alert", get=True
+    )
     mock_redis.hset.assert_not_awaited()
     mock_telegram_client.send_message.assert_not_awaited()
     assert "Duplicate air_raid_alert ignored for Nikopol" in caplog.text
@@ -486,7 +487,7 @@ async def test_send_alert_skips_duplicate_when_state_unchanged(
 async def test_send_alert_processes_state_change_after_duplicate_suppression(
     mock_redis, mock_pg_pool, mock_telegram_client
 ):
-    mock_redis.get.return_value = "air_raid_alert"
+    mock_redis.set.return_value = "air_raid_alert"
 
     with patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock):
         await send_alert(CHANNEL_ID, "nikopol", "air_raid_alert_cancelled")
@@ -503,7 +504,7 @@ async def test_send_alert_broadcasts_when_redis_is_down(
     mock_redis, mock_pg_pool, mock_telegram_client, caplog
 ):
     caplog.set_level(logging.ERROR)
-    mock_redis.get.side_effect = ConnectionError("Redis is down")
+    mock_redis.set.side_effect = ConnectionError("Redis is down")
 
     with patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock):
         await send_alert(CHANNEL_ID, "nikopol", "air_raid_alert")
@@ -571,7 +572,12 @@ async def test_send_alert_logs_but_survives_send_failure(
     assert expected_log in caplog.text
     mock_photo.assert_not_awaited()
     assert alerts_main.last_broadcast_at is None
-    mock_redis.set.assert_not_awaited()
+
+    # The claim goes in before the send, so a failed send has to hand it back
+    # rather than leave the channel holding a state nobody heard announced.
+    mock_redis.set.assert_awaited_once_with(f"channel_state:{CHANNEL_ID}", alert_type, get=True)
+    restore_args = mock_redis.eval.await_args.args
+    assert restore_args[2:4] == (f"channel_state:{CHANNEL_ID}", alert_type)
 
 
 @pytest.mark.asyncio
@@ -1571,12 +1577,11 @@ async def test_record_map_only_alert_skips_duplicates(
     mock_redis, mock_pg_pool, mock_telegram_client, caplog
 ):
     caplog.set_level(logging.INFO)
-    mock_redis.get.return_value = "air_raid_alert"
+    mock_redis.set.return_value = "air_raid_alert"
 
     await record_map_only_alert("vyshhorod", "air_raid_alert")
 
-    mock_redis.get.assert_awaited_once_with("district_state:vyshhorod")
-    mock_redis.set.assert_not_awaited()
+    mock_redis.set.assert_awaited_once_with("district_state:vyshhorod", "air_raid_alert", get=True)
     mock_redis.hset.assert_not_awaited()
     assert "Duplicate air_raid_alert ignored for Вишгородський район" in caplog.text
 
@@ -1585,7 +1590,7 @@ async def test_record_map_only_alert_skips_duplicates(
 async def test_record_map_only_alert_records_after_duplicate_suppression(
     mock_redis, mock_pg_pool, mock_telegram_client
 ):
-    mock_redis.get.return_value = "air_raid_alert"
+    mock_redis.set.return_value = "air_raid_alert"
 
     await record_map_only_alert("vyshhorod", "air_raid_alert_cancelled")
 
@@ -1600,14 +1605,13 @@ async def test_record_map_only_alert_unknown_type_does_nothing(mock_redis, mock_
     await record_map_only_alert("vyshhorod", "unknown_type")
 
     assert "Unknown alert type: unknown_type" in caplog.text
-    mock_redis.get.assert_not_awaited()
     mock_redis.set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_record_map_only_alert_survives_a_redis_outage(mock_redis, mock_pg_pool, caplog):
     caplog.set_level(logging.ERROR)
-    mock_redis.get.side_effect = ConnectionError("Redis is down")
+    mock_redis.set.side_effect = ConnectionError("Redis is down")
     _, mock_conn = mock_pg_pool
 
     await record_map_only_alert("vyshhorod", "air_raid_alert")
@@ -2014,7 +2018,7 @@ async def test_dual_source_deduplication_between_primary_and_fallback(
     event_fb.chat_id = fallback_id
     event_fb.message.message = "м. Київ Повітряна тривога"
     event_fb.message.id = 100
-    mock_redis.get.return_value = None
+    mock_redis.set.return_value = None
 
     with (
         patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock),
@@ -2026,7 +2030,7 @@ async def test_dual_source_deduplication_between_primary_and_fallback(
     assert mock_telegram_client.send_message.await_count == 1
 
     # Message from primary arrives shortly after for the same alert
-    mock_redis.get.return_value = "air_raid_alert"
+    mock_redis.set.return_value = "air_raid_alert"
     event_prim = MagicMock()
     event_prim.chat_id = primary_id
     event_prim.message.message = "м. Київ Повітряна тривога"
@@ -2041,6 +2045,173 @@ async def test_dual_source_deduplication_between_primary_and_fallback(
 
     # send_message should NOT be called a second time
     assert mock_telegram_client.send_message.await_count == 1
+
+
+class FakeRedisState:
+    """Redis double that actually holds state.
+
+    The claim is only atomic because `SET ... GET` and the restore script run
+    as one step on the server, so an AsyncMock handing back a fixed value
+    cannot show the race is gone. Every call yields first, the way a round trip
+    does, and only then applies its command in one go.
+    """
+
+    def __init__(self, initial=None):
+        self.store = dict(initial or {})
+
+    async def set(self, key, value, get=False, **kwargs):
+        await asyncio.sleep(0)
+        previous = self.store.get(key)
+        self.store[key] = value
+        return previous if get else True
+
+    async def get(self, key):
+        await asyncio.sleep(0)
+        return self.store.get(key)
+
+    async def eval(self, script, numkeys, *args):
+        """Stands in for _RESTORE_STATE_LUA: restore only our own claim."""
+        await asyncio.sleep(0)
+        key, claimed, previous = args[0], args[1], args[2]
+        if self.store.get(key) == claimed:
+            if previous == "":
+                self.store.pop(key, None)
+            else:
+                self.store[key] = previous
+        return 1
+
+    async def hset(self, *args, **kwargs):
+        await asyncio.sleep(0)
+        return 1
+
+    async def sadd(self, *args, **kwargs):
+        await asyncio.sleep(0)
+        return 1
+
+    async def srem(self, *args, **kwargs):
+        await asyncio.sleep(0)
+        return 1
+
+    async def scard(self, *args, **kwargs):
+        await asyncio.sleep(0)
+        return 0
+
+
+@pytest.mark.asyncio
+async def test_send_alert_broadcasts_once_when_both_sources_land_together(mock_pg_pool):
+    """The duplicate seen in production on 2026-09-01 at 04:08:52.
+
+    The same Nikopol alert reached the worker from both source channels inside
+    the same second. Reading the state and only writing it once the message was
+    away let both copies through, so subscribers got the alert twice.
+    """
+    state_key = f"channel_state:{CHANNEL_ID}"
+    fake_redis = FakeRedisState({state_key: "air_raid_alert_cancelled"})
+    telegram = AsyncMock()
+
+    async def send_that_stays_in_flight(*args, **kwargs):
+        await asyncio.sleep(0.01)
+        return MagicMock(id=7)
+
+    telegram.send_message.side_effect = send_that_stays_in_flight
+
+    with (
+        patch("alerts.main.redis_client", fake_redis),
+        patch("alerts.main.client", telegram),
+        patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock),
+        patch("alerts.main.resolve_channel_username", new_callable=AsyncMock),
+    ):
+        await asyncio.gather(
+            send_alert(CHANNEL_ID, "nikopol", "air_raid_alert", source_type="primary"),
+            send_alert(CHANNEL_ID, "nikopol", "air_raid_alert", source_type="fallback"),
+        )
+        await _drain_background_tasks()
+
+    assert telegram.send_message.await_count == 1
+    assert fake_redis.store[state_key] == "air_raid_alert"
+
+
+@pytest.mark.asyncio
+async def test_record_map_only_alert_records_once_when_both_sources_land_together(mock_pg_pool):
+    _, mock_conn = mock_pg_pool
+    fake_redis = FakeRedisState()
+
+    with patch("alerts.main.redis_client", fake_redis):
+        await asyncio.gather(
+            record_map_only_alert("vyshhorod", "air_raid_alert", source_type="primary"),
+            record_map_only_alert("vyshhorod", "air_raid_alert", source_type="fallback"),
+        )
+        await _drain_background_tasks()
+
+    assert mock_conn.execute.await_count == 1
+    assert fake_redis.store["district_state:vyshhorod"] == "air_raid_alert"
+
+
+@pytest.mark.asyncio
+async def test_send_alert_restores_the_displaced_state_when_the_send_fails(mock_pg_pool, caplog):
+    """A claim that never reaches Telegram has to be given back.
+
+    Otherwise the channel remembers an alert nobody heard, and the same alert
+    arriving from the other source is deduplicated away - a dropped alert,
+    which is worse than the duplicate this claim exists to prevent.
+    """
+    caplog.set_level(logging.ERROR)
+    state_key = f"channel_state:{CHANNEL_ID}"
+    fake_redis = FakeRedisState({state_key: "air_raid_alert_cancelled"})
+    telegram = AsyncMock()
+    telegram.send_message.side_effect = ConnectionError("Telegram is down")
+
+    with (
+        patch("alerts.main.redis_client", fake_redis),
+        patch("alerts.main.client", telegram),
+    ):
+        await send_alert(CHANNEL_ID, "nikopol", "air_raid_alert")
+        await _drain_background_tasks()
+
+    assert fake_redis.store[state_key] == "air_raid_alert_cancelled"
+
+    telegram.send_message.side_effect = None
+    telegram.send_message.return_value = MagicMock(id=11)
+
+    with (
+        patch("alerts.main.redis_client", fake_redis),
+        patch("alerts.main.client", telegram),
+        patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock),
+        patch("alerts.main.resolve_channel_username", new_callable=AsyncMock),
+    ):
+        await send_alert(CHANNEL_ID, "nikopol", "air_raid_alert")
+        await _drain_background_tasks()
+
+    assert telegram.send_message.await_count == 2
+    assert fake_redis.store[state_key] == "air_raid_alert"
+
+
+@pytest.mark.asyncio
+async def test_send_alert_leaves_a_newer_state_alone_when_the_send_fails(mock_pg_pool):
+    """The rollback restores our own claim, never a state that moved on.
+
+    If a later event has already claimed the channel, that state is the current
+    truth; writing the displaced one back over it would deduplicate the
+    announcement that follows.
+    """
+    state_key = f"channel_state:{CHANNEL_ID}"
+    fake_redis = FakeRedisState({state_key: "air_raid_alert_cancelled"})
+    telegram = AsyncMock()
+
+    async def overtaken_then_failing(*args, **kwargs):
+        fake_redis.store[state_key] = "threat_of_shelling"
+        raise ConnectionError("Telegram is down")
+
+    telegram.send_message.side_effect = overtaken_then_failing
+
+    with (
+        patch("alerts.main.redis_client", fake_redis),
+        patch("alerts.main.client", telegram),
+    ):
+        await send_alert(CHANNEL_ID, "nikopol", "air_raid_alert")
+        await _drain_background_tasks()
+
+    assert fake_redis.store[state_key] == "threat_of_shelling"
 
 
 @pytest.mark.asyncio

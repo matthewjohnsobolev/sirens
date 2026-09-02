@@ -96,7 +96,7 @@ body.tab-other .textarea{
 .input-datetime:focus{
   outline:0;
   border-color:var(--ink);
-  box-shadow:inset 0 0 0 1px var(--ink);
+  box-shadow:inset 0 0 0 2px var(--ink);
 }
 .picker-hidden{
   position:absolute;
@@ -210,7 +210,7 @@ body.tab-other .textarea{
   opacity:1;
 }
 .input:hover,.textarea:hover{border-color:var(--hairline-hover)}
-.input:focus,.textarea:focus{outline:0;border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.input:focus,.textarea:focus{outline:0;border-color:var(--ink);box-shadow:inset 0 0 0 2px var(--ink)}
 
 .hint,.err{
   margin:var(--gap-tight) 0 0;
@@ -221,7 +221,7 @@ body.tab-other .textarea{
 .block.invalid .err{display:block}
 .block.invalid .hint{display:none}
 .block.invalid .input,
-.block.invalid .textarea,
+.block.invalid .textarea{border-color:var(--explosion);box-shadow:inset 0 0 0 2px var(--explosion)}
 .block.invalid .opt span{border-color:var(--explosion);box-shadow:inset 0 0 0 1px var(--explosion)}
 
 #block-time.invalid .input-datetime{
@@ -234,7 +234,7 @@ body.tab-other .textarea{
 #block-time.invalid .input-datetime:focus{
   outline:0;
   border-color:var(--ink);
-  box-shadow:inset 0 0 0 1px var(--ink);
+  box-shadow:inset 0 0 0 2px var(--ink);
 }
 #block-time.picker-invalid .opts .opt span{
   border-color:var(--hairline);
@@ -250,13 +250,13 @@ body.tab-other .textarea{
 .input.input-datetime.invalid,
 .input-datetime.invalid{
   border-color:var(--explosion) !important;
-  box-shadow:inset 0 0 0 1px var(--explosion) !important;
+  box-shadow:inset 0 0 0 2px var(--explosion) !important;
 }
 .input.input-datetime.invalid:focus,
 .input-datetime.invalid:focus{
   outline:0;
   border-color:var(--ink) !important;
-  box-shadow:inset 0 0 0 1px var(--ink) !important;
+  box-shadow:inset 0 0 0 2px var(--ink) !important;
 }
 
 .combo{position:relative}

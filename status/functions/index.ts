@@ -4,6 +4,13 @@ import { renderHtml } from "../src/template";
 import { formatHourParts, formatHourTitle, summarizeHours } from "../src/helpers";
 import { getMockStatusData } from "../src/mock";
 
+// UptimeRobot на безкоштовному плані дає ~10 запитів на хвилину на акаунт,
+// а сторінка робить два (по одному на монітор). Кеш живе окремо в кожному
+// дата-центрі Cloudflare, тож 60 с при п'яти активних точках — це рівно ліміт.
+// 120 с дає дворазовий запас і нічого не змінює на око: смужки погодинні.
+const PAGE_CACHE_SECONDS = 120;
+const ERROR_CACHE_SECONDS = 15;
+
 const SECURITY_HEADERS: Record<string, string> = {
     "Content-Type": "text/html; charset=utf-8",
     "X-Content-Type-Options": "nosniff",
@@ -61,7 +68,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         });
     }
 
-    const cacheKey = new Request(url.toString(), { method: "GET" });
+    // Ключ кеша — тільки шлях: інакше будь-який ?x=1 промахується повз кеш
+    // і запускає повний похід в апстріми.
+    const cacheKey = new Request(new URL(url.pathname, url.origin).toString(), { method: "GET" });
     const cache = caches.default;
 
     let response = await cache.match(cacheKey);
@@ -69,39 +78,27 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     if (!response) {
         try {
             const data = await computeStatusData(env);
-            if (!data) {
-                const fallbackHtml = renderHtml(getFallbackStatusData(new Date()));
-                return new Response(fallbackHtml, {
-                    status: 503,
-                    headers: {
-                        ...SECURITY_HEADERS,
-                        "Cache-Control": "no-cache, no-store, must-revalidate"
-                    }
-                });
-            }
-            
-            const html = renderHtml(data);
-            
-            response = new Response(html, {
+            response = new Response(renderHtml(data), {
                 headers: {
                     ...SECURITY_HEADERS,
-                    "Cache-Control": "public, max-age=60"
+                    "Cache-Control": `public, max-age=${PAGE_CACHE_SECONDS}`
                 }
             });
-            
-            context.waitUntil(cache.put(cacheKey, response.clone()));
-            
         } catch (error) {
+            // Провайдер, який не відповів, тепер гасить лише свої компоненти,
+            // тож сюди веде тільки справжня помилка розрахунку. Кешуємо її
+            // ненадовго, щоб баг не перетворився на цикл запитів в апстріми.
             console.error("Error generating status page:", error);
-            const fallbackHtml = renderHtml(getFallbackStatusData(new Date()));
-            return new Response(fallbackHtml, {
+            response = new Response(renderHtml(getFallbackStatusData(new Date())), {
                 status: 500,
                 headers: {
                     ...SECURITY_HEADERS,
-                    "Cache-Control": "no-cache, no-store, must-revalidate"
+                    "Cache-Control": `public, max-age=${ERROR_CACHE_SECONDS}`
                 }
             });
         }
+
+        context.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));
     }
 
     return response;

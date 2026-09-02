@@ -81,13 +81,18 @@ export async function fetchTelemetry(env: Env): Promise<TelemetryData | null> {
     }
 }
 
+// Провайдер, який не відповідає, не має тримати рендер до ліміту воркера.
+// AbortError падає в наявні catch і читається як «цей компонент без даних».
+const UPSTREAM_TIMEOUT_MS = 5000;
+
 export async function fetchHealthchecks(env: Env) {
     const apiKey = healthchecksApiKey(env);
     if (!apiKey) return [];
     
     try {
         const res = await fetch("https://healthchecks.io/api/v3/checks/", {
-            headers: { "X-Api-Key": apiKey }
+            headers: { "X-Api-Key": apiKey },
+            signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
         });
         if (!res.ok) return null;
         const data = await res.json() as any;
@@ -100,7 +105,8 @@ export async function fetchHealthchecks(env: Env) {
 export async function fetchHealthcheckFlips(apiId: string, env: Env) {
     try {
         const res = await fetch(`https://healthchecks.io/api/v3/checks/${apiId}/flips/`, {
-            headers: { "X-Api-Key": healthchecksApiKey(env)! }
+            headers: { "X-Api-Key": healthchecksApiKey(env)! },
+            signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
         });
         if (!res.ok) return null;
         const data = await res.json() as any;
@@ -135,7 +141,8 @@ export async function fetchUptimeRobot(apiKey: string) {
         const res = await fetch("https://api.uptimerobot.com/v2/getMonitors", {
             method: "POST",
             body,
-            headers: { "Content-Type": "application/x-www-form-urlencoded" }
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
         });
         if (!res.ok) return null;
         const data = await res.json() as any;

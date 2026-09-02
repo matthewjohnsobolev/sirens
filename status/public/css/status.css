@@ -80,10 +80,8 @@
      перевизначаються, тож відступ однаковий на мобільних і на десктопі. */
   --bar-lift: 3px;
   --tip-arrow: 6px;
+  --tip-arrow-w: 12px;
   --tip-gap: 5px;
-  /* сторона поверненого на 45° квадрата: половина його діагоналі дорівнює
-     --tip-arrow, тобто виступу вказівника за край тултипа */
-  --tip-arrow-box: calc(var(--tip-arrow) * 1.41421);
 }
 
 /* ── Основа ─────────────────────────────────────────────────────────── */
@@ -469,28 +467,28 @@ body {
   transform: translateY(0);
 }
 
-/* Вказівник — квадрат кольору тултипа, повернутий на 45°: його центр лежить
-   на краю тултипа, тож верхня половина ховається всередині й зливається з
-   заливкою, а нижня виступає гострим кутом. Обидві фігури одного кольору й
-   перекриваються на 6px, тому жодне округлення до пікселів пристрою не може
-   лишити між ними шва. z-index: -1 тримає квадрат під текстом. */
+/* Вказівник — акуратний трикутник кольору тултипа, що плавно звужується
+   до вістря без сходинок чи зайвих кутів. Перекриття на 1px усуває
+   можливий субпіксельний просвіт на екранах будь-якої щільності. */
 .tip::after {
   content: "";
   position: absolute;
   z-index: -1;
   left: var(--arrow-x, 50%);
-  bottom: 0;
-  width: var(--tip-arrow-box);
-  height: var(--tip-arrow-box);
+  top: calc(100% - 1px);
+  width: var(--tip-arrow-w, 12px);
+  height: calc(var(--tip-arrow) + 1px);
   background: var(--ink-solid);
-  transform: translate(-50%, 50%) rotate(45deg);
+  transform: translateX(-50%);
+  clip-path: polygon(0 0, 100% 0, 100% 1px, 50% 100%, 0 1px);
   pointer-events: none;
 }
 
 .tip--below::after {
-  top: 0;
-  bottom: auto;
-  transform: translate(-50%, -50%) rotate(45deg);
+  top: auto;
+  bottom: calc(100% - 1px);
+  transform: translateX(-50%);
+  clip-path: polygon(50% 0, 100% calc(100% - 1px), 100% 100%, 0 100%, 0 calc(100% - 1px));
 }
 
 .tip-state {

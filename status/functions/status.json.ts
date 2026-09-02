@@ -2,6 +2,11 @@ import { Env } from "../src/api";
 import { computeStatusData } from "../src/processor";
 import { getMockStatusData } from "../src/mock";
 
+// Відповіді Pages Functions не кешуються самі по собі, тож без явного
+// caches.default кожен запит сюди — це свіжий похід в усі апстріми.
+const JSON_CACHE_SECONDS = 60;
+const ERROR_CACHE_SECONDS = 15;
+
 const CORS_HEADERS: Record<string, string> = {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
@@ -20,10 +25,22 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const url = new URL(request.url);
     const mockParam = url.searchParams.get("mock");
 
+    const isMock = Boolean(mockParam) && env.ENVIRONMENT === "development";
+
+    // Ключ кеша — тільки шлях, щоб довільна query-строка не промахувалась
+    // повз кеш і не тягла за собою повний розрахунок.
+    const cacheKey = new Request(new URL(url.pathname, url.origin).toString(), { method: "GET" });
+    const cache = caches.default;
+
+    if (!isMock) {
+        const cached = await cache.match(cacheKey);
+        if (cached) return cached;
+    }
+
     let data: any = null;
 
-    if (mockParam && env.ENVIRONMENT === "development") {
-        data = getMockStatusData(mockParam, new Date());
+    if (isMock) {
+        data = getMockStatusData(mockParam!, new Date());
     } else {
         try {
             data = await computeStatusData(env);
@@ -33,7 +50,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
 
     if (!data) {
-        return new Response(JSON.stringify({
+        const errorResponse = new Response(JSON.stringify({
             status: {
                 indicator: "critical",
                 description: "Стан невідомий: сервіс моніторингу тимчасово не відповідає",
@@ -44,9 +61,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             status: 503,
             headers: {
                 ...CORS_HEADERS,
-                "Cache-Control": "no-cache, no-store, must-revalidate"
+                "Cache-Control": `public, max-age=${ERROR_CACHE_SECONDS}`
             }
         });
+
+        if (!isMock) context.waitUntil(cache.put(cacheKey, errorResponse.clone()).catch(() => {}));
+        return errorResponse;
     }
 
     const isServiceDown = data.headline === "Сповіщення не надходять";
@@ -85,10 +105,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         }))
     };
 
-    return new Response(JSON.stringify(responsePayload, null, 2), {
+    const response = new Response(JSON.stringify(responsePayload, null, 2), {
         headers: {
             ...CORS_HEADERS,
-            "Cache-Control": "public, max-age=30"
+            "Cache-Control": `public, max-age=${JSON_CACHE_SECONDS}`
         }
     });
+
+    if (!isMock) context.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));
+    return response;
 };

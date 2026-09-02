@@ -4,6 +4,88 @@ import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivPar
 const WINDOW_HOURS = 24;
 const THRESHOLD_MAJOR = 900;
 
+interface Probe {
+    present: boolean;
+    live: string | null;
+    flips: { timestamp: Date; up: number }[];
+    flips_ok: boolean;
+    history_start: Date | null;
+    last_ping: string | null;
+}
+
+// Провайдер налаштований, але не відповів. Це не те саме, що «не налаштовано»:
+// present:true лишає компонент у списку, flips_ok:false робить усі смужки
+// порожніми, live:null не дає перебити їх живим станом. Відмова одного
+// провайдера гасить тільки його компоненти, решта сторінки живе далі.
+function unreachable(): Probe {
+    return { present: true, live: null, flips: [], flips_ok: false, history_start: null, last_ping: null };
+}
+
+// Компонент, для якого моніторинг не заведено взагалі.
+function notConfigured(): Probe {
+    return { present: false, live: null, flips: [], flips_ok: false, history_start: null, last_ping: null };
+}
+
+async function collectHealthchecks(specs: typeof COMPONENTS_SPEC, env: Env): Promise<(readonly [string, Probe])[]> {
+    const checksList = await fetchHealthchecks(env);
+
+    // fetchHealthchecks віддає [] коли ключа немає, тож null означає саме
+    // «ключ є, але API не відповів».
+    if (!checksList) return specs.map(spec => [spec.key, unreachable()] as const);
+
+    return Promise.all(specs.map(async spec => {
+        const override = healthchecksSlug(env, spec.key);
+
+        let found = null;
+        if (override) {
+            found = checksList.find((c: any) => c.slug?.toLowerCase() === override.toLowerCase());
+        }
+        if (!found) {
+            found = checksList.find((c: any) => c.slug?.toLowerCase() === spec.key.toLowerCase() || c.name?.toLowerCase() === spec.name.toLowerCase());
+        }
+        if (!found) return [spec.key, notConfigured()] as const;
+
+        const apiId = found.unique_key || found.uuid;
+        const flips = apiId ? await fetchHealthcheckFlips(apiId, env) : [];
+
+        let live = "nodata";
+        if (found.n_pings > 0) {
+            const s = found.status?.toLowerCase();
+            live = s === "up" ? "ok" : s === "grace" ? "minor" : s === "down" ? "down" : s === "paused" ? "mnt" : "nodata";
+        }
+
+        return [spec.key, {
+            present: true,
+            live,
+            flips: flips || [],
+            flips_ok: flips !== null,
+            history_start: null,
+            last_ping: found.last_ping
+        }] as const;
+    }));
+}
+
+async function collectUptimeRobot(specs: typeof COMPONENTS_SPEC, env: Env): Promise<(readonly [string, Probe])[]> {
+    const statusMap: Record<number, string> = {0: "mnt", 1: "nodata", 2: "ok", 8: "minor", 9: "down"};
+
+    return Promise.all(specs.map(async spec => {
+        const apiKey = uptimeRobotKey(env, spec.key);
+        if (!apiKey) return [spec.key, notConfigured()] as const;
+
+        const mon = await fetchUptimeRobot(apiKey);
+        if (!mon) return [spec.key, unreachable()] as const;
+
+        return [spec.key, {
+            present: true,
+            live: statusMap[mon.status] || "nodata",
+            flips: mon.flips,
+            flips_ok: true,
+            history_start: mon.create_datetime,
+            last_ping: null
+        }] as const;
+    }));
+}
+
 function getHourStart(d: Date): Date {
     return new Date(Math.floor(d.getTime() / (3600 * 1000)) * (3600 * 1000));
 }
@@ -62,75 +144,13 @@ export async function computeStatusData(env: Env) {
 
     const probes: Record<string, any> = {};
 
-    const checksList = await fetchHealthchecks(env);
-    if (checksList) {
-        const specs = COMPONENTS_SPEC.filter(c => c.source === "healthchecks");
-        for (const spec of specs) {
-            let found = null;
-            const override = healthchecksSlug(env, spec.key);
-            
-            if (override) {
-                found = checksList.find((c: any) => c.slug?.toLowerCase() === override.toLowerCase());
-            }
-            if (!found) {
-                found = checksList.find((c: any) => c.slug?.toLowerCase() === spec.key.toLowerCase() || c.name?.toLowerCase() === spec.name.toLowerCase());
-            }
-
-            if (found) {
-                const apiId = found.unique_key || found.uuid;
-                const flips = apiId ? await fetchHealthcheckFlips(apiId, env) : [];
-                const flipsOk = flips !== null;
-                
-                let live = "nodata";
-                if (found.n_pings > 0) {
-                    const s = found.status?.toLowerCase();
-                    live = s === "up" ? "ok" : s === "grace" ? "minor" : s === "down" ? "down" : s === "paused" ? "mnt" : "nodata";
-                }
-
-                probes[spec.key] = {
-                    present: true,
-                    live,
-                    flips: flips || [],
-                    flips_ok: flipsOk,
-                    history_start: null,
-                    last_ping: found.last_ping
-                };
-            } else {
-                probes[spec.key] = { present: false, live: null, flips: [], flips_ok: false, history_start: null, last_ping: null };
-            }
-        }
-    } else {
-        const specs = COMPONENTS_SPEC.filter(c => c.source === "healthchecks");
-        for (const spec of specs) probes[spec.key] = null;
-    }
-
-    const urSpecs = COMPONENTS_SPEC.filter(c => c.source === "uptimerobot");
-    for (const spec of urSpecs) {
-        const apiKey = uptimeRobotKey(env, spec.key);
-        if (!apiKey) {
-            probes[spec.key] = { present: false, live: null, flips: [], flips_ok: false, history_start: null, last_ping: null };
-            continue;
-        }
-        const mon = await fetchUptimeRobot(apiKey);
-        if (mon) {
-            const statusMap: Record<number, string> = {0: "mnt", 1: "nodata", 2: "ok", 8: "minor", 9: "down"};
-            probes[spec.key] = {
-                present: true,
-                live: statusMap[mon.status] || "nodata",
-                flips: mon.flips,
-                flips_ok: true,
-                history_start: mon.create_datetime,
-                last_ping: null
-            };
-        } else {
-            probes[spec.key] = null;
-        }
-    }
-
-    // Abort if any provider failed entirely to avoid overwriting cache with "nodata"
-    if (Object.values(probes).some(p => p === null)) {
-        return null;
-    }
+    // Обидва провайдери опитуються паралельно: послідовно це до шести
+    // round-trip на кожен холодний рендер.
+    const [hcProbes, urProbes] = await Promise.all([
+        collectHealthchecks(COMPONENTS_SPEC.filter(c => c.source === "healthchecks"), env),
+        collectUptimeRobot(COMPONENTS_SPEC.filter(c => c.source === "uptimerobot"), env)
+    ]);
+    for (const [key, probe] of [...hcProbes, ...urProbes]) probes[key] = probe;
 
     const components = [];
     
@@ -291,6 +311,11 @@ export async function computeStatusData(env: Env) {
     const coreFailing = components.filter(c => (c.key === "source" || c.key === "broadcast") && ["down", "major", "minor"].includes(c.state) && c.monitored);
     const auxFailing = components.filter(c => (c.key === "map" || c.key === "api") && ["down", "major", "minor"].includes(c.state) && c.monitored);
 
+    // Обидва кінці ланцюга без даних: ми не знаємо, чи проходить розсилка,
+    // і не маємо права стверджувати, що вона працює.
+    const coreKnown = components.filter(c => (c.key === "source" || c.key === "broadcast") && c.monitored);
+    const coreUnknown = !coreKnown.length || coreKnown.every(c => c.state === "nodata");
+
     let lastAlertDt: Date | null = null;
     let lastAlertLocation: string | null = null;
     if (telemetry?.last_alert?.timestamp) {
@@ -314,6 +339,9 @@ export async function computeStatusData(env: Env) {
         const earliest = dts.length ? dts.sort()[0] : null;
         headline = "Сповіщення не надходять";
         subtitle = `Не працюють${formatSince(earliest)}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
+    } else if (coreUnknown) {
+        headline = "Немає даних";
+        subtitle = "Ми не знаємо, чи проходить розсилка. Орієнтуйтесь на офіційний канал вашої області.";
     } else if (auxFailing.length > 0) {
         const keys = new Set(auxFailing.map(c => c.key));
         const dts = auxFailing.map(c => c.outage_since).filter(Boolean);

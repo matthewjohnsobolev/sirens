@@ -1,3 +1,13 @@
+import { statusWord } from "./helpers";
+
+function getBadgeClass(state: string): string {
+    if (state === 'ok') return 'ok';
+    if (state === 'minor') return 'minor';
+    if (state === 'down' || state === 'major') return 'down';
+    if (state === 'mnt') return 'mnt';
+    return 'nodata';
+}
+
 function getStateInfo(headline: string) {
     if (headline === 'Сповіщення не надходять') {
         return {
@@ -30,13 +40,6 @@ function getStateInfo(headline: string) {
 }
 
 export function renderHtml(data: any): string {
-    const formatUptime = (uptime: number | null) => {
-        if (uptime === null) return '—';
-        if (uptime >= 100) return '100%';
-        const formatted = (uptime > 99.9 && uptime < 100) ? '99,9' : uptime.toFixed(1).replace('.', ',');
-        return formatted + '%';
-    };
-
     const stateInfo = getStateInfo(data.headline);
     const getSummary = data.hours_summary || (() => 'немає даних');
     const getTitle = data.hour_title || ((date: string, state: string) => state);
@@ -44,13 +47,17 @@ export function renderHtml(data: any): string {
     const componentsHtml = data.components.map((comp: any) => {
         const hoursList = comp.hours || [];
         const summaryText = getSummary(hoursList);
-        
+        const badgeCls = getBadgeClass(comp.state);
+        const badgeLabel = statusWord(comp.state, comp.key);
+
         return `
       <section class="comp" data-key="${comp.key}" data-monitored="${comp.monitored ? 'true' : 'false'}">
         <div class="comp-head">
           <h2 class="comp-name">${comp.name}</h2>
           <span class="comp-val">
-            ${!comp.monitored ? '<span class="val-full">моніторинг не налаштовано</span><span class="val-short">не налаштовано</span>' : formatUptime(comp.uptime)}
+            ${!comp.monitored
+                ? '<span class="val-full">моніторинг не налаштовано</span><span class="val-short">не налаштовано</span>'
+                : `<span class="comp-badge comp-badge--${badgeCls}">${badgeLabel}</span>`}
           </span>
         </div>
         ${comp.desc ? `<p class="comp-desc">${comp.desc}</p>` : ''}

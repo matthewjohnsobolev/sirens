@@ -50,11 +50,12 @@ const OBLAST_STYLES = {
     explosion: { color: ALERT_COLORS.EXPLOSION, weight: 2, fillColor: ALERT_COLORS.EXPLOSION, fillOpacity: 0.55 }
 };
 
-function setOblastStyle(layer, data) {
+function setOblastStyle(layer, data, known = true) {
     const dominant = pickDominant({
         alert: data.alert, explosion: data.explosion,
     });
-    const state = dominant === 'alert' ? (data.alert ? data.alert.coverage : 'idle')
+    const state = !known ? 'idle'
+                : dominant === 'alert' ? (data.alert ? data.alert.coverage : 'idle')
                 : dominant || 'idle';
 
     layer.setStyle(OBLAST_STYLES[state] || OBLAST_STYLES.idle);
@@ -64,7 +65,7 @@ function setOblastStyle(layer, data) {
     layer[state === 'idle' ? 'bringToBack' : 'bringToFront']();
 }
 
-function getOblastPopupContent(oblastData) {
+function getOblastPopupContent(oblastData, known = true) {
     const alert = (oblastData && oblastData.alert) || {};
     const tracked = alert.tracked_districts || [];
 
@@ -81,7 +82,7 @@ function getOblastPopupContent(oblastData) {
         rows += `
               <div class="popup-city">
                   <div class="popup-city-name">${district.name || key}</div>
-                  ${renderPill(districtPillState(oblastData, key))}
+                  ${renderPill(districtPillState(oblastData, key, known))}
               </div>`;
     }
 
@@ -94,11 +95,13 @@ function getOblastPopupContent(oblastData) {
 
 var customOptions = {'maxWidth': '310', 'width': '310'};
 
-fetch('/api')
-    .then(response => response.json())
+const GEOJSON_URL = 'https://geo.sirens.live/ukraine.geojson';
+
+loadThreats()
     .then(apiData => {
-        fetch('https://geo.sirens.live/ukraine.geojson')
-            .then(res => res.json())
+        const known = stateIsKnown(apiData);
+
+        fetchJson(GEOJSON_URL)
             .then(geoData => {
                 const geoLayer = L.geoJSON(geoData, {
                     onEachFeature: function(feature, layer) {
@@ -125,7 +128,7 @@ fetch('/api')
                         const name = nameMap[regionId] || regionId;
                         
                         layer.bindPopup(
-                            () => '<div class="oblast-name">' + name + '</div>' + getOblastPopupContent(data),
+                            () => '<div class="oblast-name">' + name + '</div>' + getOblastPopupContent(data, known),
                             customOptions
                         );
                     }
@@ -136,9 +139,10 @@ fetch('/api')
                 geoLayer.eachLayer(function(layer) {
                     const data = apiData[layer.feature.properties.id];
                     if (!data) return;
-                    setOblastStyle(layer, data);
+                    setOblastStyle(layer, data, known);
                 });
-            });
+            })
+            .catch(error => { console.error('Error fetching the map outline:', error); });
     })
     .catch(error => { console.error('Error fetching data:', error); });
 

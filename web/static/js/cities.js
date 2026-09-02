@@ -1,4 +1,11 @@
 function setMarkerStyle(dominant) {
+    if (dominant === 'unknown') {
+        return (typeof grayChannelIcon !== 'undefined' && grayChannelIcon) ? grayChannelIcon : L.icon({
+            iconUrl: 'static/img/icons/channel-gray.svg',
+            iconSize: [27.5, 27.5],
+            popupAnchor: [0, -14]
+        });
+    }
     if (dominant === 'explosion') {
         return (typeof redChannelIcon !== 'undefined' && redChannelIcon) ? redChannelIcon : L.icon({
             iconUrl: 'static/img/icons/channel-red.svg',
@@ -41,27 +48,31 @@ function subscribeButtonHtml(channel) {
         </div>`;
 }
 
-function getMarkerPopupContent(marker, threats) {
-    const dominant = pickDominant(threats) || 'idle';
+function getMarkerPopupContent(marker, threats, known = true) {
+    const dominant = known ? (pickDominant(threats) || 'idle') : 'unknown';
     const winner = threats[dominant] || threats.alert || {};
+    const pill = known
+        ? { variant: dominant, updatedAt: winner.updated_at, source: winner.source }
+        : { variant: 'unknown', showTime: false };
 
     return `<div class='channel-popup-name'>${marker.name}</div>`
-         + renderPill({ variant: dominant, updatedAt: winner.updated_at, source: winner.source })
+         + renderPill(pill)
          + subscribeButtonHtml(marker.channel);
 }
 
 var customOptions = {'maxWidth': '310', 'width': '310'};
 
-fetch('/api')
-    .then(response => response.json())
+loadThreats()
     .then(data => {
+        const known = stateIsKnown(data);
+
         DISTRICT_MARKERS.forEach(marker => {
             const threats = getMarkerThreats(data, marker);
-            const dominant = pickDominant(threats);
+            const dominant = known ? pickDominant(threats) : 'unknown';
             const icon = setMarkerStyle(dominant);
             const m = L.marker([marker.lat, marker.lng], { icon: icon });
 
-            m.bindPopup(() => getMarkerPopupContent(marker, threats), customOptions);
+            m.bindPopup(() => getMarkerPopupContent(marker, threats, known), customOptions);
             m.addTo(map);
         });
     })

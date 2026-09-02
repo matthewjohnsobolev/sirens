@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -53,6 +54,55 @@ def test_api_route(client):
     assert response.json == payload
     assert response.headers.get("Cache-Control") == "public, max-age=2, s-maxage=2"
     mock_data.assert_called_once_with()
+
+
+def test_api_serves_the_last_good_answer_when_redis_falls_over(client, caplog):
+    """A blank map reads as an all-clear, so a moment-old answer beats none."""
+    payload = {"kyiv": {"alert": {"status": True}}, "meta": {"state_known": True}}
+    with patch("web.server.get_all_threats_data", return_value=payload):
+        assert client.get("/api").status_code == 200
+
+    caplog.set_level(logging.INFO)
+    with patch("web.server.get_all_threats_data", side_effect=ConnectionError("redis down")):
+        response = client.get("/api")
+
+    assert response.status_code == 200
+    assert response.json["kyiv"] == payload["kyiv"]
+    assert response.json["meta"]["state_known"] is True
+    assert response.json["meta"]["stale_seconds"] >= 0
+    assert int(response.headers["X-Sirens-Snapshot-Age"]) >= 0
+    assert "serving the snapshot" in caplog.text
+
+
+def test_api_says_so_when_it_has_nothing_to_serve(client):
+    with patch("web.server.get_all_threats_data", side_effect=ConnectionError("redis down")):
+        response = client.get("/api")
+
+    assert response.status_code == 503
+    assert "error" in response.json
+    assert response.headers.get("Cache-Control") == "no-store"
+
+
+def test_api_drops_a_snapshot_that_has_gone_stale(app):
+    app.extensions[web_server.SNAPSHOT_KEY] = (
+        {"kyiv": {"alert": {"status": True}}},
+        time.time() - web_server.SNAPSHOT_MAX_AGE - 5,
+    )
+
+    with patch("web.server.get_all_threats_data", side_effect=ConnectionError("redis down")):
+        response = app.test_client().get("/api")
+
+    assert response.status_code == 503
+
+
+def test_healthz_answers_from_the_process_alone(client):
+    with patch("web.server.get_all_threats_data", side_effect=AssertionError("not for healthz")):
+        response = client.get("/healthz")
+
+    assert response.status_code == 200
+    assert response.json["status"] == "ok"
+    assert response.json["version"] == VERSION
+    assert response.headers.get("Cache-Control") == "no-store"
 
 
 def test_static_caching_header(client):
@@ -133,6 +183,37 @@ def test_schema_is_created_on_first_request_only():
         test_client.get("/")
 
         mock_ensure.assert_called_once_with()
+
+
+def test_a_database_that_is_down_does_not_take_the_map_down(caplog):
+    """Nothing the site serves reads from PostgreSQL; an outage owes it none."""
+    caplog.set_level(logging.WARNING)
+
+    with patch("web.server.ensure_pg_tables", side_effect=OSError("pg down")) as mock_ensure:
+        test_client = create_app(init_db=True).test_client()
+
+        assert test_client.get("/").status_code == 200
+        assert test_client.get("/").status_code == 200
+
+    assert mock_ensure.call_count == 1
+    assert "Schema bootstrap failed" in caplog.text
+
+
+def test_the_schema_bootstrap_tries_again_once_the_backoff_is_over(monkeypatch):
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(web_server.time, "monotonic", lambda: clock["now"])
+
+    with patch(
+        "web.server.ensure_pg_tables", side_effect=[OSError("pg down"), None]
+    ) as mock_ensure:
+        test_client = create_app(init_db=True).test_client()
+        test_client.get("/")
+
+        clock["now"] += web_server.SCHEMA_RETRY_INTERVAL + 1
+        test_client.get("/")
+        test_client.get("/")
+
+    assert mock_ensure.call_count == 2
 
 
 def test_app_can_be_built_without_schema_bootstrap():

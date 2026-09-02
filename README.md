@@ -150,6 +150,15 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 * `source`: URL of the message the event came from, so the map can link a pill straight to it. For a district with its own channel that is the broadcast (e.g. `https://t.me/kyiv_alert/512`); for a district tracked on the map only, it is the source channel's post. Falls back to `"telegram"` for events recorded before message links were stored or whose link could not be resolved, and `"None"` when there is no event at all.
 * `districts`: every district of the region, keyed by district id, each with its Ukrainian `name` and its own `alert` and `shelling` state. Alerts are tracked for all districts of the government-controlled regions; Crimea, Sevastopol, Donetsk and Luhansk regions carry an empty map.
 * `coverage`: `"full"` when every district of the region is under alert, `"partial"` when only some are, `"none"` when none are. `active_districts` and `tracked_districts` list the district ids behind that verdict.
+* `meta`: not a region, but what the answer itself is worth. `state_known` is `false` when Redis holds no state the alerts worker put there - a wiped cache, a first start - in which case every region reads as inactive, which is indistinguishable from a nationwide all-clear. The map shows «Немає даних» rather than paint the country green, and any other consumer should do the same. `generated_at` is the Unix timestamp of the reading itself, which is not the time of the request: `stale_seconds` appears when Redis was unreachable and the answer came from the last one the web worker still had in hand - up to a minute old, never more. A live answer has no `stale_seconds` at all.
+
+**Endpoint:** `GET /healthz`
+
+Liveness, and nothing more: it answers from the process alone and never touches
+Redis or PostgreSQL. Deploys and uptime probes gate on it, so a dependency that
+wobbles is reported as a dependency wobbling instead of as the site being down.
+`GET /api` is the readiness check next to it - it is the one that can fail for
+something behind the app, and a deploy only warns about that.
 
 ## Monitoring and the Status Page
 

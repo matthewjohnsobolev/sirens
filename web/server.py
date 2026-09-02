@@ -65,6 +65,15 @@ REPORT_RATE_LIMIT = 5
 REPORT_RATE_WINDOW = 3600
 SENTRY_FLUSH_TIMEOUT = 2
 
+# The last payload /api answered with, kept per worker so a Redis hiccup shows
+# the map as it stood a moment ago instead of nothing at all. Past this age the
+# snapshot is dropped: stale alerts are worse than an honest failure.
+SNAPSHOT_KEY = "sirens_threat_snapshot"
+SNAPSHOT_MAX_AGE = 60
+
+# How long a worker waits before retrying a schema bootstrap that did not take.
+SCHEMA_RETRY_INTERVAL = 30
+
 
 def _ping_healthcheck(suffix: str = "") -> None:
     if not HEALTHCHECKS_WEB_PING_URL:
@@ -105,8 +114,50 @@ def index() -> str:
     return render_template("index.html")
 
 
+def _remember_threats(payload: dict[str, Any]) -> None:
+    current_app.extensions[SNAPSHOT_KEY] = (payload, time.time())
+
+
+def _remembered_threats() -> tuple[dict[str, Any], int] | None:
+    remembered = current_app.extensions.get(SNAPSHOT_KEY)
+    if not remembered:
+        return None
+
+    payload, stored_at = remembered
+    age = int(time.time() - stored_at)
+    if age > SNAPSHOT_MAX_AGE:
+        return None
+    return payload, age
+
+
 def api() -> Any:
-    return jsonify(get_all_threats_data())
+    try:
+        payload = get_all_threats_data()
+    except Exception:
+        remembered = _remembered_threats()
+        if remembered is None:
+            return jsonify({"error": "threat data is temporarily unavailable"}), 503
+
+        payload, age = remembered
+        # Sentry already has the error this followed; this only says what was
+        # done about it, so it travels as a breadcrumb rather than its own alarm.
+        log.info("Redis is unreachable; serving the snapshot taken %ss ago", age)
+        payload = {**payload, "meta": {**payload.get("meta", {}), "stale_seconds": age}}
+        response = jsonify(payload)
+        response.headers["X-Sirens-Snapshot-Age"] = str(age)
+        return response
+
+    _remember_threats(payload)
+    return jsonify(payload)
+
+
+def healthz() -> Any:
+    """Liveness only: the process is up and serving, whatever Redis is doing.
+
+    Deploys and uptime monitors gate on this so that a dependency wobble is
+    reported as a dependency wobble instead of the site being down.
+    """
+    return jsonify({"status": "ok", "version": VERSION, "environment": APP_ENV})
 
 
 def status() -> Any:
@@ -350,7 +401,12 @@ def static_url(filename: str) -> str:
 
 def add_caching_headers(response: Response) -> Response:
     if request.path == "/api":
-        response.headers["Cache-Control"] = "public, max-age=2, s-maxage=2"
+        # An answer that failed is nobody's to keep, a CDN's least of all.
+        response.headers["Cache-Control"] = (
+            "public, max-age=2, s-maxage=2" if response.status_code == 200 else "no-store"
+        )
+    elif request.path == "/healthz":
+        response.headers["Cache-Control"] = "no-store"
     elif request.path.startswith("/static/") or request.path.endswith(".geojson"):
         response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
     elif request.method == "GET" and response.status_code == 200:
@@ -359,14 +415,27 @@ def add_caching_headers(response: Response) -> Response:
 
 
 def _register_schema_init(app: Flask) -> None:
-    state = {"done": False}
+    state = {"done": False, "retry_at": 0.0}
+    lock = threading.Lock()
 
     @app.before_request
     def _init_schema() -> None:
         if state["done"]:
             return
-        ensure_pg_tables()
-        state["done"] = True
+
+        with lock:
+            if state["done"] or time.monotonic() < state["retry_at"]:
+                return
+            try:
+                ensure_pg_tables()
+            except Exception:
+                # The map, the report form and the error pages read nothing
+                # from PostgreSQL. A database that is down owes them no
+                # outage, so the bootstrap steps aside and tries again later.
+                state["retry_at"] = time.monotonic() + SCHEMA_RETRY_INTERVAL
+                log.warning("Schema bootstrap failed; retrying in %ss", SCHEMA_RETRY_INTERVAL)
+                return
+            state["done"] = True
 
 
 def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask:
@@ -395,8 +464,11 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
     app.after_request(add_caching_headers)
     app.jinja_env.globals["static_url"] = static_url
 
+    app.extensions[SNAPSHOT_KEY] = None
+
     app.add_url_rule("/", view_func=index)
     app.add_url_rule("/api", view_func=api, methods=["GET"])
+    app.add_url_rule("/healthz", view_func=healthz, methods=["GET"])
     app.add_url_rule("/issue", view_func=issue, methods=["GET", "POST"])
     app.add_url_rule("/status", view_func=status, methods=["GET"])
 

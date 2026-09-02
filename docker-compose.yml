@@ -51,7 +51,20 @@ services:
       - TZ=Europe/Kyiv
     env_file:
       - .env
-    command: gunicorn --workers 3 --bind 0.0.0.0:5000 web.server:app
+    # --timeout: a worker stuck on a dependency is recycled instead of holding
+    # a request forever. --max-requests recycles workers on a slow schedule so
+    # a leak in a long-lived process cannot accumulate unnoticed.
+    command: >-
+      gunicorn --workers 3 --bind 0.0.0.0:5000
+      --timeout 30 --graceful-timeout 30
+      --max-requests 2000 --max-requests-jitter 200
+      web.server:app
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   alerts:
     build: .

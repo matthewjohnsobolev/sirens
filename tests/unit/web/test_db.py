@@ -18,7 +18,11 @@ from domain import (
     test_channels,
 )
 from web.db import (
+    PG_CONNECT_TIMEOUT,
+    REDIS_CONNECT_TIMEOUT,
+    REDIS_SOCKET_TIMEOUT,
     SCHEMA_LOCK_KEY,
+    STATE_INITIALIZED_KEY,
     THREAT_TABLES,
     _validate_table,
     ensure_pg_tables,
@@ -28,6 +32,7 @@ from web.db import (
     get_threat_source,
     get_threat_status,
     get_threat_time,
+    redis_client,
     rehydrate_state_from_db,
     reset_threat_status,
     update_alert_source,
@@ -53,7 +58,20 @@ def test_get_pg_conn_uses_configured_database_url():
         conn = get_pg_conn()
 
     assert conn is mock_connect.return_value
-    mock_connect.assert_called_once_with(DATABASE_URL)
+    mock_connect.assert_called_once_with(DATABASE_URL, connect_timeout=PG_CONNECT_TIMEOUT)
+
+
+def test_get_pg_conn_gives_up_before_the_kernel_does():
+    """A database that never answers must not hold a request for minutes."""
+    assert 0 < PG_CONNECT_TIMEOUT <= 10
+
+
+def test_redis_client_refuses_to_wait_forever():
+    kwargs = redis_client.connection_pool.connection_kwargs
+
+    assert kwargs["socket_connect_timeout"] == REDIS_CONNECT_TIMEOUT
+    assert kwargs["socket_timeout"] == REDIS_SOCKET_TIMEOUT
+    assert kwargs["retry_on_timeout"] is True
 
 
 def test_ensure_pg_tables_serializes_concurrent_creators(mock_web_pg):
@@ -479,9 +497,10 @@ def test_rehydrate_state_from_db_logs_and_raises_on_error(mock_web_pg, caplog):
 
 
 class _FakePipeline:
-    def __init__(self, store, sets=None):
+    def __init__(self, store, sets=None, present_keys=(STATE_INITIALIZED_KEY,)):
         self._store = store
         self._sets = sets or {}
+        self._present = set(present_keys)
         self.operations = []
 
     def hgetall(self, key):
@@ -492,6 +511,10 @@ class _FakePipeline:
         self.operations.append(("smembers", key))
         return self
 
+    def exists(self, key):
+        self.operations.append(("exists", key))
+        return self
+
     def execute(self):
         results = []
         for op, key in self.operations:
@@ -499,6 +522,8 @@ class _FakePipeline:
                 results.append(dict(self._store.get(key, {})))
             elif op == "smembers":
                 results.append(set(self._sets.get(key, set())))
+            elif op == "exists":
+                results.append(1 if key in self._present else 0)
         return results
 
 
@@ -565,6 +590,23 @@ def test_get_all_threats_data_raises_and_logs_when_redis_is_down(threats_store, 
             get_all_threats_data()
 
     assert "Failed to read threat data from Redis" in caplog.text
+
+
+def test_get_all_threats_data_reports_the_state_it_found(threats_store):
+    result = get_all_threats_data()
+
+    assert result["meta"]["state_known"] is True
+    assert result["meta"]["generated_at"] > 0
+
+
+def test_get_all_threats_data_admits_when_redis_holds_no_state(mock_web_redis):
+    """An empty Redis reads as a nationwide all-clear; say so instead."""
+    mock_web_redis.pipeline.return_value = _FakePipeline({}, {}, present_keys=())
+
+    result = get_all_threats_data()
+
+    assert result["meta"]["state_known"] is False
+    assert result["kyiv"]["alert"]["status"] is False
 
 
 def test_get_all_threats_data_queries_every_table_and_oblast(threats_store):

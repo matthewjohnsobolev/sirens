@@ -33,12 +33,33 @@ def get_region_by_channel_id(channel_id: int) -> str | None:
     return None
 
 
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+# Neither store may pin a worker. A Redis or PostgreSQL that stops answering
+# without closing the socket would otherwise hold a request until the kernel
+# gives up on the connection - minutes during which the map serves nobody.
+REDIS_CONNECT_TIMEOUT = 2
+REDIS_SOCKET_TIMEOUT = 2
+REDIS_HEALTH_CHECK_INTERVAL = 30
+PG_CONNECT_TIMEOUT = 5
+
+redis_client = redis.from_url(
+    REDIS_URL,
+    decode_responses=True,
+    socket_connect_timeout=REDIS_CONNECT_TIMEOUT,
+    socket_timeout=REDIS_SOCKET_TIMEOUT,
+    socket_keepalive=True,
+    health_check_interval=REDIS_HEALTH_CHECK_INTERVAL,
+    retry_on_timeout=True,
+)
 DEFAULT_SOURCE = "telegram"
+
+# Written once the worker has rebuilt Redis from alert_history. Its absence
+# means Redis holds no state anyone put there - an empty store reads as a
+# nationwide all-clear, which is the one answer the map must never invent.
+STATE_INITIALIZED_KEY = "system:state_initialized"
 
 
 def get_pg_conn() -> psycopg2.extensions.connection:
-    return psycopg2.connect(DATABASE_URL)
+    return psycopg2.connect(DATABASE_URL, connect_timeout=PG_CONNECT_TIMEOUT)
 
 
 SCHEMA_LOCK_KEY = 8110921
@@ -522,7 +543,7 @@ def rehydrate_state_from_db() -> None:
                 if is_active and o_key:
                     pipeline.sadd(f"threat:alerts:active:{o_key}", d_key)
 
-    pipeline.set("system:state_initialized", "true")
+    pipeline.set(STATE_INITIALIZED_KEY, "true")
     pipeline.execute()
     log.info("Redis state rehydrated successfully from PostgreSQL (%d records)", len(rows))
 
@@ -592,6 +613,9 @@ def get_all_threats_data() -> dict[str, Any]:
     try:
         pipeline = redis_client.pipeline()
 
+        pipeline.exists(STATE_INITIALIZED_KEY)
+        keys_order.append(("state", STATE_INITIALIZED_KEY))
+
         for table in tables:
             for oblast in oblasts:
                 key = f"threat:{table}:{oblast}"
@@ -624,8 +648,12 @@ def get_all_threats_data() -> dict[str, Any]:
         "active_districts": {},
     }
 
+    state_known = False
+
     for (category, target), data in zip(keys_order, results, strict=False):
-        if category == "active_districts":
+        if category == "state":
+            state_known = bool(data)
+        elif category == "active_districts":
             raw_data["active_districts"][target] = list(data) if data else []
         elif not data:
             entry = DEFAULT_THREAT.copy()
@@ -697,5 +725,12 @@ def get_all_threats_data() -> dict[str, Any]:
         entry = build_oblast_entry(parent_oblast)
         entry["shelling"] = raw_data["city_shellings"].get(city, DEFAULT_THREAT)
         result[city] = entry
+
+    # "meta" sits beside the regions rather than wrapping them: no region is
+    # named that, so readers that index by region key are untouched.
+    result["meta"] = {
+        "state_known": state_known,
+        "generated_at": int(time.time()),
+    }
 
     return result

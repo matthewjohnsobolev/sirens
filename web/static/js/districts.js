@@ -74,7 +74,9 @@ function renderPill({ variant, text, updatedAt, source, showTime = true }) {
     return `<div class="info-block">${wrapped}</div>`;
 }
 
-function districtPillState(oblastData, key) {
+function districtPillState(oblastData, key, known = true) {
+    if (!known) return { variant: 'unknown', showTime: false };
+
     const district = (oblastData.districts && oblastData.districts[key]) || {};
     const threats = {
         alert: district.alert,

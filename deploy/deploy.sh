@@ -4,7 +4,11 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 REF="${1:-origin/main}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/api}"
+# Liveness, not readiness: /healthz answers from the process alone. Gating a
+# deploy on /api would let a Redis wobble roll back code that is perfectly
+# fine, so /api is checked below for a warning instead of a verdict.
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/healthz}"
+DATA_URL="${DATA_URL:-http://127.0.0.1:8000/api}"
 SESSION_FILE="data/sessions/sirens.session"
 BI_SESSION_FILE="data/sessions/bi.session"
 SELF="deploy/deploy.sh"
@@ -86,6 +90,9 @@ docker compose up -d --remove-orphans
 step "Waiting for $HEALTH_URL"
 for i in $(seq 1 30); do
     if curl -fsS --max-time 10 -o /dev/null "$HEALTH_URL"; then
+        if ! curl -fsS --max-time 10 -o /dev/null "$DATA_URL"; then
+            printf '\n\033[1;33mWARNING:\033[0m %s\n' "$DATA_URL is not serving threat data - check Redis and the alerts worker"
+        fi
         step "Done. Deployed revision $(git rev-parse --short HEAD)"
         docker compose ps
         docker image prune -f >/dev/null

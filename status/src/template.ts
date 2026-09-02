@@ -27,7 +27,7 @@ function getStateInfo(headline: string) {
             icon: '/img/icons/mnt-icon.svg'
         };
     }
-    if (headline === 'Стан невідомий') {
+    if (headline === 'Немає даних') {
         return {
             cls: 'nodata',
             icon: '/img/icons/no-data-icon.svg'

@@ -307,8 +307,8 @@ export async function computeStatusData(env: Env) {
     }
 
     if (!monitored.length || monitored.every(c => c.state === "nodata")) {
-        headline = "Стан невідомий";
-        subtitle = "Моніторинг не відповідає";
+        headline = "Немає даних";
+        subtitle = "";
     } else if (coreFailing.length > 0) {
         const dts = coreFailing.map(c => c.outage_since).filter(Boolean);
         const earliest = dts.length ? dts.sort()[0] : null;

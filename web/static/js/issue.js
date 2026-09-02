@@ -402,7 +402,7 @@ function select(i){
   restoreTabState(tab);
   document.body.classList.toggle('tab-other', isOther());
   comboClose();
-  if (hintCity) hintCity.hidden = true;
+  if (hintCity) hintCity.classList.remove('shown');
 
   bIssue.classList.remove('invalid');
   if (bTime) bTime.classList.remove('invalid', 'picker-invalid');
@@ -510,7 +510,7 @@ function comboMatch(q){
 function comboRender(q){
   comboItems = comboMatch(q);
   comboIndex = -1;
-  if(hintCity) hintCity.hidden = !(tab === 'alerts' && q && !comboItems.length);
+  if(hintCity) hintCity.classList.toggle('shown', tab === 'alerts' && q && !comboItems.length);
   if(!comboItems.length){ comboClose(); return; }
 
   const n = norm(q);
@@ -592,7 +592,7 @@ city.addEventListener('keydown', e => {
     }
   } else if(e.key === 'Escape' || e.key === 'Tab'){
     comboClose();
-    if(hintCity) hintCity.hidden = true;
+    if(hintCity) hintCity.classList.remove('shown');
   }
 });
 
@@ -612,7 +612,7 @@ cityList.addEventListener('mousemove', e => {
 document.addEventListener('pointerdown', e => {
   if(!combo.contains(e.target)){
     comboClose();
-    if(hintCity) hintCity.hidden = true;
+    if(hintCity) hintCity.classList.remove('shown');
   }
 });
 

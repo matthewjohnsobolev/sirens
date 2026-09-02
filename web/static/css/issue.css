@@ -217,13 +217,7 @@ body.tab-other .textarea{
 .input-datetime.invalid{border-color:var(--explosion);outline-color:var(--explosion)}
 
 .input:focus,
-.textarea:focus,
-.block.invalid .input:focus,
-.block.invalid .textarea:focus,
-.input.invalid:focus,
-.input-datetime.invalid:focus,
-.block.invalid .opt input:focus-visible + span,
-.block.invalid .opt input:checked + span{
+.textarea:focus{
   border-color:var(--ink);
   outline-color:var(--ink);
 }

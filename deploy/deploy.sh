@@ -29,7 +29,7 @@ if [[ -n "$DIRTY" && "${DISCARD_LOCAL:-0}" != "1" ]]; then
     die "working tree has local modifications (listed above) - commit them, or re-run with DISCARD_LOCAL=1 to discard"
 fi
 
-git fetch --prune --tags origin
+git -c http.version=HTTP/1.1 fetch --prune --tags origin
 TARGET="$(git rev-parse --verify "${REF}^{commit}")" || die "unknown revision: $REF"
 
 if [[ "$TARGET" == "$(git rev-parse HEAD)" && "${FORCE:-0}" != "1" ]]; then

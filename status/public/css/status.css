@@ -452,8 +452,8 @@ body {
   text-transform: uppercase;
   white-space: nowrap;
   pointer-events: none;
-  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .20))
-          drop-shadow(0 8px 18px rgba(0, 0, 0, .14));
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .16))
+          drop-shadow(0 5px 14px rgba(0, 0, 0, .10));
   opacity: 0;
   transform: translateY(3px);
   transition: opacity var(--motion-fade),

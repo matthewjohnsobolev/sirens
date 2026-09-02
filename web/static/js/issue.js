@@ -268,7 +268,7 @@ if (optsTime) {
       if (exactTime) exactTime.classList.remove('invalid');
     }
     if (bTime) bTime.classList.remove('invalid');
-    renderTime();
+    updateTimePickerVisibility();
   });
 }
 

@@ -576,7 +576,11 @@ city.addEventListener('input', () => {
   comboRender(city.value);
 });
 
-city.addEventListener('focus', () => comboRender(city.value));
+city.addEventListener('focus', () => {
+  if (city.value.trim() && !bCity.classList.contains('invalid')) {
+    comboRender(city.value);
+  }
+});
 
 city.addEventListener('keydown', e => {
   if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
@@ -742,6 +746,8 @@ form.addEventListener('submit', async (e) => {
   bCity.classList.toggle('invalid', noLocation);
 
   if (noIssue || noTime || noComment || noLocation) {
+    comboClose();
+    if (hintCity) hintCity.hidden = true;
     let first = null;
     if (noIssue) {
       first = opts.querySelector('input');
@@ -762,7 +768,11 @@ form.addEventListener('submit', async (e) => {
     } else {
       first = city;
     }
-    if (first) first.focus();
+    if (first) {
+      first.focus();
+      comboClose();
+      if (hintCity) hintCity.hidden = true;
+    }
     return;
   }
 

@@ -37,6 +37,7 @@
   --radius-control: 12px;
   --radius-card: 14px;
   --radius-bar: 2px;
+  --radius-badge: 6px; /* той самий радіус, що й у чіпа тултипа */
 
   /* Шкала відступів із кроком 4px. Усі відступи беруться звідси:
      значення поза шкалою — привід перевірити, чи воно справді потрібне. */
@@ -283,29 +284,40 @@ body {
   line-height: var(--leading-body);
 }
 
-/* Розмір і вага збігаються з .comp-name: у Inter та JetBrains Mono
-   висота великих літер і цифр однакова (0.74em), тож 14px/600 дає
-   однаковий кегль на око. */
+/* Обгортка значення в comp-head: сама не показник, лише тримає позицію
+   в сітці. Коли компонент не моніториться, у ній лишається звичайний
+   приглушений текст — той самий шрифт, що й в описах компонентів. */
 .comp-val {
-  font-family: var(--font-mono);
   font-size: var(--text-ui);
-  font-weight: var(--weight-semibold);
-  color: var(--ink);
-  letter-spacing: var(--track-mono);
-  text-transform: uppercase;
-  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-regular);
+  color: var(--ink-muted);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-/* Не показник, а примітка: та сама сітка, але звичайний текст. */
-.comp[data-monitored="false"] .comp-val {
-  font-family: var(--font);
-  font-weight: var(--weight-regular);
-  color: var(--ink-muted);
-  letter-spacing: normal;
-  text-transform: none;
+/* Бейдж останнього статусу компонента: заливка того самого кольору,
+   що й велика плашка стану вгорі сторінки, лише в масштабі підпису
+   (--text-footer/--track-mono — як у .scale й .tip). */
+.comp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--radius-badge);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-footer);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--track-mono);
+  text-transform: uppercase;
+  white-space: nowrap;
 }
+
+.comp-badge--ok     { background-color: var(--status-green); }
+.comp-badge--minor  { background-color: var(--status-orange); }
+.comp-badge--down   { background-color: var(--status-red); }
+.comp-badge--mnt    { background-color: var(--status-blue); }
+.comp-badge--nodata { background-color: var(--status-gray); }
 
 .val-full {
   display: inline;

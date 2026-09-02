@@ -164,9 +164,9 @@ because two different monitoring models feed it:
 
 | Component | Source | What a green bar actually means |
 |---|---|---|
-| Мапа | UptimeRobot `GET /` | the site opens for a visitor: DNS, TLS, Cloudflare, nginx, render |
+| Мапа тривог | UptimeRobot `GET /` | the site opens for a visitor: DNS, TLS, Cloudflare, nginx, render |
 | API | UptimeRobot `GET /api` | the endpoint answers with real JSON, not a 200 full of nothing |
-| Потік тривог | healthchecks `sirens-alerts-source` | posts from the source channel are reaching us |
+| Джерело тривог | healthchecks `sirens-alerts-source` | posts from the source channel are reaching us |
 | Розсилка в Telegram | healthchecks `sirens-alerts-broadcast` | our broadcasts into the network channels go through |
 
 The last two are the two ends of the same chain, and they break independently.
@@ -200,10 +200,19 @@ any future check with `api` or `tg` in its name would silently be adopted by a
 component and show its history there. A component with nothing configured says
 "моніторинг не налаштовано" and draws empty bars.
 
-For the same reason, a provider that is configured but fails to answer aborts
-the whole refresh instead of returning blanks: the page keeps serving the last
-good snapshot, labelled with its age, rather than replacing 90 days of real
-history with "no data".
+A provider that is configured but fails to answer is a third case, distinct from
+both of those: its components say "немає даних" and draw empty bars, while every
+component fed by the *other* provider keeps its real history. No data about a
+service is reported as no data about that service — never as an outage, and
+never as silence about the rest of the page. A failing UptimeRobot leaves the
+Telegram rows intact; a failing healthchecks.io leaves the map and API rows
+intact.
+
+The one thing that never degrades quietly is the headline. It claims
+"Сповіщення надходять" only when at least one of the two core components
+(`source`, `broadcast`) actually reports; if both are unknown, the headline is
+"Немає даних", because at that moment we cannot honestly say whether broadcasts
+are going out.
 
 ### One-time setup
 

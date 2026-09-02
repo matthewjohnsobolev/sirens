@@ -94,10 +94,8 @@ body.tab-other .textarea{
   user-select:none;
 }
 .input-datetime:focus{
-  outline:0;
-  border-width:2px;
+  outline-color:var(--ink);
   border-color:var(--ink);
-  padding:11px 15px;
 }
 .picker-hidden{
   position:absolute;
@@ -157,12 +155,13 @@ body.tab-other .textarea{
   display:flex;align-items:center;
   min-height:var(--control-h);
   border:1px solid var(--hairline);border-radius:var(--radius-control);
+  outline:2px solid transparent;outline-offset:-2px;
   padding:12px 16px;font-size:var(--text-body);line-height:1.4;
   color:var(--ink);cursor:pointer;
-  transition:border-color var(--motion),border-width var(--motion),padding var(--motion);
+  transition:border-color var(--motion),outline-color var(--motion);
 }
 .opt span:hover{border-color:var(--hairline-hover)}
-.opt input:checked + span{border-width:2px;border-color:var(--ink);padding:11px 15px}
+.opt input:checked + span{border-color:var(--ink);outline-color:var(--ink)}
 .opt input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
 
 .input,.textarea{
@@ -172,8 +171,9 @@ body.tab-other .textarea{
   color:var(--ink);
   background:transparent;
   border:1px solid var(--hairline);border-radius:var(--radius-control);
+  outline:2px solid transparent;outline-offset:-2px;
   padding:12px 16px;min-height:var(--control-h);
-  transition:border-color var(--motion),border-width var(--motion),padding var(--motion);
+  transition:border-color var(--motion),outline-color var(--motion);
 }
 .textarea{
   display:block;
@@ -211,8 +211,7 @@ body.tab-other .textarea{
   opacity:1;
 }
 .input:hover,.textarea:hover{border-color:var(--hairline-hover)}
-.input:focus{outline:0;border-width:2px;border-color:var(--ink);padding:11px 15px}
-.textarea:focus{outline:0;border-width:2px;border-color:var(--ink);padding:12px 15px}
+.input:focus,.textarea:focus{outline-color:var(--ink);border-color:var(--ink)}
 
 .hint,.err{
   margin:var(--gap-tight) 0 0;
@@ -222,49 +221,41 @@ body.tab-other .textarea{
 .err{display:none;color:var(--error-ink)}
 .block.invalid .err{display:block}
 .block.invalid .hint{display:none}
-.block.invalid .input{border-width:2px;border-color:var(--explosion);padding:11px 15px}
-.block.invalid .textarea{border-width:2px;border-color:var(--explosion);padding:12px 15px}
-.block.invalid .opt span{border-width:2px;border-color:var(--explosion);padding:11px 15px}
+.block.invalid .input,
+.block.invalid .textarea,
+.block.invalid .opt span{border-color:var(--explosion);outline-color:var(--explosion)}
 
 #block-time.invalid .input-datetime{
-  border-width:1px;
   border-color:var(--hairline);
-  padding:12px 16px;
+  outline-color:transparent;
 }
 #block-time.invalid .input-datetime:hover{
   border-color:var(--hairline-hover);
 }
 #block-time.invalid .input-datetime:focus{
-  outline:0;
-  border-width:2px;
+  outline-color:var(--ink);
   border-color:var(--ink);
-  padding:11px 15px;
 }
 #block-time.picker-invalid .opts .opt span{
-  border-width:1px;
   border-color:var(--hairline);
-  padding:12px 16px;
+  outline-color:transparent;
 }
 #block-time.picker-invalid .opts .opt span:hover{
   border-color:var(--hairline-hover);
 }
 #block-time.picker-invalid .opts .opt input:checked + span{
-  border-width:2px;
   border-color:var(--ink);
-  padding:11px 15px;
+  outline-color:var(--ink);
 }
 .input.input-datetime.invalid,
 .input-datetime.invalid{
-  border-width:2px !important;
   border-color:var(--explosion) !important;
-  padding:11px 15px !important;
+  outline-color:var(--explosion) !important;
 }
 .input.input-datetime.invalid:focus,
 .input-datetime.invalid:focus{
-  outline:0;
-  border-width:2px !important;
   border-color:var(--ink) !important;
-  padding:11px 15px !important;
+  outline-color:var(--ink) !important;
 }
 
 .combo{position:relative}

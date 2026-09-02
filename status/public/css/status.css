@@ -3,15 +3,10 @@
 :root {
   /* Заливка плашки стану */
   --status-green: #B9FFA8;
-  --status-green-hover: #C8FFBB;
   --status-orange: #FFCA9A;
-  --status-orange-hover: #FFD5AE;
   --status-red: #FFB7B7;
-  --status-red-hover: #FFC3C3;
   --status-blue: #BFF0FF;
-  --status-blue-hover: #D2F4FF;
   --status-gray: #E8E8E8;
-  --status-gray-hover: #EEEEEE;
 
   /* Смужки історії й крапка в тултипі */
   --status-green-bar: #2EAD1A;
@@ -180,23 +175,13 @@ body {
   border-radius: var(--radius-control);
   background-color: var(--status-green);
   color: var(--ink);
-  transition: background-color var(--motion);
 }
 
 .notice--ok .notice-pill      { background-color: var(--status-green); }
-.notice--ok .notice-pill:hover{ background-color: var(--status-green-hover); }
-
 .notice--warning .notice-pill { background-color: var(--status-orange); }
-.notice--warning .notice-pill:hover { background-color: var(--status-orange-hover); }
-
 .notice--error .notice-pill   { background-color: var(--status-red); }
-.notice--error .notice-pill:hover   { background-color: var(--status-red-hover); }
-
 .notice--mnt .notice-pill     { background-color: var(--status-blue); }
-.notice--mnt .notice-pill:hover     { background-color: var(--status-blue-hover); }
-
 .notice--nodata .notice-pill  { background-color: var(--status-gray); }
-.notice--nodata .notice-pill:hover  { background-color: var(--status-gray-hover); }
 
 /* Квадрат на всю висоту плашки: іконка центрована в ньому, тож ліворуч
    від неї лишається (--control-h - 24px) / 2 = 12px. */

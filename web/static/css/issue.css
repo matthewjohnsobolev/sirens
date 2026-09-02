@@ -220,6 +220,18 @@ body.tab-other .textarea{
 .err{display:none;color:var(--error-ink)}
 .block.invalid .err{display:block}
 .block.invalid .hint{display:none}
+
+#hint-city{
+  display:grid;
+  grid-template-rows:0fr;
+  margin-top:0;
+  opacity:0;
+  transition:grid-template-rows var(--motion-slide),
+             margin-top var(--motion-slide),
+             opacity var(--motion-fade);
+}
+#hint-city > span{display:block;min-height:0;overflow:hidden}
+#hint-city.shown{grid-template-rows:1fr;margin-top:var(--gap-tight);opacity:1}
 .block.invalid .input,
 .block.invalid .textarea,
 .block.invalid .opt span{border-color:var(--explosion);box-shadow:inset 0 0 0 1px var(--explosion)}

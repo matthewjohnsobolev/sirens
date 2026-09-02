@@ -52,7 +52,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const isServiceDown = data.headline === "Сповіщення не надходять";
     const isDegraded = data.headline.includes("— ні") || data.headline.includes("перебо");
     const isMnt = data.headline === "Планові роботи";
-    const isUnknown = data.headline === "Стан невідомий";
+    const isUnknown = data.headline === "Немає даних";
 
     let indicator = "none";
     if (isServiceDown) indicator = "major";

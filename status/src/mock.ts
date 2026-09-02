@@ -119,8 +119,8 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
     const outageTimeStr = `з ${((nowKyiv.hour - 2 + 24) % 24).toString().padStart(2, "0")}:00`;
 
     if (normScenario === "unknown") {
-        headline = "Стан невідомий";
-        subtitle = "Моніторинг тимчасово не відповідає";
+        headline = "Немає даних";
+        subtitle = "";
     } else if (normScenario === "service_down") {
         headline = "Сповіщення не надходять";
         subtitle = `Не працюють ${outageTimeStr}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;

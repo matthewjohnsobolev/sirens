@@ -27,8 +27,8 @@ function getFallbackStatusData(now: Date) {
     });
 
     return {
-        headline: "Стан невідомий",
-        subtitle: "Моніторинг тимчасово не відповідає",
+        headline: "Немає даних",
+        subtitle: "",
         components: COMPONENTS_SPEC.map(s => ({
             key: s.key,
             name: s.name,

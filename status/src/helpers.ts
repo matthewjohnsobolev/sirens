@@ -3,8 +3,8 @@ export const UK_MONTHS = [
     "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"
 ];
 
-// [однина, множина] — форма підбирається під назву компонента:
-// «Сповіщення в Telegram» — множина, решта — однина.
+// [однина, множина] — форма підбирається під назву компонента.
+// Наразі всі назви компонентів однинні, тож множина не використовується.
 export const STATUS_WORDS: Record<string, [string, string]> = {
     "ok": ["працює", "працюють"],
     "minor": ["часткові збої", "часткові збої"],
@@ -14,7 +14,7 @@ export const STATUS_WORDS: Record<string, [string, string]> = {
     "nodata": ["немає даних", "немає даних"],
 };
 
-const PLURAL_COMPONENTS = new Set(["broadcast"]);
+const PLURAL_COMPONENTS = new Set<string>([]);
 
 export function statusWord(state: string, componentKey?: string): string {
     const forms = STATUS_WORDS[state];

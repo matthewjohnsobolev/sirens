@@ -413,6 +413,66 @@ async def _record_alert_state(
             log.error("Failed to insert alert history into PG: %s", e)
 
 
+# SET ... GET claims the key and hands back what it displaced in one round
+# trip. A plain GET followed by a SET only after the message was away let two
+# events for the same district - the same alert reaching us from both sources
+# at once - both read the stale state and both go out.
+_RESTORE_STATE_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    if ARGV[2] == '' then
+        redis.call('DEL', KEYS[1])
+    else
+        redis.call('SET', KEYS[1], ARGV[2])
+    end
+end
+return 1
+"""
+
+
+async def _claim_alert_state(
+    state_key: str, alert_type: str, label: str
+) -> tuple[bool, str | None]:
+    """Claims the district's state for this alert and says whether to go ahead.
+
+    Also returns the state the claim displaced. A caller that never gets its
+    message out has to hand that back to `_release_alert_state`, or the
+    district keeps a state it never announced and the next real event of that
+    type is deduplicated away.
+    """
+    if not redis_client:
+        return True, None
+
+    try:
+        previous_alert_type = await redis_client.set(state_key, alert_type, get=True)
+    except Exception:
+        log.exception(
+            "Redis unavailable for %s; announcing %s without dedup check", label, alert_type
+        )
+        return True, None
+
+    if previous_alert_type == alert_type:
+        log.info("Duplicate %s ignored for %s: already in this state", alert_type, label)
+        return False, previous_alert_type
+
+    return True, previous_alert_type
+
+
+async def _release_alert_state(state_key: str, alert_type: str, previous: str | None) -> None:
+    """Puts back the state a claim displaced when the message never went out.
+
+    Conditional on the key still holding this claim: if a later event has
+    already moved the district on, that newer state is the truth, and writing
+    ours over it would silence the announcement that follows.
+    """
+    if not redis_client:
+        return
+
+    try:
+        await redis_client.eval(_RESTORE_STATE_LUA, 1, state_key, alert_type, previous or "")
+    except Exception:
+        log.exception("Failed to restore the state of %s after a failed send", state_key)
+
+
 async def send_alert(channel_id: int, region: str, alert_type: str, source_type: str = "primary"):
     message_text = MESSAGES.get(alert_type)
     if not message_text:
@@ -420,21 +480,11 @@ async def send_alert(channel_id: int, region: str, alert_type: str, source_type:
         return
 
     display_name = district_label(region)
+    state_key = f"channel_state:{channel_id}"
 
-    if redis_client:
-        try:
-            previous_alert_type = await redis_client.get(f"channel_state:{channel_id}")
-            if previous_alert_type == alert_type:
-                log.info(
-                    "Duplicate %s ignored for %s: already in this state", alert_type, display_name
-                )
-                return
-        except Exception:
-            log.exception(
-                "Redis unavailable for %s; broadcasting %s without dedup check",
-                display_name,
-                alert_type,
-            )
+    may_broadcast, displaced_state = await _claim_alert_state(state_key, alert_type, display_name)
+    if not may_broadcast:
+        return
 
     send_succeeded = False
     sent_message = None
@@ -454,6 +504,9 @@ async def send_alert(channel_id: int, region: str, alert_type: str, source_type:
             log.exception("Failed to send air raid alert cancellation to %s", display_name)
         else:
             log.exception("Failed to send %s to %s", alert_type.replace("_", " "), display_name)
+
+    if not send_succeeded:
+        await _release_alert_state(state_key, alert_type, displaced_state)
 
     await record_broadcast(send_succeeded)
 
@@ -491,16 +544,9 @@ async def record_map_only_alert(
 
     label = district_label(district_key)
 
-    if redis_client:
-        try:
-            previous_alert_type = await redis_client.get(f"district_state:{district_key}")
-            if previous_alert_type == alert_type:
-                log.info("Duplicate %s ignored for %s: already in this state", alert_type, label)
-                return
-        except Exception:
-            log.exception(
-                "Redis unavailable for %s; recording %s without dedup check", label, alert_type
-            )
+    may_record, _ = await _claim_alert_state(f"district_state:{district_key}", alert_type, label)
+    if not may_record:
+        return
 
     await _record_alert_state(
         None,

@@ -15,9 +15,11 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 
 from config import (
     APP_ENV,
+    GA_MEASUREMENT_ID,
     HEALTHCHECKS_WEB_PING_URL,
     LOGS_PATH,
     SENTRY_DSN,
+    SITE_URL,
     VERSION,
 )
 from web.db import ensure_pg_tables, get_all_threats_data, redis_client
@@ -111,6 +113,36 @@ def api() -> Any:
 
 def status() -> Any:
     return redirect("https://status.sirens.live", code=301)
+
+
+# The pages this origin serves. The status page is a separate host and ships its
+# own pair of files: a sitemap may only list URLs under the origin serving it.
+SITEMAP_PATHS = ("/", "/issue")
+
+
+def robots() -> Response:
+    body = "\n".join(
+        (
+            "User-agent: *",
+            "Allow: /",
+            "Disallow: /api",
+            "",
+            f"Sitemap: {SITE_URL}/sitemap.xml",
+            "",
+        )
+    )
+    return Response(body, mimetype="text/plain")
+
+
+def sitemap() -> Response:
+    urls = "".join(f"    <url><loc>{SITE_URL}{path}</loc></url>\n" for path in SITEMAP_PATHS)
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{urls}"
+        "</urlset>\n"
+    )
+    return Response(body, mimetype="application/xml")
 
 
 def _client_ip() -> str:
@@ -351,6 +383,8 @@ def static_url(filename: str) -> str:
 def add_caching_headers(response: Response) -> Response:
     if request.path == "/api":
         response.headers["Cache-Control"] = "public, max-age=2, s-maxage=2"
+    elif request.path in ("/robots.txt", "/sitemap.xml"):
+        response.headers["Cache-Control"] = "public, max-age=86400"
     elif request.path.startswith("/static/") or request.path.endswith(".geojson"):
         response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
     elif request.method == "GET" and response.status_code == 200:
@@ -389,8 +423,12 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
         log.warning("SENTRY_DSN not set; issue reports will not be delivered anywhere")
 
     @app.context_processor
-    def inject_version() -> dict[str, str]:
-        return {"version": VERSION}
+    def inject_page_globals() -> dict[str, str]:
+        return {
+            "version": VERSION,
+            "site_url": SITE_URL,
+            "ga_measurement_id": GA_MEASUREMENT_ID,
+        }
 
     app.after_request(add_caching_headers)
     app.jinja_env.globals["static_url"] = static_url
@@ -399,6 +437,8 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
     app.add_url_rule("/api", view_func=api, methods=["GET"])
     app.add_url_rule("/issue", view_func=issue, methods=["GET", "POST"])
     app.add_url_rule("/status", view_func=status, methods=["GET"])
+    app.add_url_rule("/robots.txt", view_func=robots, methods=["GET"])
+    app.add_url_rule("/sitemap.xml", view_func=sitemap, methods=["GET"])
 
     app.register_error_handler(404, handle_not_found)
     app.register_error_handler(500, handle_server_error)

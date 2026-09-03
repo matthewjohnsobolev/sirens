@@ -4,7 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Повідомити про збій | Сирени</title>
-<meta name="description" content="Повідомити про помилку або збій у роботі системи «Сирени».">
+<meta name="description" content="Повідомити про помилку або збій у роботі «Сирен»: сповіщення не прийшло, мапа показує не те, форма чи API не працюють. Опишіть проблему — розберемось.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#F4F4F4">
+<link rel="canonical" href="{{ site_url }}/issue">
+
+{% include "_analytics.html" %}
 
 <!-- Open Graph / Facebook Meta Tags -->
 <meta property="og:url" content="https://sirens.live/issue">
@@ -14,6 +19,7 @@
 <meta property="og:image" content="https://sirens.live/static/img/og-banner.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Мапа повітряних тривог України «Сирени»">
 <meta property="og:site_name" content="Сирени">
 <meta property="og:locale" content="uk_UA">
 
@@ -24,6 +30,7 @@
 <meta name="twitter:title" content="Повідомити про збій | Сирени">
 <meta name="twitter:description" content="Повідомити про помилку або збій у роботі системи «Сирени».">
 <meta name="twitter:image" content="https://sirens.live/static/img/og-banner.png">
+<meta name="twitter:image:alt" content="Мапа повітряних тривог України «Сирени»">
 
 <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -34,6 +41,17 @@
 
 <script type="application/json" id="report-config">{{ page_config | tojson }}</script>
 <script src="{{ static_url('js/issue.js') }}" defer></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ContactPage",
+  "name": "Повідомити про збій | Сирени",
+  "url": "{{ site_url }}/issue",
+  "inLanguage": "uk-UA",
+  "isPartOf": {"@type": "WebSite", "@id": "{{ site_url }}/#website"}
+}
+</script>
 </head>
 
 <body {% if success %}class="sent"{% endif %}>

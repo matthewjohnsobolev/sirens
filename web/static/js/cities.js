@@ -62,6 +62,13 @@ fetch('/api')
             const m = L.marker([marker.lat, marker.lng], { icon: icon });
 
             m.bindPopup(() => getMarkerPopupContent(marker, threats), customOptions);
+            m.on('popupopen', () => {
+                if (window.track) window.track('marker_popup_open', {
+                    marker_type: 'city',
+                    region_name: marker.name,
+                    threat_state: dominant || 'idle'
+                });
+            });
             m.addTo(map);
         });
     })

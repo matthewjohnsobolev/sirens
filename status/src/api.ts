@@ -14,6 +14,7 @@ export interface Env {
     UPTIMEROBOT_API_MONITOR_KEY?: string;
     UPTIMEROBOT_SIRENS_API_API?: string;
     STATUS_START_DATE?: string;
+    GA_MEASUREMENT_ID?: string;
     ENVIRONMENT?: string;
     TELEMETRY?: KVNamespace;
     STATUS_KV?: KVNamespace;

@@ -1,4 +1,5 @@
 import { Env, COMPONENTS_SPEC } from "../src/api";
+import { gaMeasurementId } from "../src/analytics";
 import { computeStatusData } from "../src/processor";
 import { renderHtml } from "../src/template";
 import { formatHourParts, formatHourTitle, summarizeHours } from "../src/helpers";
@@ -56,10 +57,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
     const url = new URL(request.url);
     const mockParam = url.searchParams.get("mock");
+    const measurementId = gaMeasurementId(env);
 
     if (mockParam && env.ENVIRONMENT === "development") {
         const mockData = getMockStatusData(mockParam, new Date());
-        const html = renderHtml(mockData);
+        const html = renderHtml(mockData, measurementId);
         return new Response(html, {
             headers: {
                 ...SECURITY_HEADERS,
@@ -78,7 +80,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     if (!response) {
         try {
             const data = await computeStatusData(env);
-            response = new Response(renderHtml(data), {
+            response = new Response(renderHtml(data, measurementId), {
                 headers: {
                     ...SECURITY_HEADERS,
                     "Cache-Control": `public, max-age=${PAGE_CACHE_SECONDS}`
@@ -89,7 +91,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             // тож сюди веде тільки справжня помилка розрахунку. Кешуємо її
             // ненадовго, щоб баг не перетворився на цикл запитів в апстріми.
             console.error("Error generating status page:", error);
-            response = new Response(renderHtml(getFallbackStatusData(new Date())), {
+            response = new Response(renderHtml(getFallbackStatusData(new Date()), measurementId), {
                 status: 500,
                 headers: {
                     ...SECURITY_HEADERS,

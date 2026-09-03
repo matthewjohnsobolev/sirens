@@ -301,9 +301,15 @@
   document.addEventListener('pointerup', onTouchEnd, true);
   document.addEventListener('pointercancel', onTouchCancel, true);
 
+  // Дотик і клік самі наводять фокус на смужку вже після того, як тултип
+  // показано. Повторний showTip на ту саму смужку не встигав вийти по
+  // ранньому return (клас .is-visible ставиться лише в наступному кадрі)
+  // і скидав таймер автоприховування — тултип на дотику лишався висіти,
+  // а разом з ним завмирав і пульс. Фокус показує тултип тільки тоді,
+  // коли він справді переїхав на іншу смужку — з клавіатури.
   document.addEventListener('focusin', function(event) {
     const bar = event.target && event.target.closest ? event.target.closest('.bar') : null;
-    if (bar) {
+    if (bar && bar !== currentBar) {
       showTip(bar);
     }
   }, true);

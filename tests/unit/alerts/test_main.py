@@ -84,6 +84,15 @@ def _reset_telemetry_state(monkeypatch):
     alerts_main.running_tasks.clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_catch_up_state():
+    alerts_main.districts_handled_live.clear()
+    alerts_main.catch_up_pending = True
+    yield
+    alerts_main.districts_handled_live.clear()
+    alerts_main.catch_up_pending = True
+
+
 async def _drain_background_tasks():
     while alerts_main.running_tasks:
         tasks = list(alerts_main.running_tasks)
@@ -2346,3 +2355,424 @@ async def test_push_telemetry_to_kv_includes_fallback_data(monkeypatch):
     assert body["fallback_source_connected"] is True
     assert "last_primary_message_at" in body
     assert "last_fallback_message_at" in body
+
+
+# The post that reached the source channel at 08:12 on 3 September 2026, while
+# the process was restarting, and that no Kyiv subscriber ever saw.
+KYIV_MISSED_POST = (
+    "🔴 08:12 Повітряна тривога в м. Київ\nСлідкуйте за подальшими повідомленнями.\n#м_Київ"
+)
+KYIV_MISSED_CANCELLATION = (
+    "🟢 08:40 Відбій тривоги в м. Київ\nСлідкуйте за подальшими повідомленнями.\n#м_Київ"
+)
+FALLBACK_CHANNEL = real_source_channels["fallback"]
+
+
+class FakePost(NamedTuple):
+    """A source channel post as Telethon hands it back."""
+
+    id: int
+    message: str
+    date: datetime.datetime
+
+
+def _post(message_id, text, seconds_ago=30):
+    moment = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=seconds_ago)
+    return FakePost(id=message_id, message=text, date=moment)
+
+
+def _history_client(history):
+    """Telegram client double serving each channel's posts newest first."""
+
+    def _order(post):
+        return post.id if isinstance(post.id, int) else 0
+
+    async def get_messages(chat_id, min_id=None, limit=None):
+        posts = sorted(history.get(chat_id, []), key=_order, reverse=True)
+        if min_id is not None:
+            posts = [
+                post for post in posts if _order(post) > min_id or not isinstance(post.id, int)
+            ]
+        return posts[:limit] if limit else posts
+
+    mock_client = AsyncMock()
+    mock_client.get_messages = AsyncMock(side_effect=get_messages)
+    return mock_client
+
+
+async def _catch_up(
+    history,
+    positions,
+    region_channels=ALL_REGION_CHANNELS,
+    fallback_source=None,
+    tg_client=None,
+):
+    with (
+        patch("alerts.main.client", tg_client or _history_client(history)),
+        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send_alert,
+        patch("alerts.main.record_map_only_alert", new_callable=AsyncMock) as mock_record,
+        patch("alerts.main.resolve_channel_username", new_callable=AsyncMock) as mock_username,
+    ):
+        mock_username.return_value = SOURCE_USERNAME
+        await alerts_main.catch_up_missed_alerts(
+            region_channels, positions, fallback_source=fallback_source
+        )
+        await _drain_background_tasks()
+
+    assert alerts_main.running_tasks == set()
+    return Dispatched(
+        [call.args for call in mock_send_alert.await_args_list],
+        [call.args for call in mock_record.await_args_list],
+    )
+
+
+def _marked_positions(mock_redis):
+    """Channel id and message id of every position write, in order."""
+    return [
+        (call.args[2].rsplit(":", 1)[-1], int(call.args[3]))
+        for call in mock_redis.eval.await_args_list
+    ]
+
+
+@pytest.mark.asyncio
+async def test_catch_up_replays_the_alert_missed_during_a_restart():
+    """The restart gap that swallowed Kyiv's siren no longer swallows it."""
+    dispatched = await _catch_up(
+        {SOURCE_CHANNEL: [_post(SOURCE_MESSAGE_ID + 1, KYIV_MISSED_POST)]},
+        {SOURCE_CHANNEL: SOURCE_MESSAGE_ID},
+    )
+
+    assert dispatched.broadcast == [(ALL_REGION_CHANNELS["kyiv"], "kyiv", "air_raid_alert")]
+
+
+@pytest.mark.asyncio
+async def test_catch_up_announces_only_the_state_the_gap_ended_in():
+    """An alert raised and called off while offline settles without a siren."""
+    dispatched = await _catch_up(
+        {
+            SOURCE_CHANNEL: [
+                _post(SOURCE_MESSAGE_ID + 1, KYIV_MISSED_POST, seconds_ago=300),
+                _post(SOURCE_MESSAGE_ID + 2, KYIV_MISSED_CANCELLATION, seconds_ago=60),
+            ]
+        },
+        {SOURCE_CHANNEL: SOURCE_MESSAGE_ID},
+    )
+
+    assert dispatched.broadcast == [
+        (ALL_REGION_CHANNELS["kyiv"], "kyiv", "air_raid_alert_cancelled")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_catch_up_leaves_a_district_a_live_post_already_moved(caplog):
+    """A replay never overrides the announcement a live post has just made."""
+    alerts_main.districts_handled_live.add("kyiv")
+
+    with caplog.at_level(logging.INFO):
+        dispatched = await _catch_up(
+            {SOURCE_CHANNEL: [_post(SOURCE_MESSAGE_ID + 1, KYIV_MISSED_POST)]},
+            {SOURCE_CHANNEL: SOURCE_MESSAGE_ID},
+        )
+
+    assert dispatched.broadcast == []
+    assert "already up to date" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_catch_up_ignores_posts_older_than_the_window():
+    """A siren for a raid that has long since run its course is never raised."""
+    stale = alerts_main.CATCH_UP_MAX_AGE + 60
+    dispatched = await _catch_up(
+        {SOURCE_CHANNEL: [_post(SOURCE_MESSAGE_ID + 1, KYIV_MISSED_POST, seconds_ago=stale)]},
+        {SOURCE_CHANNEL: SOURCE_MESSAGE_ID},
+    )
+
+    assert dispatched.broadcast == []
+
+
+@pytest.mark.asyncio
+async def test_catch_up_records_a_map_only_district_with_its_source_link():
+    dispatched = await _catch_up(
+        {SOURCE_CHANNEL: [_post(SOURCE_MESSAGE_ID, "Вишгородський район Повітряна тривога")]},
+        {SOURCE_CHANNEL: SOURCE_MESSAGE_ID - 1},
+        region_channels={},
+    )
+
+    assert dispatched.recorded == [("vyshhorod", "air_raid_alert", SOURCE_MESSAGE_ID, SOURCE_LINK)]
+
+
+@pytest.mark.asyncio
+async def test_catch_up_reads_both_sources_and_keeps_the_later_post():
+    """The same alert from both sources is announced once, by its later copy."""
+    dispatched = await _catch_up(
+        {
+            SOURCE_CHANNEL: [_post(10, KYIV_MISSED_POST, seconds_ago=90)],
+            FALLBACK_CHANNEL: [_post(20, KYIV_MISSED_POST, seconds_ago=60)],
+        },
+        {SOURCE_CHANNEL: 9, FALLBACK_CHANNEL: 19},
+        fallback_source=FALLBACK_CHANNEL,
+    )
+
+    assert dispatched.broadcast == [(ALL_REGION_CHANNELS["kyiv"], "kyiv", "air_raid_alert")]
+
+
+@pytest.mark.asyncio
+async def test_catch_up_marks_the_source_as_handled(mock_redis):
+    await _catch_up(
+        {
+            SOURCE_CHANNEL: [
+                _post(SOURCE_MESSAGE_ID + 1, KYIV_MISSED_POST, seconds_ago=90),
+                _post(SOURCE_MESSAGE_ID + 2, KYIV_MISSED_CANCELLATION, seconds_ago=60),
+            ]
+        },
+        {SOURCE_CHANNEL: SOURCE_MESSAGE_ID},
+    )
+
+    assert _marked_positions(mock_redis) == [
+        (str(SOURCE_CHANNEL), SOURCE_MESSAGE_ID + 1),
+        (str(SOURCE_CHANNEL), SOURCE_MESSAGE_ID + 2),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_catch_up_without_a_stored_position_only_marks_the_head(mock_redis):
+    """A first run has no gap to replay, just a place to resume from."""
+    dispatched = await _catch_up(
+        {SOURCE_CHANNEL: [_post(SOURCE_MESSAGE_ID, KYIV_MISSED_POST)]},
+        {SOURCE_CHANNEL: None},
+    )
+
+    assert dispatched.broadcast == []
+    assert _marked_positions(mock_redis) == [(str(SOURCE_CHANNEL), SOURCE_MESSAGE_ID)]
+
+
+@pytest.mark.asyncio
+async def test_catch_up_survives_an_unreadable_source(caplog):
+    failing_client = AsyncMock()
+    failing_client.get_messages = AsyncMock(side_effect=ConnectionError("no route"))
+
+    dispatched = await _catch_up({}, {SOURCE_CHANNEL: SOURCE_MESSAGE_ID}, tg_client=failing_client)
+
+    assert dispatched.broadcast == []
+    assert "Could not read the posts missed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_catch_up_survives_an_unreadable_head(caplog):
+    failing_client = AsyncMock()
+    failing_client.get_messages = AsyncMock(side_effect=ConnectionError("no route"))
+
+    await _catch_up({}, {SOURCE_CHANNEL: None}, tg_client=failing_client)
+
+    assert "Could not read the latest post" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_catch_up_skips_posts_without_usable_content():
+    photo_only = FakePost(id=SOURCE_MESSAGE_ID + 1, message="", date=datetime.datetime.now())
+    undated = FakePost(id=SOURCE_MESSAGE_ID + 2, message=KYIV_MISSED_POST, date=None)
+    unidentified = FakePost(
+        id=MagicMock(), message=KYIV_MISSED_POST, date=datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    dispatched = await _catch_up(
+        {SOURCE_CHANNEL: [photo_only, undated, unidentified]},
+        {SOURCE_CHANNEL: SOURCE_MESSAGE_ID},
+    )
+
+    assert dispatched.broadcast == []
+
+
+@pytest.mark.asyncio
+async def test_catch_up_reads_a_naive_post_time_as_utc():
+    naive = FakePost(
+        id=SOURCE_MESSAGE_ID + 1,
+        message=KYIV_MISSED_POST,
+        date=datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
+    )
+
+    dispatched = await _catch_up({SOURCE_CHANNEL: [naive]}, {SOURCE_CHANNEL: SOURCE_MESSAGE_ID})
+
+    assert dispatched.broadcast == [(ALL_REGION_CHANNELS["kyiv"], "kyiv", "air_raid_alert")]
+
+
+@pytest.mark.asyncio
+async def test_catch_up_releases_live_tracking_when_it_finishes():
+    alerts_main.districts_handled_live.add("kyiv")
+
+    await _catch_up({SOURCE_CHANNEL: []}, {SOURCE_CHANNEL: SOURCE_MESSAGE_ID})
+
+    assert alerts_main.catch_up_pending is False
+    assert alerts_main.districts_handled_live == set()
+
+
+@pytest.mark.asyncio
+async def test_mark_source_position_only_moves_forward(mock_redis):
+    await alerts_main.mark_source_position(SOURCE_CHANNEL, 42)
+
+    mock_redis.eval.assert_awaited_once_with(
+        alerts_main._ADVANCE_POSITION_LUA,
+        1,
+        f"{alerts_main.SOURCE_POSITION_KEY}:{SOURCE_CHANNEL}",
+        "42",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "chat_id, message_id",
+    [(SOURCE_CHANNEL, None), (None, 42), (SOURCE_CHANNEL, MagicMock())],
+    ids=["no-message-id", "no-chat-id", "unusable-message-id"],
+)
+async def test_mark_source_position_ignores_what_it_cannot_store(mock_redis, chat_id, message_id):
+    await alerts_main.mark_source_position(chat_id, message_id)
+
+    mock_redis.eval.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mark_source_position_survives_unreachable_redis(mock_redis, caplog):
+    mock_redis.eval.side_effect = ConnectionError("redis down")
+
+    await alerts_main.mark_source_position(SOURCE_CHANNEL, 42)
+
+    assert "Failed to store the position of source channel" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_read_source_positions_returns_the_stored_place(mock_redis):
+    mock_redis.get.return_value = "512"
+
+    assert await alerts_main.read_source_positions([SOURCE_CHANNEL]) == {SOURCE_CHANNEL: 512}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored", [None, "", "not-a-number"], ids=["missing", "empty", "malformed"]
+)
+async def test_read_source_positions_without_a_usable_value(mock_redis, stored):
+    mock_redis.get.return_value = stored
+
+    assert await alerts_main.read_source_positions([SOURCE_CHANNEL]) == {SOURCE_CHANNEL: None}
+
+
+@pytest.mark.asyncio
+async def test_read_source_positions_survives_unreachable_redis(mock_redis, caplog):
+    mock_redis.get.side_effect = ConnectionError("redis down")
+
+    positions = await alerts_main.read_source_positions([SOURCE_CHANNEL])
+
+    assert positions == {SOURCE_CHANNEL: None}
+    assert "Redis unreachable while reading the position" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_read_source_positions_without_redis():
+    alerts_main.redis_client = None
+
+    assert await alerts_main.read_source_positions([SOURCE_CHANNEL]) == {SOURCE_CHANNEL: None}
+
+
+@pytest.mark.asyncio
+async def test_handler_marks_how_far_the_source_is_handled(mock_redis):
+    handler = build_message_handler(ALL_REGION_CHANNELS)
+    event = MagicMock()
+    event.message.message = "Some text without any district"
+    event.message.id = SOURCE_MESSAGE_ID
+    event.chat_id = SOURCE_CHANNEL
+
+    await handler(event)
+
+    assert _marked_positions(mock_redis) == [(str(SOURCE_CHANNEL), SOURCE_MESSAGE_ID)]
+
+
+@pytest.mark.asyncio
+async def test_handler_records_districts_it_handled_while_catch_up_is_pending():
+    await _dispatch("м. Київ Повітряна тривога", {"kyiv": 1111})
+
+    assert "kyiv" in alerts_main.districts_handled_live
+
+
+@pytest.mark.asyncio
+async def test_handler_stops_recording_districts_once_catch_up_is_done():
+    alerts_main.catch_up_pending = False
+
+    await _dispatch("м. Київ Повітряна тривога", {"kyiv": 1111})
+
+    assert alerts_main.districts_handled_live == set()
+
+
+@pytest.mark.asyncio
+async def test_main_reads_the_source_position_before_the_handler_goes_live():
+    """Read after registration, a live post would hide the gap behind it."""
+    order = []
+
+    async def read_positions(chats):
+        order.append("read")
+        return dict.fromkeys(chats)
+
+    async def catch_up(*_args, **_kwargs):
+        order.append("catch_up")
+
+    with (
+        patch("alerts.main.redis.from_url"),
+        patch("alerts.main.asyncpg.create_pool", new_callable=AsyncMock),
+        patch("alerts.main.ensure_pg_tables"),
+        patch("alerts.main.rehydrate_state_from_db"),
+        patch("alerts.main.TelegramClient") as MockClient,
+        patch("alerts.main.cli.get_args") as mock_get_args,
+        patch("alerts.main.read_source_positions", side_effect=read_positions),
+        patch("alerts.main.catch_up_missed_alerts", side_effect=catch_up),
+    ):
+        mock_get_args.return_value = argparse.Namespace(mode="dev")
+        mock_client_instance = AsyncMock()
+        MockClient.return_value.__aenter__.return_value = mock_client_instance
+        mock_client_instance.is_user_authorized.return_value = True
+        mock_client_instance.add_event_handler = MagicMock(
+            side_effect=lambda *_: order.append("handler")
+        )
+
+        await main()
+
+    assert order == ["read", "handler", "catch_up"]
+
+
+@pytest.mark.asyncio
+async def test_the_restart_that_swallowed_kyiv_now_recovers_it(mock_redis):
+    """Replays 3 September 2026: the restart at 08:12:25 that lost Kyiv's siren.
+
+    The source posted Kyiv at 08:12 and Vyshhorod seconds later. The process
+    came up in between, so it saw Vyshhorod live and never learned of Kyiv.
+    """
+    kyiv_post = _post(101, KYIV_MISSED_POST, seconds_ago=90)
+    vyshhorod_post = _post(102, "🔴 08:12 Повітряна тривога в Вишгородський район", seconds_ago=60)
+
+    mock_redis.get.return_value = "100"
+    positions = await alerts_main.read_source_positions([SOURCE_CHANNEL])
+    assert positions == {SOURCE_CHANNEL: 100}
+
+    handler = build_message_handler(ALL_REGION_CHANNELS)
+    live_event = MagicMock()
+    live_event.message = vyshhorod_post
+    live_event.chat_id = SOURCE_CHANNEL
+
+    with (
+        patch("alerts.main.client", _history_client({SOURCE_CHANNEL: [kyiv_post, vyshhorod_post]})),
+        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send_alert,
+        patch("alerts.main.record_map_only_alert", new_callable=AsyncMock) as mock_record,
+        patch("alerts.main.resolve_channel_username", new_callable=AsyncMock) as mock_username,
+    ):
+        mock_username.return_value = SOURCE_USERNAME
+
+        # The first post the new process sees live, seconds after startup.
+        await handler(live_event)
+        await alerts_main.catch_up_missed_alerts(ALL_REGION_CHANNELS, positions)
+        await _drain_background_tasks()
+
+    announced = [call.args for call in mock_send_alert.await_args_list]
+    recorded = [call.args[:2] for call in mock_record.await_args_list]
+
+    # Kyiv broadcasts, and it is the replay that saves it.
+    assert announced == [(ALL_REGION_CHANNELS["kyiv"], "kyiv", "air_raid_alert")]
+    # Vyshhorod is map-only and arrived live, so the replay leaves it alone.
+    assert recorded == [("vyshhorod", "air_raid_alert")]

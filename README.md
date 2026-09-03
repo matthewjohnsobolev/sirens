@@ -185,6 +185,19 @@ explicit `/fail` and raises one Sentry event per episode of silence. Before this
 existed, the check only proved the Telegram socket was connected, which a
 silently dead source looks exactly like.
 
+**The gap a restart leaves.** Telethon only hands over the updates that arrive
+while it is connected, and it is never asked for the ones it missed, so anything
+posted during a restart used to vanish without a line in the log — on 3
+September 2026 the siren for Kyiv was posted at 08:12, between the shutdown and
+the first message the new process saw at 08:12:53, and reached nobody. The
+worker now records how far each source has been handled
+(`service:alerts:last_message_id:<chat>`, moving forward only) and, on start,
+reads back everything posted past that mark. Each district is brought to the
+state its *last* missed post left it in, so a gap that swallowed both an alert
+and its cancellation settles quietly instead of announcing a raid that is
+already over; posts older than `CATCH_UP_MAX_AGE` are read but never announced,
+and a district a live post has already moved on is left to that post.
+
 **Output.** Every broadcast attempt records its verdict
 (`service:alerts:last_broadcast_ok`). The check carries the verdict of the *last*
 attempt and stays red until the next one succeeds. A plain dead-man's switch

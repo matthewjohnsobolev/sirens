@@ -134,26 +134,31 @@ async def resolve_channel_username(channel_id: int) -> str | None:
     return username
 
 
-async def broadcast_reference(channel_id: int, message) -> tuple[int | None, str | None]:
+async def message_reference(chat_id: int | None, message) -> tuple[int | None, str | None]:
+    """ID and public link of a post, for whatever needs to refer back to it."""
     message_id = getattr(message, "id", None)
-    if not isinstance(message_id, int):
-        log.warning("Broadcast to channel %d returned no message id; link not stored", channel_id)
-        return None, None
-
-    username = await resolve_channel_username(channel_id)
-    return message_id, build_message_link(channel_id, message_id, username)
-
-
-async def source_reference(event) -> tuple[int | None, str | None]:
-    """Source message ID and link for map-only updates."""
-    message_id = getattr(event.message, "id", None)
-    chat_id = getattr(event, "chat_id", None)
     if not isinstance(message_id, int) or not isinstance(chat_id, int):
-        log.warning("Source message has no id; map-only districts recorded without a link")
         return None, None
 
     username = await resolve_channel_username(chat_id)
     return message_id, build_message_link(chat_id, message_id, username)
+
+
+async def broadcast_reference(channel_id: int, message) -> tuple[int | None, str | None]:
+    message_id, message_link = await message_reference(channel_id, message)
+    if message_id is None:
+        log.warning("Broadcast to channel %d returned no message id; link not stored", channel_id)
+    return message_id, message_link
+
+
+async def source_reference(event) -> tuple[int | None, str | None]:
+    """Source message ID and link for map-only updates."""
+    message_id, message_link = await message_reference(
+        getattr(event, "chat_id", None), event.message
+    )
+    if message_id is None:
+        log.warning("Source message has no id; map-only districts recorded without a link")
+    return message_id, message_link
 
 
 def spawn_tracked_task(coro, description: str):
@@ -695,6 +700,7 @@ LAST_FALLBACK_MESSAGE_KEY = "service:alerts:last_fallback_message_at"
 LAST_BROADCAST_AT_KEY = "service:alerts:last_broadcast_at"
 LAST_ALERT_INFO_KEY = "service:alerts:last_alert_info"
 ACTIVE_SOURCE_KEY = "service:alerts:active_source"
+SOURCE_POSITION_KEY = "service:alerts:last_message_id"
 
 
 async def push_telemetry_to_kv() -> None:
@@ -1010,6 +1016,220 @@ async def _prime_monitoring_state(primary_source: int, fallback_source: int | No
     spawn_tracked_task(push_telemetry_to_kv(), "Initial telemetry sync on start")
 
 
+def _source_position_key(chat_id: int) -> str:
+    return f"{SOURCE_POSITION_KEY}:{chat_id}"
+
+
+# Both sources are handled concurrently and a slow handler can finish after a
+# newer post has already been marked, so the position only ever moves forward.
+_ADVANCE_POSITION_LUA = """
+local stored = tonumber(redis.call('GET', KEYS[1]))
+local seen = tonumber(ARGV[1])
+if stored == nil or seen > stored then
+    redis.call('SET', KEYS[1], ARGV[1])
+end
+return 1
+"""
+
+
+async def mark_source_position(chat_id: int | None, message_id: int | None) -> None:
+    """Records how far a source channel has been handled."""
+    if not redis_client or not isinstance(chat_id, int) or not isinstance(message_id, int):
+        return
+
+    try:
+        await redis_client.eval(
+            _ADVANCE_POSITION_LUA, 1, _source_position_key(chat_id), str(message_id)
+        )
+    except Exception:
+        log.warning("Failed to store the position of source channel %d", chat_id, exc_info=True)
+
+
+async def read_source_positions(source_chats: list[int]) -> dict[int, int | None]:
+    """Where each source was left off, read before live updates start moving it."""
+    positions: dict[int, int | None] = dict.fromkeys(source_chats)
+    if not redis_client:
+        return positions
+
+    for chat_id in source_chats:
+        try:
+            stored = await redis_client.get(_source_position_key(chat_id))
+        except Exception:
+            log.warning(
+                "Redis unreachable while reading the position of channel %d", chat_id, exc_info=True
+            )
+            continue
+
+        if not stored:
+            continue
+
+        try:
+            positions[chat_id] = int(stored)
+        except (TypeError, ValueError):
+            log.warning("Stored position of channel %d is malformed: %r", chat_id, stored)
+
+    return positions
+
+
+def dispatch_district_alert(
+    district_key: str,
+    alert_type: str,
+    region_channels: dict,
+    source_ref: tuple[int | None, str | None],
+    source_type: str,
+) -> None:
+    """Broadcasts the district's alert to its channel, or records it for the map alone."""
+    channel_id = region_channels.get(district_key)
+
+    if channel_id:
+        spawn_tracked_task(
+            send_alert(channel_id, district_key, alert_type, source_type=source_type),
+            f"Alert broadcast of {alert_type} to {district_key} via {source_type}",
+        )
+    else:
+        spawn_tracked_task(
+            record_map_only_alert(district_key, alert_type, *source_ref, source_type=source_type),
+            f"Map-only record of {alert_type} for {district_key} via {source_type}",
+        )
+
+
+# A post older than this is no longer worth announcing on a restart: the map is
+# rehydrated from PostgreSQL anyway, and a siren for an alert that has long
+# since run its course is worse than no siren at all.
+CATCH_UP_MAX_AGE = 3600
+CATCH_UP_MAX_MESSAGES = 100
+
+districts_handled_live: set[str] = set()
+catch_up_pending: bool = True
+
+
+async def _missed_messages(
+    chat_id: int, last_handled_id: int
+) -> list[tuple[datetime.datetime, object]]:
+    """Source posts newer than the last one handled, each with its post time."""
+    try:
+        messages = await client.get_messages(
+            chat_id, min_id=last_handled_id, limit=CATCH_UP_MAX_MESSAGES
+        )
+    except Exception:
+        log.warning("Could not read the posts missed on channel %d", chat_id, exc_info=True)
+        return []
+
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        seconds=CATCH_UP_MAX_AGE
+    )
+
+    fresh = []
+    for message in messages or []:
+        if not isinstance(getattr(message, "id", None), int):
+            continue
+        if not getattr(message, "message", None):
+            continue
+
+        moment = getattr(message, "date", None)
+        if not isinstance(moment, datetime.datetime):
+            continue
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=datetime.timezone.utc)
+        if moment < cutoff:
+            continue
+
+        fresh.append((moment, message))
+
+    return fresh
+
+
+async def _remember_source_head(chat_id: int) -> None:
+    """Marks where to resume from when there is no stored position yet."""
+    try:
+        messages = await client.get_messages(chat_id, limit=1)
+    except Exception:
+        log.warning("Could not read the latest post on channel %d", chat_id, exc_info=True)
+        return
+
+    head = messages[0] if messages else None
+    await mark_source_position(chat_id, getattr(head, "id", None))
+
+
+async def catch_up_missed_alerts(
+    region_channels: dict,
+    positions: dict[int, int | None],
+    fallback_source: int | None = None,
+) -> None:
+    """Replays the alerts the source posted while this process was down.
+
+    Telethon only dispatches the updates it receives while connected, and it is
+    never asked for the ones it missed, so a restart swallows whatever was
+    posted during it without leaving a trace in the log - the way Kyiv's siren
+    on 3 September was posted at 08:12, between the shutdown and the first
+    message the new process saw at 08:12:53, and reached nobody.
+
+    Each district is brought to the state its last missed post left it in, so a
+    gap that swallowed both an alert and its cancellation settles quietly
+    instead of announcing a raid that is already over.
+    """
+    global catch_up_pending
+
+    try:
+        collected: list[tuple[datetime.datetime, int, object]] = []
+        for chat_id, last_handled_id in positions.items():
+            if last_handled_id is None:
+                await _remember_source_head(chat_id)
+                continue
+
+            for moment, message in await _missed_messages(chat_id, last_handled_id):
+                collected.append((moment, chat_id, message))
+
+        if not collected:
+            return
+
+        collected.sort(key=lambda item: (item[0], item[2].id))
+
+        pending: dict[str, tuple[str, int, object]] = {}
+        for _moment, chat_id, message in collected:
+            for district_key, alert_type in match_districts(
+                strip_ongoing_notice(message.message)
+            ).items():
+                pending[district_key] = (alert_type, chat_id, message)
+
+        log.info("Missed %d source post(s) while offline; catching up now", len(collected))
+
+        replayed = 0
+        for district_key, (alert_type, chat_id, message) in pending.items():
+            # A district a live post has already moved on is left alone:
+            # replaying an older state would undo the newer announcement.
+            if district_key in districts_handled_live:
+                continue
+
+            source_ref: tuple[int | None, str | None] = (None, None)
+            if not region_channels.get(district_key):
+                source_ref = await message_reference(chat_id, message)
+
+            log.info(
+                "Replaying %s for %s missed while offline", alert_type, district_label(district_key)
+            )
+            source_type = "fallback" if chat_id == fallback_source else "primary"
+            dispatch_district_alert(
+                district_key, alert_type, region_channels, source_ref, source_type
+            )
+            replayed += 1
+
+        # Only once the replay is out is the gap closed: a crash before this
+        # leaves the position behind and the same posts are read again.
+        for _moment, chat_id, message in collected:
+            await mark_source_position(chat_id, message.id)
+
+        if replayed:
+            log.warning("Announced %d district(s) whose alert was missed while offline", replayed)
+        else:
+            log.info("Every district named in the missed posts is already up to date")
+    finally:
+        # Live posts stop being tracked only once nothing is left to replay
+        # over them.
+        catch_up_pending = False
+        districts_handled_live.clear()
+
+
 def build_message_handler(
     region_channels: dict,
     primary_source: int | None = None,
@@ -1022,36 +1242,25 @@ def build_message_handler(
 
         await record_source_message(getattr(event.message, "date", None), source_type=source_type)
 
-        if not event.message or not getattr(event.message, "message", None):
-            return
+        message = getattr(event, "message", None)
+        if message and getattr(message, "message", None):
+            message_text = strip_ongoing_notice(message.message)
+            matched = match_districts(message_text)
+            log_unrecognised_districts(message_text)
 
-        message_text = strip_ongoing_notice(event.message.message)
-        matched = match_districts(message_text)
-        log_unrecognised_districts(message_text)
+            source_ref: tuple[int | None, str | None] = (None, None)
+            if any(not region_channels.get(district_key) for district_key in matched):
+                source_ref = await source_reference(event)
 
-        if not matched:
-            return
-
-        source_ref: tuple[int | None, str | None] = (None, None)
-        if any(not region_channels.get(district_key) for district_key in matched):
-            source_ref = await source_reference(event)
-
-        for district_key, alert_type in matched.items():
-            log_alert_received(district_key, alert_type)
-            channel_id = region_channels.get(district_key)
-
-            if channel_id:
-                spawn_tracked_task(
-                    send_alert(channel_id, district_key, alert_type, source_type=source_type),
-                    f"Alert broadcast of {alert_type} to {district_key} via {source_type}",
+            for district_key, alert_type in matched.items():
+                log_alert_received(district_key, alert_type)
+                if catch_up_pending:
+                    districts_handled_live.add(district_key)
+                dispatch_district_alert(
+                    district_key, alert_type, region_channels, source_ref, source_type
                 )
-            else:
-                spawn_tracked_task(
-                    record_map_only_alert(
-                        district_key, alert_type, *source_ref, source_type=source_type
-                    ),
-                    f"Map-only record of {alert_type} for {district_key} via {source_type}",
-                )
+
+        await mark_source_position(chat_id, getattr(message, "id", None))
 
     return handle_incoming_message
 
@@ -1296,6 +1505,11 @@ async def main():
                 )
             log.info("Sirens started in %s mode", args.mode)
 
+            # Read before the handler goes live: an incoming post moves the
+            # position forward, and the alerts missed during the restart are
+            # the ones behind it.
+            positions = await read_source_positions(monitored_chats)
+
             client.add_event_handler(
                 build_message_handler(
                     region_channels,
@@ -1306,6 +1520,9 @@ async def main():
             )
 
             await _prime_monitoring_state(primary_source, fallback_source=fallback_source)
+            await catch_up_missed_alerts(
+                region_channels, positions, fallback_source=fallback_source
+            )
 
             monitoring_tasks = [
                 asyncio.create_task(

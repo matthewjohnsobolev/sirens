@@ -1,4 +1,5 @@
 import { statusWord } from "./helpers";
+import { analyticsHead } from "./analytics";
 
 function getBadgeClass(state: string): string {
     if (state === 'ok') return 'ok';
@@ -39,7 +40,7 @@ function getStateInfo(headline: string) {
     };
 }
 
-export function renderHtml(data: any): string {
+export function renderHtml(data: any, measurementId = ""): string {
     const stateInfo = getStateInfo(data.headline);
     const getSummary = data.hours_summary || (() => 'немає даних');
     const getTitle = data.hour_title || ((date: string, state: string) => state);
@@ -91,22 +92,43 @@ export function renderHtml(data: any): string {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Стан системи | Сирени</title>
 <meta name="description" content="Поточний стан та історія доступності компонентів системи «Сирени»: сповіщення в Telegram, джерела тривог, мапа тривог та API за останні 24 години.">
+<meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#F4F4F4">
+<link rel="canonical" href="https://status.sirens.live/">
+${analyticsHead(measurementId, stateInfo.cls)}
 <meta property="og:title" content="Стан системи | Сирени">
 <meta property="og:description" content="Поточний стан та історія доступності компонентів системи «Сирени» за останні 24 години.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://status.sirens.live">
 <meta property="og:site_name" content="Сирени">
 <meta property="og:locale" content="uk_UA">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="https://sirens.live/static/img/og-banner.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Мапа повітряних тривог України «Сирени»">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Стан системи | Сирени">
 <meta name="twitter:description" content="Поточний стан та історія доступності компонентів системи «Сирени» за останні 24 години.">
+<meta name="twitter:image" content="https://sirens.live/static/img/og-banner.png">
+<meta name="twitter:image:alt" content="Мапа повітряних тривог України «Сирени»">
 <link rel="shortcut icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/status.css">
 <script src="/js/status.js" defer></script>
+<script src="/js/analytics.js" defer></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Стан системи | Сирени",
+  "url": "https://status.sirens.live/",
+  "description": "Поточний стан та історія доступності компонентів системи «Сирени» за останні 24 години.",
+  "inLanguage": "uk-UA",
+  "isPartOf": {"@type": "WebSite", "@id": "https://sirens.live/#website"}
+}
+</script>
 </head>
 
 <body>

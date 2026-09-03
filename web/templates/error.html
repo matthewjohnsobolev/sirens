@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>{{ error_code | default(404) }} | {{ (error_message | default('Сторінку не знайдено')) | lower }}</title>
+<meta name="theme-color" content="#E9E9E7">
+
+{% set ga_page_params = {'page_type': 'error', 'error_code': error_code | default(404) | string} %}
+{% include "_analytics.html" %}
+<script>
+  // Биті посилання видно лише тут: page_view сам по собі не каже,
+  // що сторінка була помилкою.
+  window.track('error_page_view', {
+    error_code: '{{ error_code | default(404) }}',
+    error_referrer: document.referrer || '(none)'
+  });
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">

@@ -305,6 +305,85 @@ One-time setup, in order:
 CI only syncs files into the bucket; the Worker is deployed by hand and changes
 roughly never.
 
+## Analytics
+
+Both public origins report to a single GA4 property with the direct `gtag.js`
+tag — no Tag Manager container in between, and no ad slots. One measurement ID
+covers `sirens.live` and `status.sirens.live`: GA4 writes its cookie on the
+parent domain, so a visitor moving between the map and the status page stays in
+the same session without any cross-domain configuration.
+
+`GA_MEASUREMENT_ID` (see `.env.example` and `status/wrangler.toml`) carries the
+ID. Blank it out and the pages render without the tag — the status page also
+drops it automatically when `ENVIRONMENT=development`, so `wrangler pages dev`
+never reaches the production property.
+
+Every custom event goes through `window.track(name, params)`, defined next to
+the tag. Ad blockers are common enough here that a direct `gtag()` call would
+otherwise take the map down with it; the helper swallows the failure.
+
+### Events
+
+`page_view` is automatic. On top of it:
+
+| Page | Event | Parameters |
+| --- | --- | --- |
+| Map | `marker_popup_open` | `marker_type`, `region_name`, `threat_state` |
+| Map | `region_popup_open` | `region_name`, `threat_state` |
+| Map | `telegram_subscribe_click` | `channel_name`, `region_name`, `link_location` |
+| Map | `alert_source_open` | `region_name`, `threat_state` |
+| Map | `markers_toggle` | `markers_visible` |
+| Map | `report_cta_click` | `link_location` |
+| Report form | `report_form_start` | `form_name`, `report_category` |
+| Report form | `report_tab_select` | `form_name`, `report_category` |
+| Report form | `report_form_error` | `form_name`, `report_category`, `error_field` |
+| Report form | `report_form_submit` | `form_name`, `report_category`, `report_option`, `report_when` |
+| Report form | `report_form_failure` | `form_name`, `report_category`, `error_type` |
+| Status | `status_bar_open` | `component_key`, `hour_state` |
+| Status | `status_auto_refresh` | `system_state` |
+| Status | `site_nav_click` | `link_location`, `link_url` |
+| Error page | `error_page_view` | `error_code`, `error_referrer` |
+
+Parameter values are kept to small, closed sets. `report_when` reports
+`custom` rather than the date the reporter typed, and a link to the original
+Telegram post is counted without its URL: a custom dimension that sees more
+than 500 values a day collapses the rest into `(other)`.
+
+The form events are deliberately not called `form_start` / `form_submit`:
+Enhanced Measurement already fires those names on any `submit` event, and the
+report form submits over `fetch` after `preventDefault()`, so the built-in
+events would double-count — including attempts that failed validation.
+
+The status page reloads itself once a minute. A tab left open would otherwise
+report sixty page views an hour and wreck both session counts and bounce rate,
+so the reload sets a `sessionStorage` flag, the next load configures itself
+with `send_page_view: false`, and `status_auto_refresh` records the refresh
+instead.
+
+### Setting the property up
+
+Nothing below is in code — it is one-time work in the GA4 interface:
+
+1. Register the parameters above as **custom dimensions** (Admin → Custom
+   definitions). An event parameter that is not registered is collected but
+   never appears in a report.
+2. Mark `telegram_subscribe_click` and `report_form_submit` as **key events** —
+   they are the two things the project actually wants people to do.
+3. Add `status.sirens.live` to the data stream's **unwanted referrals**.
+   Without it a visitor crossing between the hosts shows up as a self-referral
+   and starts a new session.
+4. Turn **Form interactions** off in Enhanced Measurement, for the reason above.
+
+### SEO
+
+`/robots.txt` and `/sitemap.xml` are served by Flask; the status page carries
+its own pair as static files, because a sitemap may only list URLs on the
+origin that serves it. Every public page declares a canonical URL and
+`index, follow, max-image-preview:large`; the error page stays `noindex`.
+The map page ships `Organization`, `WebSite` and `WebApplication` JSON-LD, the
+report form a `ContactPage`, and the status page a `WebPage` — all bound to the
+same `WebSite` node.
+
 ## License
 
 This project is licensed under the PolyForm Strict License 1.0.0. See the [LICENSE](LICENSE) file for details.

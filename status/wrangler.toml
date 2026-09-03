@@ -6,6 +6,7 @@ compatibility_date = "2024-05-12"
 HEALTHCHECKS_ALERTS_SOURCE_SLUG = "sirens-alerts-source"
 HEALTHCHECKS_ALERTS_BROADCAST_SLUG = "sirens-alerts-broadcast"
 STATUS_START_DATE = "2023-01-01"
+GA_MEASUREMENT_ID = "G-JC48ZJGBHM"
 
 [[kv_namespaces]]
 binding = "TELEMETRY"

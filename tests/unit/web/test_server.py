@@ -90,6 +90,99 @@ def test_index_versions_every_stylesheet_and_script(client):
     assert unversioned == [], f"unversioned assets: {unversioned}"
 
 
+def test_public_pages_report_to_the_ga4_property_directly(client):
+    """One gtag.js tag per page, and no trace of the container it replaced."""
+    for path in ("/", "/issue", "/no-such-page"):
+        html = client.get(path).get_data(as_text=True)
+        assert 'src="https://www.googletagmanager.com/gtag/js?id=G-JC48ZJGBHM"' in html, path
+        assert "gtm.js" not in html, path
+        assert "GTM-" not in html, path
+        assert "adsbygoogle" not in html, path
+        assert "googlesyndication" not in html, path
+
+
+def test_pages_survive_a_deployment_without_a_ga4_property(client, monkeypatch):
+    """A blank ID drops the tag but keeps track(), so page scripts still run."""
+    monkeypatch.setattr(web_server, "GA_MEASUREMENT_ID", "")
+
+    html = client.get("/").get_data(as_text=True)
+
+    assert "googletagmanager.com/gtag/js" not in html
+    assert "window.track" in html
+
+
+def test_public_pages_declare_a_canonical_url(client):
+    assert '<link rel="canonical" href="https://sirens.live/">' in client.get("/").get_data(
+        as_text=True
+    )
+    assert '<link rel="canonical" href="https://sirens.live/issue">' in client.get(
+        "/issue"
+    ).get_data(as_text=True)
+
+
+def test_public_pages_invite_the_crawler_in(client):
+    for path in ("/", "/issue"):
+        html = client.get(path).get_data(as_text=True)
+        assert 'name="robots" content="index, follow, max-image-preview:large"' in html, path
+
+
+def test_error_page_tells_analytics_which_code_it_answered_with(client):
+    html = client.get("/no-such-page").get_data(as_text=True)
+
+    assert "noindex" in html
+    assert "error_page_view" in html
+    assert "error_code: '404'" in html
+
+
+def test_robots_allows_the_pages_and_points_at_the_sitemap(client):
+    response = client.get("/robots.txt")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("text/plain")
+    body = response.get_data(as_text=True)
+    assert "User-agent: *" in body
+    assert "Allow: /" in body
+    assert "Disallow: /api" in body
+    assert "Sitemap: https://sirens.live/sitemap.xml" in body
+
+
+def test_sitemap_lists_the_public_pages_of_this_origin_only(client):
+    response = client.get("/sitemap.xml")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("application/xml")
+    body = response.get_data(as_text=True)
+    assert "<loc>https://sirens.live/</loc>" in body
+    assert "<loc>https://sirens.live/issue</loc>" in body
+    # The status page is a separate host: a sitemap may only list its own.
+    assert "status.sirens.live" not in body
+
+
+def test_crawler_files_are_cached_for_a_day(client):
+    for path in ("/robots.txt", "/sitemap.xml"):
+        assert client.get(path).headers.get("Cache-Control") == "public, max-age=86400", path
+
+
+def test_index_ships_structured_data_search_engines_can_parse(client):
+    html = client.get("/").get_data(as_text=True)
+
+    blocks = re.findall(
+        r'<script type="application/ld\+json">(.*?)</script>', html, flags=re.DOTALL
+    )
+    assert blocks, "no JSON-LD on the page"
+    types = {node["@type"] for block in blocks for node in json.loads(block).get("@graph", [])}
+    assert {"Organization", "WebSite", "WebApplication"} <= types
+
+
+def test_index_does_not_ship_libraries_it_never_calls(client):
+    """jQuery and PapaParse went unused, and Leaflet was pulled in twice."""
+    html = client.get("/").get_data(as_text=True)
+
+    assert "jquery" not in html.lower()
+    assert "papaparse" not in html.lower()
+    assert html.count("leaflet.js") == 1
+
+
 def test_static_url_fingerprint_follows_the_file_contents(app, tmp_path):
     from web.server import _static_fingerprint, static_url
 

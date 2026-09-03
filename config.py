@@ -76,6 +76,15 @@ UPTIMEROBOT_API_MONITOR_KEY = os.getenv("UPTIMEROBOT_API_MONITOR_KEY", "")
 UPTIMEROBOT_WEB_MONITOR_KEY = os.getenv("UPTIMEROBOT_WEB_MONITOR_KEY", "")
 
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+
+# The GA4 property the public pages report to. Kept configurable so a staging
+# deployment can blank it out instead of polluting the production stream.
+GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "G-JC48ZJGBHM").strip()
+
+# Absolute URLs live in canonical tags and the sitemap, where a relative path
+# is meaningless, so the public origin has to be known server-side.
+SITE_URL = os.getenv("SITE_URL", "https://sirens.live").strip().rstrip("/")
+STATUS_URL = os.getenv("STATUS_URL", "https://status.sirens.live").strip().rstrip("/")
 OCI_PAR_URL = os.getenv("OCI_PAR_URL", "")
 GITHUB_PAT = os.getenv("GITHUB_PAT", "")
 _raw_repo = os.getenv("GITHUB_REPO", "matthewjohnsobolev/sirens")

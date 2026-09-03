@@ -50,12 +50,16 @@ const OBLAST_STYLES = {
     explosion: { color: ALERT_COLORS.EXPLOSION, weight: 2, fillColor: ALERT_COLORS.EXPLOSION, fillOpacity: 0.55 }
 };
 
-function setOblastStyle(layer, data) {
+function oblastState(data) {
     const dominant = pickDominant({
         alert: data.alert, explosion: data.explosion,
     });
-    const state = dominant === 'alert' ? (data.alert ? data.alert.coverage : 'idle')
-                : dominant || 'idle';
+    return dominant === 'alert' ? (data.alert ? data.alert.coverage : 'idle')
+         : dominant || 'idle';
+}
+
+function setOblastStyle(layer, data) {
+    const state = oblastState(data);
 
     layer.setStyle(OBLAST_STYLES[state] || OBLAST_STYLES.idle);
     if (layer._path) {
@@ -128,6 +132,12 @@ fetch('/api')
                             () => '<div class="oblast-name">' + name + '</div>' + getOblastPopupContent(data),
                             customOptions
                         );
+                        layer.on('popupopen', () => {
+                            if (window.track) window.track('region_popup_open', {
+                                region_name: name,
+                                threat_state: oblastState(data)
+                            });
+                        });
                     }
                 }).addTo(map);
 

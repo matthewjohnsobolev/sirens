@@ -1,0 +1,27 @@
+{#
+  Прямий GA4-тег. Один measurement ID обслуговує і sirens.live, і
+  status.sirens.live: cookie GA4 живе на батьківському домені, тож сесія
+  переходить між піддоменами сама — окремого cross-domain налаштування
+  не треба.
+#}
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+
+  // Блокувальники реклами ріжуть gtag.js, тому кожна подія йде через хелпер:
+  // сторінка мусить працювати там, де аналітики немає.
+  window.track = function (name, params) {
+    try {
+      gtag('event', name, params || {});
+    } catch (error) {}
+  };
+</script>
+{%- if ga_measurement_id %}
+<!-- Google tag (gtag.js) -->
+<link rel="preconnect" href="https://www.googletagmanager.com">
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ ga_measurement_id }}"></script>
+<script>
+  gtag('js', new Date());
+  gtag('config', '{{ ga_measurement_id }}'{% if ga_page_params %}, {{ ga_page_params | tojson }}{% endif %});
+</script>
+{%- endif %}

@@ -355,6 +355,11 @@
       due = Date.now() + 10000;
       return;
     }
+    // Прапорець переживає перезавантаження і гасить page_view на тому боці:
+    // хвилинне оновлення — це не новий перегляд сторінки.
+    try {
+      sessionStorage.setItem('sirens:auto-refresh', '1');
+    } catch (error) {}
     window.location.reload();
   };
 

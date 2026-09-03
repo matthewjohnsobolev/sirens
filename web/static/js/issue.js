@@ -326,8 +326,33 @@ if (pickerTime) {
   });
 }
 
+let formStarted = false;
+
+function trackForm(name, params) {
+  if (!window.track) return;
+  window.track(name, Object.assign({
+    form_name: 'issue_report',
+    report_category: TAB_CATEGORIES[tab] || tab
+  }, params || {}));
+}
+
+// Початок заповнення рахуємо один раз на спробу: далі кожен символ у
+// коментарі слав би ту саму подію.
+function trackFormStart() {
+  if (formStarted) return;
+  formStarted = true;
+  trackForm('report_form_start');
+}
+
+form.addEventListener('input', trackFormStart);
+form.addEventListener('change', trackFormStart);
+
 tabs.forEach((b, i) => {
-  b.addEventListener('click', () => select(i));
+  b.addEventListener('click', () => {
+    trackFormStart();
+    select(i);
+    trackForm('report_tab_select');
+  });
   b.addEventListener('keydown', e => {
     const step = {ArrowRight:1, ArrowDown:1, ArrowLeft:-1, ArrowUp:-1}[e.key];
     if(!step) return;
@@ -746,6 +771,9 @@ form.addEventListener('submit', async (e) => {
   bCity.classList.toggle('invalid', noLocation);
 
   if (noIssue || noTime || noComment || noLocation) {
+    trackForm('report_form_error', {
+      error_field: noIssue ? 'issue' : noTime ? 'time' : noComment ? 'comment' : 'city'
+    });
     comboClose();
     if (hintCity) hintCity.hidden = true;
     let first = null;
@@ -817,14 +845,21 @@ form.addEventListener('submit', async (e) => {
     });
 
     if (res.ok) {
+      trackForm('report_form_submit', {
+        report_option: formData.get('sub_option') || '(none)',
+        report_when: isCustomTime ? 'custom' : (timeChoice || '(none)')
+      });
       resetForm();
       showNotice('ok', MSG.ok);
     } else if (res.status === 429) {
+      trackForm('report_form_failure', { error_type: 'rate_limit' });
       showNotice('error', MSG.tooMany);
     } else {
+      trackForm('report_form_failure', { error_type: 'server' });
       showNotice('error', MSG.failed);
     }
   } catch (err) {
+    trackForm('report_form_failure', { error_type: 'network' });
     showNotice('error', MSG.offline);
   } finally {
     submitBtn.disabled = false;
@@ -842,6 +877,7 @@ const MSG = {
 };
 
 function resetForm(){
+  formStarted = false;
   form.reset();
   Object.keys(tabState).forEach(k => {
     tabState[k] = createEmptyTabState();

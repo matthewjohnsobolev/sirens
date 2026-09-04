@@ -5,10 +5,15 @@ const WINDOW_HOURS = 24;
 const THRESHOLD_MAJOR = 900;
 
 // The older keys are read as a fallback so a KV snapshot written before the
-// rename still names the place instead of going blank.
+// renames still names the place instead of going blank.
 function alertLocationName(alert?: TelemetryAlert | null): string | null {
     if (!alert) return null;
     return alert.location_name || alert.city_name || alert.district_name || null;
+}
+
+function alertLocative(alert?: TelemetryAlert | null): string | null {
+    if (!alert) return null;
+    return alert.locative || alert.location_title || null;
 }
 
 interface Probe {
@@ -375,7 +380,7 @@ export async function computeStatusData(env: Env) {
             const locPhrase = formatLocationLocative(
                 telemetry?.last_alert?.district,
                 alertLocationName(telemetry?.last_alert),
-                (telemetry?.last_alert as any)?.location_title
+                alertLocative(telemetry?.last_alert)
             );
             const locSuffix = locPhrase ? ` ${locPhrase}` : "";
             subtitle = `Останнє сповіщення ми надіслали ${dateStr} о ${hh}:${mm}${locSuffix}. Відтоді тривог чи відбоїв не було.`;

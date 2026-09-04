@@ -310,13 +310,13 @@ async def _record_alert_state(
 
     if channel_id is not None:
         loc_name = city_or_district_name(district_key)
-        loc_title = location_locative(district_key)
+        locative = location_locative(district_key)
         last_alert_payload = {
             "type": alert_type,
             "region": oblast_key,
             "district": district_key,
             "location_name": loc_name,
-            "location_title": loc_title,
+            "locative": locative,
             "timestamp": now_utc_iso,
             "message_id": message_id,
             "message_link": message_link,
@@ -953,13 +953,13 @@ async def _prime_monitoring_state(primary_source: int, fallback_source: int | No
                     )
                     d_key = row["district_key"] or ""
                     loc_name = city_or_district_name(d_key) if d_key else ""
-                    loc_title = location_locative(d_key) if d_key else ""
+                    locative = location_locative(d_key) if d_key else ""
                     last_alert_payload = {
                         "type": row["type"],
                         "region": row["oblast_key"],
                         "district": d_key,
                         "location_name": loc_name,
-                        "location_title": loc_title,
+                        "locative": locative,
                         "timestamp": dt_iso,
                         "message_id": row["message_id"],
                         "message_link": row["message_link"],

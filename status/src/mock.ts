@@ -143,6 +143,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
             region: "kyiv_oblast",
             district: "bilatserkva",
             location_name: "Біла Церква",
+            locative: "у Білій Церкві",
             timestamp: mockLastAlertIso,
             message_id: 12345,
             message_link: "https://t.me/sirens_kyiv_obl/12345"

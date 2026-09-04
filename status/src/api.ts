@@ -48,9 +48,14 @@ export interface TelemetryAlert {
     district?: string;
     // One name for the place: the city when the district broadcasts, the
     // district otherwise. `district_name`/`city_name` were two keys holding
-    // that one string; they stay readable here only so a snapshot written by
-    // an alerts service that has not been redeployed yet still renders.
+    // that one string, and `location_title` was the old name of `locative`;
+    // all three stay readable here only so a snapshot written by an alerts
+    // service that has not been redeployed yet still renders.
     location_name?: string;
+    // The place name in the locative case, ready to drop into a sentence:
+    // "у Білій Церкві". Ukrainian declines it, so it cannot be built from
+    // `location_name` by rule -- the alerts service ships it formed.
+    locative?: string;
     district_name?: string;
     city_name?: string;
     location_title?: string;

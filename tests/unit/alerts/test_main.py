@@ -1390,7 +1390,7 @@ async def test_prime_restores_last_alert_from_redis_for_broadcast_district(
         "region": "kyiv",
         "district": "kyiv",
         "location_name": "Київ",
-        "location_title": "у Києві",
+        "locative": "у Києві",
         "timestamp": "2026-08-27T12:00:00+00:00",
         "message_id": 100,
         "message_link": "https://t.me/sirens_kyiv/100",
@@ -1460,7 +1460,7 @@ async def test_prime_pg_query_filters_only_broadcast_alerts(
 
     assert alerts_main.last_alert_payload["district"] == "kharkiv"
     assert alerts_main.last_alert_payload["location_name"] == "Харків"
-    assert alerts_main.last_alert_payload["location_title"] == "у Харкові"
+    assert alerts_main.last_alert_payload["locative"] == "у Харкові"
 
 
 @pytest.mark.asyncio
@@ -1631,7 +1631,7 @@ async def test_send_alert_updates_telemetry_payload_and_redis(
     assert alerts_main.last_alert_payload is not None
     assert alerts_main.last_alert_payload["district"] == "bilatserkva"
     assert alerts_main.last_alert_payload["location_name"] == "Біла Церква"
-    assert alerts_main.last_alert_payload["location_title"] == "у Білій Церкві"
+    assert alerts_main.last_alert_payload["locative"] == "у Білій Церкві"
     assert alerts_main.last_alert_payload["type"] == "air_raid_alert"
 
     redis_alert_calls = [
@@ -1654,7 +1654,7 @@ async def test_record_map_only_alert_does_not_update_telemetry_payload_or_redis(
         "region": "kyiv",
         "district": "kyiv",
         "location_name": "Київ",
-        "location_title": "у Києві",
+        "locative": "у Києві",
         "timestamp": "2026-08-27T10:00:00+00:00",
     }
     alerts_main.last_alert_payload = initial_payload

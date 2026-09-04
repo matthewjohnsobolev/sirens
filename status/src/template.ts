@@ -90,13 +90,13 @@ export function renderHtml(data: any, measurementId = ""): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Стан системи | Сирени</title>
+<title>Стан системи: чи працюють сповіщення і мапа — Сирени</title>
 <meta name="description" content="Поточний стан та історія доступності компонентів системи «Сирени»: сповіщення в Telegram, джерела тривог, мапа тривог та API за останні 24 години.">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#F4F4F4">
 <link rel="canonical" href="https://status.sirens.live/">
 ${analyticsHead(measurementId, stateInfo.cls)}
-<meta property="og:title" content="Стан системи | Сирени">
+<meta property="og:title" content="Стан системи: чи працюють сповіщення і мапа — Сирени">
 <meta property="og:description" content="Поточний стан та історія доступності компонентів системи «Сирени» за останні 24 години.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://status.sirens.live">
@@ -107,7 +107,7 @@ ${analyticsHead(measurementId, stateInfo.cls)}
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Мапа повітряних тривог України «Сирени»">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Стан системи | Сирени">
+<meta name="twitter:title" content="Стан системи: чи працюють сповіщення і мапа — Сирени">
 <meta name="twitter:description" content="Поточний стан та історія доступності компонентів системи «Сирени» за останні 24 години.">
 <meta name="twitter:image" content="https://sirens.live/static/img/og-banner.png">
 <meta name="twitter:image:alt" content="Мапа повітряних тривог України «Сирени»">
@@ -122,7 +122,7 @@ ${analyticsHead(measurementId, stateInfo.cls)}
 {
   "@context": "https://schema.org",
   "@type": "WebPage",
-  "name": "Стан системи | Сирени",
+  "name": "Стан системи: чи працюють сповіщення і мапа — Сирени",
   "url": "https://status.sirens.live/",
   "description": "Поточний стан та історія доступності компонентів системи «Сирени» за останні 24 години.",
   "inLanguage": "uk-UA",

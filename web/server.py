@@ -1,5 +1,4 @@
 import hashlib
-import json
 import logging
 import os
 import threading
@@ -33,13 +32,6 @@ from web.issue import (
     TIME_INFO,
     TIME_NAMES,
     page_config,
-)
-from web.markdown import (
-    markdown_response,
-    render_error_markdown,
-    render_index_markdown,
-    render_issue_markdown,
-    wants_markdown,
 )
 
 os.makedirs(LOGS_PATH, exist_ok=True)
@@ -111,62 +103,12 @@ def _start_healthcheck_thread() -> None:
     threading.Thread(target=_healthcheck_loop, daemon=True, name="healthcheck-ping").start()
 
 
-def index() -> Response | str:
-    if wants_markdown(request.headers.get("Accept")):
-        return markdown_response(render_index_markdown(SITE_URL))
+def index() -> str:
     return render_template("index.html")
-
-
-def index_markdown() -> Response:
-    return markdown_response(render_index_markdown(SITE_URL))
-
-
-def issue_markdown() -> Response:
-    return markdown_response(render_issue_markdown(SITE_URL))
 
 
 def api() -> Any:
     return jsonify(get_all_threats_data())
-
-
-def api_catalog() -> Response:
-    data = {
-        "linkset": [
-            {
-                "anchor": f"{SITE_URL}/api",
-                "service-desc": [
-                    {
-                        "href": f"{SITE_URL}/index.md",
-                        "type": "text/markdown",
-                    }
-                ],
-                "service-doc": [
-                    {
-                        "href": f"{SITE_URL}/index.md",
-                        "type": "text/markdown",
-                    }
-                ],
-                "status": [
-                    {
-                        "href": "https://status.sirens.live",
-                    }
-                ],
-            },
-            {
-                "anchor": f"{SITE_URL}/issue",
-                "service-doc": [
-                    {
-                        "href": f"{SITE_URL}/issue.md",
-                        "type": "text/markdown",
-                    }
-                ],
-            },
-        ]
-    }
-    return Response(
-        json.dumps(data, indent=2),
-        content_type='application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"',
-    )
 
 
 def status() -> Any:
@@ -176,25 +118,6 @@ def status() -> Any:
 # The pages this origin serves. The status page is a separate host and ships its
 # own pair of files: a sitemap may only list URLs under the origin serving it.
 SITEMAP_PATHS = ("/", "/issue")
-
-
-def robots() -> Response:
-    body = "\n".join(
-        (
-            "User-agent: *",
-            "Allow: /",
-            "Disallow: /api",
-            "Content-Signal: search=yes,ai-input=yes,ai-train=no,use=reference",
-            "",
-            "# AI Agent Policy & Attribution:",
-            "# Search, retrieval, and answering user queries using Sirens data is allowed.",
-            f"# Attribution required: You must cite Sirens ({SITE_URL}) as the source of alert data.",
-            "",
-            f"Sitemap: {SITE_URL}/sitemap.xml",
-            "",
-        )
-    )
-    return Response(body, mimetype="text/plain")
 
 
 def sitemap() -> Response:
@@ -381,18 +304,10 @@ def _render_issue_form(**context: Any) -> str:
 
 
 def issue() -> Any:
-    prefer_md = wants_markdown(request.headers.get("Accept"))
     if request.method == "GET":
-        if prefer_md:
-            return markdown_response(render_issue_markdown(SITE_URL))
         return _render_issue_form()
 
     if not _claim_report_slot():
-        if prefer_md:
-            return markdown_response(
-                render_error_markdown(429, "Забагато повідомлень", SITE_URL),
-                status_code=429,
-            )
         return render_template(
             "error.html",
             error_code=429,
@@ -402,11 +317,6 @@ def issue() -> Any:
     report, error = _clean_report_form(request.form)
     if error:
         log.info("Rejected issue report: %s", error)
-        if prefer_md:
-            return markdown_response(
-                f"# Помилка валідації\n\n{error}\n\n[Повернутися до форми]({SITE_URL}/issue)\n",
-                status_code=400,
-            )
         return _render_issue_form(), 400
 
     log.info(
@@ -419,24 +329,12 @@ def issue() -> Any:
     )
 
     if not _report_to_sentry(report):
-        if prefer_md:
-            return markdown_response(
-                render_error_markdown(503, "Сервіс тимчасово недоступний", SITE_URL),
-                status_code=503,
-            )
         return _render_issue_form(), 503
 
-    if prefer_md:
-        return markdown_response(render_issue_markdown(SITE_URL, success=True))
     return _render_issue_form(success=True)
 
 
-def handle_not_found(error: Exception) -> Response | tuple[str, int]:
-    if wants_markdown(request.headers.get("Accept")):
-        return markdown_response(
-            render_error_markdown(404, "Сторінку не знайдено", SITE_URL),
-            status_code=404,
-        )
+def handle_not_found(error: Exception) -> tuple[str, int]:
     return render_template(
         "error.html",
         error_code=404,
@@ -444,12 +342,7 @@ def handle_not_found(error: Exception) -> Response | tuple[str, int]:
     ), 404
 
 
-def handle_server_error(error: Exception) -> Response | tuple[str, int]:
-    if wants_markdown(request.headers.get("Accept")):
-        return markdown_response(
-            render_error_markdown(500, "Щось зламалось у нас", SITE_URL),
-            status_code=500,
-        )
+def handle_server_error(error: Exception) -> tuple[str, int]:
     return render_template(
         "error.html",
         error_code=500,
@@ -476,55 +369,12 @@ def static_url(filename: str) -> str:
 def add_caching_headers(response: Response) -> Response:
     if request.path == "/api":
         response.headers["Cache-Control"] = "public, max-age=2, s-maxage=2"
-    elif request.path in ("/robots.txt", "/sitemap.xml", "/.well-known/api-catalog"):
+    elif request.path == "/sitemap.xml":
         response.headers["Cache-Control"] = "public, max-age=86400"
     elif request.path.startswith("/static/") or request.path.endswith(".geojson"):
         response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
     elif request.method == "GET" and response.status_code == 200:
         response.headers["Cache-Control"] = "no-cache, must-revalidate"
-
-    if request.path in ("/", "/issue", "/index.md", "/issue.md") or response.mimetype in (
-        "text/html",
-        "text/markdown",
-    ):
-        vary = response.headers.get("Vary")
-        if vary:
-            parts = [p.strip() for p in vary.split(",")]
-            if "Accept" not in parts:
-                response.headers["Vary"] = f"{vary}, Accept"
-        else:
-            response.headers["Vary"] = "Accept"
-
-    return response
-
-
-def add_link_headers(response: Response) -> Response:
-    if response.status_code == 200:
-        if request.path in ("/", "/index.md"):
-            links = [
-                '</.well-known/api-catalog>; rel="api-catalog"',
-                '</index.md>; rel="alternate"; type="text/markdown"',
-                '</index.md>; rel="service-doc"',
-            ]
-            existing = response.headers.get("Link")
-            if existing:
-                response.headers["Link"] = f"{existing}, {', '.join(links)}"
-            else:
-                response.headers["Link"] = ", ".join(links)
-        elif request.path in ("/issue", "/issue.md"):
-            link = '</issue.md>; rel="alternate"; type="text/markdown"'
-            existing = response.headers.get("Link")
-            if existing:
-                response.headers["Link"] = f"{existing}, {link}"
-            else:
-                response.headers["Link"] = link
-        elif request.path == "/.well-known/api-catalog":
-            link = '<https://www.rfc-editor.org/info/rfc9727>; rel="profile"'
-            existing = response.headers.get("Link")
-            if existing:
-                response.headers["Link"] = f"{existing}, {link}"
-            else:
-                response.headers["Link"] = link
 
     return response
 
@@ -568,17 +418,12 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
         }
 
     app.after_request(add_caching_headers)
-    app.after_request(add_link_headers)
     app.jinja_env.globals["static_url"] = static_url
 
     app.add_url_rule("/", view_func=index)
-    app.add_url_rule("/index.md", view_func=index_markdown, methods=["GET"])
-    app.add_url_rule("/.well-known/api-catalog", view_func=api_catalog, methods=["GET", "HEAD"])
     app.add_url_rule("/api", view_func=api, methods=["GET"])
     app.add_url_rule("/issue", view_func=issue, methods=["GET", "POST"])
-    app.add_url_rule("/issue.md", view_func=issue_markdown, methods=["GET"])
     app.add_url_rule("/status", view_func=status, methods=["GET"])
-    app.add_url_rule("/robots.txt", view_func=robots, methods=["GET"])
     app.add_url_rule("/sitemap.xml", view_func=sitemap, methods=["GET"])
 
     app.register_error_handler(404, handle_not_found)

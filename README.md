@@ -376,9 +376,9 @@ Nothing below is in code — it is one-time work in the GA4 interface:
 
 ### SEO
 
-`/robots.txt` and `/sitemap.xml` are served by Flask; the status page carries
-its own pair as static files, because a sitemap may only list URLs on the
-origin that serves it. Every public page declares a canonical URL and
+`/robots.txt` is served at the edge by Cloudflare; `/sitemap.xml` is served by
+Flask; the status page carries its own pair as static files, because a sitemap
+may only list URLs on the origin that serves it. Every public page declares a canonical URL and
 `index, follow, max-image-preview:large`; the error page stays `noindex`.
 The map page ships `Organization`, `WebSite` and `WebApplication` JSON-LD, the
 report form a `ContactPage`, and the status page a `WebPage` — all bound to the

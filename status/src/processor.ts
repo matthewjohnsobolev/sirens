@@ -1,20 +1,8 @@
-import { Env, COMPONENTS_SPEC, TelemetryAlert, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry, healthchecksSlug, uptimeRobotKey } from "./api";
-import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts, formatLocationLocative, relativeDayLabel } from "./helpers";
+import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry, healthchecksSlug, uptimeRobotKey } from "./api";
+import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts, relativeDayLabel } from "./helpers";
 
 const WINDOW_HOURS = 24;
 const THRESHOLD_MAJOR = 900;
-
-// The older keys are read as a fallback so a KV snapshot written before the
-// renames still names the place instead of going blank.
-function alertLocationName(alert?: TelemetryAlert | null): string | null {
-    if (!alert) return null;
-    return alert.location_name || alert.city_name || alert.district_name || null;
-}
-
-function alertLocative(alert?: TelemetryAlert | null): string | null {
-    if (!alert) return null;
-    return alert.locative || alert.location_title || null;
-}
 
 interface Probe {
     present: boolean;
@@ -334,11 +322,6 @@ export async function computeStatusData(env: Env) {
         if (!isNaN(parsed.getTime())) {
             lastAlertDt = parsed;
         }
-    } else if (telemetry?.last_broadcast_at) {
-        const parsed = new Date(telemetry.last_broadcast_at);
-        if (!isNaN(parsed.getTime())) {
-            lastAlertDt = parsed;
-        }
     }
 
     if (!monitored.length || monitored.every(c => c.state === "nodata")) {
@@ -377,12 +360,11 @@ export async function computeStatusData(env: Env) {
             const dateStr = relativeDayLabel(p, nowKyiv) ?? `${p.day} ${UK_MONTHS[p.month]}`;
             const hh = p.hour.toString().padStart(2, '0');
             const mm = p.minute.toString().padStart(2, '0');
-            const locPhrase = formatLocationLocative(
-                telemetry?.last_alert?.district,
-                alertLocationName(telemetry?.last_alert),
-                alertLocative(telemetry?.last_alert)
-            );
-            const locSuffix = locPhrase ? ` ${locPhrase}` : "";
+            // The locative arrives ready to use. When it is missing the
+            // sentence simply ends without a place: naming one we had to
+            // decline ourselves is how "у Києві" turns into "у Київ".
+            const locative = telemetry?.last_alert?.locative;
+            const locSuffix = locative ? ` ${locative}` : "";
             subtitle = `Останнє сповіщення ми надіслали ${dateStr} о ${hh}:${mm}${locSuffix}. Відтоді тривог чи відбоїв не було.`;
         } else {
             subtitle = "Розсилка в Telegram надходить як зазвичай.";

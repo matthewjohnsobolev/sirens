@@ -137,21 +137,14 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
 
     const mockLastAlertIso = new Date(now.getTime() - 4 * 3600 * 1000).toISOString();
     const telemetry = {
-        last_broadcast_at: mockLastAlertIso,
         last_alert: {
             type: "air_raid_alert",
-            region: "kyiv_oblast",
+            oblast: "kyiv_oblast",
             district: "bilatserkva",
-            location_name: "Біла Церква",
+            name: "Біла Церква",
             locative: "у Білій Церкві",
-            timestamp: mockLastAlertIso,
-            message_id: 12345,
-            message_link: "https://t.me/sirens_kyiv_obl/12345"
-        },
-        last_source_message_at: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
-        active_alerts_count: 0,
-        source_connected: true,
-        updated_at: now.toISOString()
+            timestamp: mockLastAlertIso
+        }
     };
 
     return {

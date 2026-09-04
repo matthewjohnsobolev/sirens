@@ -44,33 +44,19 @@ export function uptimeRobotKey(env: Env, componentKey: string): string | undefin
 
 export interface TelemetryAlert {
     type: string;
-    region?: string;
+    oblast?: string;
     district?: string;
-    // One name for the place: the city when the district broadcasts, the
-    // district otherwise. `district_name`/`city_name` were two keys holding
-    // that one string, and `location_title` was the old name of `locative`;
-    // all three stay readable here only so a snapshot written by an alerts
-    // service that has not been redeployed yet still renders.
-    location_name?: string;
-    // The place name in the locative case, ready to drop into a sentence:
-    // "у Білій Церкві". Ukrainian declines it, so it cannot be built from
-    // `location_name` by rule -- the alerts service ships it formed.
+    // The place in the nominative, and again declined into the locative
+    // ("Біла Церква" / "у Білій Церкві"). Ukrainian declines it, so the
+    // alerts service ships the form the sentence needs already built.
+    name?: string;
     locative?: string;
-    district_name?: string;
-    city_name?: string;
-    location_title?: string;
     timestamp: string;
-    message_id?: number | null;
-    message_link?: string | null;
 }
 
+// The snapshot holds the last alert and nothing else.
 export interface TelemetryData {
-    last_broadcast_at?: string | null;
     last_alert?: TelemetryAlert | null;
-    last_source_message_at?: string | null;
-    active_alerts_count?: number;
-    source_connected?: boolean;
-    updated_at?: string;
 }
 
 export const COMPONENTS_SPEC = [

@@ -313,14 +313,11 @@ async def _record_alert_state(
         locative = location_locative(district_key)
         last_alert_payload = {
             "type": alert_type,
-            "region": oblast_key,
+            "oblast": oblast_key,
             "district": district_key,
-            "location_name": loc_name,
+            "name": loc_name,
             "locative": locative,
             "timestamp": now_utc_iso,
-            "message_id": message_id,
-            "message_link": message_link,
-            "source_type": source_type,
         }
 
         if redis_client:
@@ -702,73 +699,12 @@ async def push_telemetry_to_kv() -> None:
         return
 
     try:
-        now_dt = datetime.datetime.now(datetime.timezone.utc)
-        last_bcast_iso = (
-            datetime.datetime.fromtimestamp(last_broadcast_at, tz=datetime.timezone.utc).isoformat()
-            if last_broadcast_at is not None
-            else None
-        )
-        last_src_iso = (
-            datetime.datetime.fromtimestamp(
-                last_source_message_at, tz=datetime.timezone.utc
-            ).isoformat()
-            if last_source_message_at is not None
-            else None
-        )
-        last_primary_iso = (
-            datetime.datetime.fromtimestamp(
-                last_primary_message_at, tz=datetime.timezone.utc
-            ).isoformat()
-            if last_primary_message_at is not None
-            else None
-        )
-        last_fallback_iso = (
-            datetime.datetime.fromtimestamp(
-                last_fallback_message_at, tz=datetime.timezone.utc
-            ).isoformat()
-            if last_fallback_message_at is not None
-            else None
-        )
-
-        active_count = 0
-        if redis_client:
-            try:
-                oblasts_seen = set()
-                for conf in DISTRICT_CONFIG.values():
-                    o_key = conf.get("oblast")
-                    if o_key and o_key not in oblasts_seen:
-                        oblasts_seen.add(o_key)
-                        cnt = await redis_client.scard(f"threat:alerts:active:{o_key}")
-                        active_count += int(cnt or 0)
-            except Exception:
-                pass
-
-        source_connected = False
-        if client:
-            try:
-                conn_val = client.is_connected()
-                if asyncio.iscoroutine(conn_val):
-                    source_connected = bool(await conn_val)
-                else:
-                    source_connected = bool(conn_val)
-            except Exception:
-                pass
-
-        payload = {
-            "last_broadcast_at": last_bcast_iso,
-            "last_alert": last_alert_payload,
-            "last_source_message_at": last_src_iso,
-            "last_primary_message_at": last_primary_iso,
-            "last_fallback_message_at": last_fallback_iso,
-            "active_source": active_source_name,
-            "active_alerts_count": active_count,
-            # One flag, because there is one measurement: Telethon reports a
-            # single client connection. The per-source pair that used to sit
-            # here echoed this same boolean and read as if primary and
-            # fallback were probed apart.
-            "source_connected": source_connected,
-            "updated_at": now_dt.isoformat(),
-        }
+        # The snapshot is the last alert and nothing else. Everything that used
+        # to ride along here had no reader: source liveness is healthchecks.io's
+        # job -- it pings primary and fallback separately -- and the status page
+        # decides nothing from this file, it only writes one sentence with it.
+        # The active-alert count alone cost 23 sequential SCARDs per push.
+        payload = {"last_alert": last_alert_payload}
 
         url = (
             f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}"
@@ -956,13 +892,11 @@ async def _prime_monitoring_state(primary_source: int, fallback_source: int | No
                     locative = location_locative(d_key) if d_key else ""
                     last_alert_payload = {
                         "type": row["type"],
-                        "region": row["oblast_key"],
+                        "oblast": row["oblast_key"],
                         "district": d_key,
-                        "location_name": loc_name,
+                        "name": loc_name,
                         "locative": locative,
                         "timestamp": dt_iso,
-                        "message_id": row["message_id"],
-                        "message_link": row["message_link"],
                     }
         except Exception:
             log.warning("Failed to restore last_alert_info from PostgreSQL", exc_info=True)

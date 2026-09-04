@@ -1387,13 +1387,11 @@ async def test_prime_restores_last_alert_from_redis_for_broadcast_district(
 ):
     saved_alert = {
         "type": "air_raid_alert",
-        "region": "kyiv",
+        "oblast": "kyiv",
         "district": "kyiv",
-        "location_name": "Київ",
+        "name": "Київ",
         "locative": "у Києві",
         "timestamp": "2026-08-27T12:00:00+00:00",
-        "message_id": 100,
-        "message_link": "https://t.me/sirens_kyiv/100",
     }
     mock_redis.get.side_effect = lambda key: {
         alerts_main.LAST_ALERT_INFO_KEY: json.dumps(saved_alert),
@@ -1412,9 +1410,9 @@ async def test_prime_ignores_map_only_district_in_redis_and_falls_back_to_pg(
     _, mock_conn = mock_pg_pool
     map_only_alert = {
         "type": "air_raid_alert",
-        "region": "kyiv_oblast",
+        "oblast": "kyiv_oblast",
         "district": "vyshhorod",
-        "location_name": "Вишгородський район",
+        "name": "Вишгородський район",
     }
     mock_redis.get.side_effect = lambda key: {
         alerts_main.LAST_ALERT_INFO_KEY: json.dumps(map_only_alert),
@@ -1436,7 +1434,7 @@ async def test_prime_ignores_map_only_district_in_redis_and_falls_back_to_pg(
     sql = mock_conn.fetchrow.call_args[0][0]
     assert "WHERE channel_id IS NOT NULL" in sql
     assert alerts_main.last_alert_payload["district"] == "bilatserkva"
-    assert alerts_main.last_alert_payload["location_name"] == "Біла Церква"
+    assert alerts_main.last_alert_payload["name"] == "Біла Церква"
 
 
 @pytest.mark.asyncio
@@ -1459,7 +1457,7 @@ async def test_prime_pg_query_filters_only_broadcast_alerts(
     await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
 
     assert alerts_main.last_alert_payload["district"] == "kharkiv"
-    assert alerts_main.last_alert_payload["location_name"] == "Харків"
+    assert alerts_main.last_alert_payload["name"] == "Харків"
     assert alerts_main.last_alert_payload["locative"] == "у Харкові"
 
 
@@ -1630,7 +1628,7 @@ async def test_send_alert_updates_telemetry_payload_and_redis(
 
     assert alerts_main.last_alert_payload is not None
     assert alerts_main.last_alert_payload["district"] == "bilatserkva"
-    assert alerts_main.last_alert_payload["location_name"] == "Біла Церква"
+    assert alerts_main.last_alert_payload["name"] == "Біла Церква"
     assert alerts_main.last_alert_payload["locative"] == "у Білій Церкві"
     assert alerts_main.last_alert_payload["type"] == "air_raid_alert"
 
@@ -1642,7 +1640,7 @@ async def test_send_alert_updates_telemetry_payload_and_redis(
     assert len(redis_alert_calls) == 1
     saved_data = json.loads(redis_alert_calls[0].args[1])
     assert saved_data["district"] == "bilatserkva"
-    assert saved_data["location_name"] == "Біла Церква"
+    assert saved_data["name"] == "Біла Церква"
 
 
 @pytest.mark.asyncio
@@ -1854,12 +1852,11 @@ async def test_push_telemetry_to_kv_sends_correct_payload(monkeypatch, mock_redi
     alerts_main.last_source_message_at = 1699999000.0
     alerts_main.last_alert_payload = {
         "type": "air_raid_alert",
-        "region": "kyiv_oblast",
+        "oblast": "kyiv_oblast",
         "district": "bila_tserkva",
-        "location_name": "Білоцерківський район",
+        "name": "Білоцерківський район",
+        "locative": "у Білій Церкві",
         "timestamp": "2026-08-26T18:00:00+00:00",
-        "message_id": 123,
-        "message_link": "https://t.me/sirens_kyiv_obl/123",
     }
 
     mock_client = MagicMock()
@@ -1879,10 +1876,16 @@ async def test_push_telemetry_to_kv_sends_correct_payload(monkeypatch, mock_redi
         assert kwargs["headers"]["Content-Type"] == "application/json"
 
         body = json.loads(kwargs["data"])
-        assert body["last_alert"]["district"] == "bila_tserkva"
-        assert body["last_alert"]["location_name"] == "Білоцерківський район"
-        assert body["source_connected"] is True
-        assert "updated_at" in body
+        # The snapshot is the last alert and nothing else.
+        assert list(body) == ["last_alert"]
+        assert body["last_alert"] == {
+            "type": "air_raid_alert",
+            "oblast": "kyiv_oblast",
+            "district": "bila_tserkva",
+            "name": "Білоцерківський район",
+            "locative": "у Білій Церкві",
+            "timestamp": "2026-08-26T18:00:00+00:00",
+        }
 
 
 @pytest.mark.asyncio
@@ -2320,7 +2323,8 @@ async def test_healthcheck_loop_pings_fallback_url(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_push_telemetry_to_kv_includes_fallback_data(monkeypatch):
+async def test_push_telemetry_to_kv_keeps_source_tracking_out_of_the_payload(monkeypatch):
+    """Which source is live is healthchecks.io's answer, not the snapshot's."""
     monkeypatch.setattr(alerts_main, "CLOUDFLARE_ACCOUNT_ID", "acc_123")
     monkeypatch.setattr(alerts_main, "CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "ns_456")
     monkeypatch.setattr(alerts_main, "CLOUDFLARE_API_TOKEN", "token_789")
@@ -2339,10 +2343,10 @@ async def test_push_telemetry_to_kv_includes_fallback_data(monkeypatch):
 
     assert mock_put.called
     body = json.loads(mock_put.call_args.kwargs["data"])
-    assert body["active_source"] == "fallback"
-    # One connection is measured, so one flag is published.
-    assert body["source_connected"] is True
-    assert "primary_source_connected" not in body
-    assert "fallback_source_connected" not in body
-    assert "last_primary_message_at" in body
-    assert "last_fallback_message_at" in body
+    assert list(body) == ["last_alert"]
+
+    # The module still tracks all of it -- the silence watchdog reads these to
+    # decide which healthcheck to ping. They just do not ride to Cloudflare.
+    assert alerts_main.last_primary_message_at == 1_700_000_100.0
+    assert alerts_main.last_fallback_message_at == 1_700_000_200.0
+    assert alerts_main.active_source_name == "fallback"

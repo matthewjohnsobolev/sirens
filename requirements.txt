@@ -2,7 +2,7 @@ pyaes==1.6.1
 pyasn1==0.6.4
 rsa==4.9.1
 Telethon==1.42.0
-python-dotenv==1.2.2
+python-dotenv==1.2.3
 Flask>=3.0.0
 gunicorn>=21.0.0
 redis>=5.0.0

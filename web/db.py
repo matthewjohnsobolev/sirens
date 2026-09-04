@@ -16,6 +16,7 @@ import redis
 from config import DATABASE_URL, REDIS_URL
 from domain import (
     DISTRICT_CONFIG,
+    DISTRICT_NAMES_EN,
     DISTRICTS_BY_OBLAST,
     REGIONS,
     real_channels,
@@ -669,6 +670,7 @@ def get_all_threats_data() -> dict[str, Any]:
         districts_map = {
             d: {
                 "name": DISTRICT_CONFIG[d]["name"],
+                "name_en": DISTRICT_NAMES_EN[d],
                 "alert": _public_threat(raw_data["city_alerts"].get(d, IDLE_THREAT)),
                 "shelling": _public_threat(shellings[d]),
             }

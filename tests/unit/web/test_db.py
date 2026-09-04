@@ -12,6 +12,7 @@ import pytest
 from config import DATABASE_URL
 from domain import (
     DISTRICT_CONFIG,
+    DISTRICT_NAMES_EN,
     DISTRICTS_BY_OBLAST,
     REGION_CONFIG,
     REGIONS,
@@ -702,8 +703,11 @@ def test_get_all_threats_data_carries_district_names(mock_web_redis):
 
     districts = result["kyiv_oblast"]["districts"]
     assert districts["bucha"]["name"] == "Бучанський район"
+    assert districts["bucha"]["name_en"] == "Bucha District"
+    assert districts["bilatserkva"]["name_en"] == "Bila Tserkva District"
     assert districts["vyshhorod"]["name"] == "Вишгородський район"
     assert all(entry["name"] == DISTRICT_CONFIG[key]["name"] for key, entry in districts.items())
+    assert all(entry["name_en"] == DISTRICT_NAMES_EN[key] for key, entry in districts.items())
 
 
 def test_get_all_threats_data_covers_every_district(mock_web_redis):

@@ -95,6 +95,20 @@ def test_domain_messages_completeness():
     assert "threat_of_shelling_cancelled" in domain.MESSAGES
 
 
+def test_domain_every_district_has_an_english_name():
+    """The two name tables are keyed alike, so /api can never half-label one."""
+    assert set(domain.DISTRICT_NAMES_EN) == set(domain.DISTRICT_CONFIG)
+    assert len(set(domain.DISTRICT_NAMES_EN.values())) == len(domain.DISTRICT_NAMES_EN)
+    assert all(name.isascii() and name.strip() for name in domain.DISTRICT_NAMES_EN.values())
+    # Kyiv is the city itself; every other entry is a district.
+    assert domain.DISTRICT_NAMES_EN["kyiv"] == "Kyiv"
+    assert all(
+        name.endswith(" District")
+        for key, name in domain.DISTRICT_NAMES_EN.items()
+        if key != "kyiv"
+    )
+
+
 def test_domain_regions_cover_every_oblast_a_district_points_at():
     """A district may not name a region /api has no label for."""
     assert set(domain.DISTRICTS_BY_OBLAST) <= set(domain.REGIONS)

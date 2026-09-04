@@ -16,6 +16,7 @@ from domain.channels import (
 from domain.geo import (
     APOSTROPHES,
     DISTRICT_CONFIG,
+    DISTRICT_NAMES_EN,
     DISTRICTS_BY_OBLAST,
     LOCATION_LOCATIVE,
     OBLAST_TRIGGERS,
@@ -30,6 +31,7 @@ __all__ = [
     "BROADCAST_DISTRICTS",
     "CITIES_LIST",
     "DISTRICT_CONFIG",
+    "DISTRICT_NAMES_EN",
     "DISTRICTS_BY_OBLAST",
     "LOCATION_LOCATIVE",
     "MESSAGES",

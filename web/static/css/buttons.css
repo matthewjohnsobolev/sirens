@@ -20,20 +20,19 @@
     z-index: 1000;
     background-color: #FFFFFF;
     border-radius: 3px;
-    outline: 2px solid rgba(97, 97, 97, 0.4);
+    box-shadow: 0 0 0 2px rgba(97, 97, 97, 0.4);
     display: flex;
     justify-content: center;
     align-items: center;
 }
 
 .contact-icon {
-    /* Жук зростом дорівнює оку (≈14.9px проти 14.5px) і має практично
-       той самий штрих: 1.31px проти 1.275px (вага 400 проти 700 — різні
-       оптичні сітки). Сумарної чорноти в нього все одно менше, ніж в ока
-       й зірки, бо силует вужчий, — і це якраз компенсує те, що ліній
-       у жука більше (лапки, вусики, дві перекладини). */
-    height: 21px;
-    width: 21px;
+    /* Жук нижчий за око (≈13.4px проти 14.5px) і має тонший штрих
+       (1.19px проти 1.275px) — інакше він читається жирним: у нього на
+       тому ж полі більше ліній (лапки, вусики, дві перекладини), ніж
+       в ока, тож однакові метрики дають більшу густину. */
+    height: 19px;
+    width: 19px;
 }
 
 .contact-button:hover {
@@ -50,7 +49,7 @@
     z-index: 1000;
     background-color: #FFFFFF;
     border-radius: 3px;
-    outline: 2px solid rgba(97, 97, 97, 0.4);
+    box-shadow: 0 0 0 2px rgba(97, 97, 97, 0.4);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -96,7 +95,7 @@
     cursor: pointer;
     z-index: 1000;
     border-radius: 3px;
-    outline: 2px solid rgba(97, 97, 97, 0.4);
+    box-shadow: 0 0 0 2px rgba(97, 97, 97, 0.4);
     display: flex;
     justify-content: center;
     align-items: center;

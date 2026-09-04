@@ -14,6 +14,7 @@ from domain import (
     DISTRICT_CONFIG,
     DISTRICTS_BY_OBLAST,
     REGION_CONFIG,
+    REGIONS,
     real_channels,
     test_channels,
 )
@@ -664,6 +665,34 @@ def test_get_all_threats_data_coverage_full(mock_web_redis):
     assert result["lviv_oblast"]["alert"]["coverage"] == "full"
     assert result["crimea"]["alert"]["coverage"] == "none"
     assert result["crimea"]["districts"] == {}
+
+
+def test_get_all_threats_data_names_every_region(mock_web_redis):
+    """Each region carries its own label, so clients keep no name table."""
+    mock_web_redis.pipeline.return_value = _FakePipeline({}, {})
+    result = get_all_threats_data()
+
+    assert set(result) == set(REGIONS)
+    assert result["kyiv_oblast"]["name"] == "Київська область"
+    assert result["kyiv_oblast"]["name_en"] == "Kyiv Oblast"
+    assert result["crimea"]["name"] == "Крим"
+    assert result["sevastopol"]["name_en"] == "Sevastopol"
+    assert all(entry["name"] and entry["name_en"] for entry in result.values())
+
+
+def test_get_all_threats_data_status_agrees_with_coverage(mock_web_redis):
+    """A stale oblast hash cannot outvote the districts it summarises."""
+    store = {
+        # No district is under alert, but the oblast hash still says it is --
+        # the state rehydration leaves behind after a restart.
+        "threat:alerts:kyiv_oblast": {"status": "true", "source": "stale", "updated_at": "100"},
+    }
+    mock_web_redis.pipeline.return_value = _FakePipeline(store, {})
+    result = get_all_threats_data()
+
+    alert = result["kyiv_oblast"]["alert"]
+    assert alert["coverage"] == "none"
+    assert alert["status"] is False
 
 
 def test_get_all_threats_data_carries_district_names(mock_web_redis):

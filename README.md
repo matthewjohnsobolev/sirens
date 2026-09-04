@@ -96,6 +96,8 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 ```json
 {
   "kyiv": {
+    "name": "Київ",
+    "name_en": "Kyiv",
     "alert": {
       "status": true,
       "time": "2025-09-04T14:23:11+03:00",
@@ -118,6 +120,8 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
     }
   },
   "kyiv_oblast": {
+    "name": "Київська область",
+    "name_en": "Kyiv Oblast",
     "alert": {
       "status": true,
       "time": "2025-09-04T14:23:11+03:00",
@@ -154,14 +158,15 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 
 **Schema Details:**
 * Every key of the response is a region: the 24 oblasts plus Kyiv, Sevastopol and Crimea. Cities are not regions — a city appears as a district of its oblast, under `districts`.
+* `name` / `name_en`: the region's label in Ukrainian and in English (`"Київська область"` / `"Kyiv Oblast"`), so a client needs no name table of its own.
 * `alert`, `explosion`, `shelling` and `districts` are present for **all** regions.
-* `status`: `true` (active) or `false` (inactive).
+* `status`: `true` (active) or `false` (inactive). On a region's `alert` it is the same verdict as `coverage`, read off the same count: `status` is `true` exactly when `coverage` is not `"none"`.
 * `time`: when the event was recorded, as an ISO-8601 timestamp with the Kyiv UTC offset (`2025-09-04T14:23:11+03:00`), or `null` when there is no event. Parse it; do not read the offset off the string, it changes with DST.
 * `source`: URL of the message the event came from, so the map can link a pill straight to it. For a district with its own channel that is the broadcast (e.g. `https://t.me/kyiv_alert/512`); for a district tracked on the map only, it is the source channel's post. Falls back to `"telegram"` for events recorded before message links were stored or whose link could not be resolved, and `null` when there is no event at all.
 * `districts`: every district of the region, keyed by district id, each with its Ukrainian `name` and its own `alert` and `shelling` state. The keys **are** the tracked set, and the districts whose `alert.status` is `true` are the active subset — the response does not repeat either as a list. Alerts are tracked for all districts of the government-controlled regions; Crimea, Sevastopol, Donetsk and Luhansk regions carry an empty map.
 * `districts.<id>.alert.type`: the event that produced the state — `air_raid_alert`, `air_raid_alert_cancelled`, `threat_of_shelling` or `threat_of_shelling_cancelled` — or `null` when nothing has been recorded.
 * `shelling`: the artillery-shelling threat. A district carries its own; a region's is the most recent active one among its districts. Only front-line districts ever go active, but the object is always there, so a client needs no special case.
-* `coverage`: `"full"` when every district of the region is under alert, `"partial"` when only some are, `"none"` when none are.
+* `coverage`: `"full"` when every district of the region is under alert, `"partial"` when only some are, `"none"` when none are. Crimea, Sevastopol, Donetsk and Luhansk regions have no tracked districts, so theirs is always `"none"`.
 
 ## Monitoring and the Status Page
 

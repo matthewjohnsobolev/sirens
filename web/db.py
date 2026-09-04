@@ -17,6 +17,7 @@ from config import DATABASE_URL, REDIS_URL
 from domain import (
     DISTRICT_CONFIG,
     DISTRICTS_BY_OBLAST,
+    REGIONS,
     real_channels,
     test_channels,
 )
@@ -570,35 +571,9 @@ def get_all_threats_data() -> dict[str, Any]:
     # shelling state is the latest of its districts', so `threat:shellings:
     # <oblast>` was read 27 times per request and never looked at.
     tables = ["alerts", "explosions"]
-    oblasts = [
-        "cherkasy_oblast",
-        "chernihiv_oblast",
-        "chernivtsi_oblast",
-        "crimea",
-        "dnipropetrovsk_oblast",
-        "donetsk_oblast",
-        "ivanofrankivsk_oblast",
-        "kharkiv_oblast",
-        "kherson_oblast",
-        "khmelnytskyi_oblast",
-        "kirovohrad_oblast",
-        "kyiv",
-        "kyiv_oblast",
-        "luhansk_oblast",
-        "lviv_oblast",
-        "mykolaiv_oblast",
-        "odesa_oblast",
-        "poltava_oblast",
-        "rivne_oblast",
-        "sevastopol",
-        "sumy_oblast",
-        "ternopil_oblast",
-        "vinnytsia_oblast",
-        "volyn_oblast",
-        "zakarpattia_oblast",
-        "zaporizhzhia_oblast",
-        "zhytomyr_oblast",
-    ]
+    # The regions and their names come from one registry in the domain layer;
+    # this endpoint used to hardcode the id list and ship no names at all.
+    oblasts = list(REGIONS)
 
     districts = list(DISTRICT_CONFIG.keys())
 
@@ -675,9 +650,14 @@ def get_all_threats_data() -> dict[str, Any]:
         tracked = DISTRICTS_BY_OBLAST.get(oblast, [])
         active = [d for d in raw_data["active_districts"].get(oblast, []) if d in tracked]
 
+        # `status` and `coverage` are one verdict, so they are read off one
+        # count. The stored status used to be trusted on its own, and
+        # rehydration never rewrites the oblast hash: an oblast whose alerts
+        # were all cancelled while the service was down came back reporting
+        # status true against coverage "none".
         oblast_alert = raw_data["alerts"].get(oblast, IDLE_THREAT).copy()
+        oblast_alert["status"] = bool(active)
         if active:
-            oblast_alert["status"] = True
             oblast_alert["coverage"] = "full" if len(active) >= len(tracked) else "partial"
         else:
             oblast_alert["coverage"] = "none"
@@ -695,7 +675,10 @@ def get_all_threats_data() -> dict[str, Any]:
             for d in tracked
         }
 
+        name, name_en = REGIONS[oblast]
         return {
+            "name": name,
+            "name_en": name_en,
             "alert": _public_threat(oblast_alert) | {"coverage": oblast_alert["coverage"]},
             "explosion": _public_threat(raw_data["explosions"].get(oblast, IDLE_THREAT)),
             "shelling": _public_threat(_aggregate_shelling(shellings)),

@@ -318,3 +318,40 @@ LOCATION_LOCATIVE = {
 DISTRICTS_BY_OBLAST = {}
 for district_key, conf in DISTRICT_CONFIG.items():
     DISTRICTS_BY_OBLAST.setdefault(conf["oblast"], []).append(district_key)
+
+# The regions /api reports on, in the order it reports them: the 24 oblasts plus
+# Kyiv, Sevastopol and Crimea. This is the single registry of what a region is
+# called — the endpoint used to hardcode the id list with no names at all, and
+# the map carried its own copy of the Ukrainian ones. OBLAST_TRIGGERS is not a
+# substitute: it exists to match incoming message text, covers only the 22
+# oblasts alerts are broadcast for, and its strings are match patterns, not
+# labels. English names follow the romanization Ukraine uses officially.
+REGIONS = {
+    "cherkasy_oblast": ("Черкаська область", "Cherkasy Oblast"),
+    "chernihiv_oblast": ("Чернігівська область", "Chernihiv Oblast"),
+    "chernivtsi_oblast": ("Чернівецька область", "Chernivtsi Oblast"),
+    "crimea": ("Крим", "Crimea"),
+    "dnipropetrovsk_oblast": ("Дніпропетровська область", "Dnipropetrovsk Oblast"),
+    "donetsk_oblast": ("Донецька область", "Donetsk Oblast"),
+    "ivanofrankivsk_oblast": ("Івано-Франківська область", "Ivano-Frankivsk Oblast"),
+    "kharkiv_oblast": ("Харківська область", "Kharkiv Oblast"),
+    "kherson_oblast": ("Херсонська область", "Kherson Oblast"),
+    "khmelnytskyi_oblast": ("Хмельницька область", "Khmelnytskyi Oblast"),
+    "kirovohrad_oblast": ("Кіровоградська область", "Kirovohrad Oblast"),
+    "kyiv": ("Київ", "Kyiv"),
+    "kyiv_oblast": ("Київська область", "Kyiv Oblast"),
+    "luhansk_oblast": ("Луганська область", "Luhansk Oblast"),
+    "lviv_oblast": ("Львівська область", "Lviv Oblast"),
+    "mykolaiv_oblast": ("Миколаївська область", "Mykolaiv Oblast"),
+    "odesa_oblast": ("Одеська область", "Odesa Oblast"),
+    "poltava_oblast": ("Полтавська область", "Poltava Oblast"),
+    "rivne_oblast": ("Рівненська область", "Rivne Oblast"),
+    "sevastopol": ("Севастополь", "Sevastopol"),
+    "sumy_oblast": ("Сумська область", "Sumy Oblast"),
+    "ternopil_oblast": ("Тернопільська область", "Ternopil Oblast"),
+    "vinnytsia_oblast": ("Вінницька область", "Vinnytsia Oblast"),
+    "volyn_oblast": ("Волинська область", "Volyn Oblast"),
+    "zakarpattia_oblast": ("Закарпатська область", "Zakarpattia Oblast"),
+    "zaporizhzhia_oblast": ("Запорізька область", "Zaporizhzhia Oblast"),
+    "zhytomyr_oblast": ("Житомирська область", "Zhytomyr Oblast"),
+}

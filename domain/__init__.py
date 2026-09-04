@@ -19,6 +19,7 @@ from domain.geo import (
     DISTRICTS_BY_OBLAST,
     LOCATION_LOCATIVE,
     OBLAST_TRIGGERS,
+    REGIONS,
     apostrophe_variants,
 )
 from domain.messages import MESSAGES
@@ -34,6 +35,7 @@ __all__ = [
     "MESSAGES",
     "OBLAST_TRIGGERS",
     "REGION_CONFIG",
+    "REGIONS",
     "SOURCE_KEYS",
     "apostrophe_variants",
     "real_channels",

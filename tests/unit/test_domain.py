@@ -93,3 +93,10 @@ def test_domain_messages_completeness():
     assert "air_raid_alert_cancelled" in domain.MESSAGES
     assert "threat_of_shelling" in domain.MESSAGES
     assert "threat_of_shelling_cancelled" in domain.MESSAGES
+
+
+def test_domain_regions_cover_every_oblast_a_district_points_at():
+    """A district may not name a region /api has no label for."""
+    assert set(domain.DISTRICTS_BY_OBLAST) <= set(domain.REGIONS)
+    assert all(uk and en for uk, en in domain.REGIONS.values())
+    assert len(set(domain.REGIONS.values())) == len(domain.REGIONS)

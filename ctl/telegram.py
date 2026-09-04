@@ -94,7 +94,9 @@ async def broadcast_alert_to_telegram(
         if update_photo and photo_path:
             try:
                 uploaded = await client.upload_file(file=photo_path)
-                edit_res = await client(EditPhotoRequest(channel=entity, photo=InputChatUploadedPhoto(uploaded)))
+                edit_res = await client(
+                    EditPhotoRequest(channel=entity, photo=InputChatUploadedPhoto(uploaded))
+                )
                 result["photo_updated"] = True
 
                 # Clean up photo service message
@@ -115,6 +117,8 @@ async def broadcast_alert_to_telegram(
         await client.disconnect()
 
 
-def run_broadcast_sync(channel_id: int, alert_type: str, update_photo: bool = True) -> dict[str, Any]:
+def run_broadcast_sync(
+    channel_id: int, alert_type: str, update_photo: bool = True
+) -> dict[str, Any]:
     """Synchronous runner for the async broadcast function."""
     return asyncio.run(broadcast_alert_to_telegram(channel_id, alert_type, update_photo))

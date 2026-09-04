@@ -16,7 +16,13 @@ from ctl.ui import console
 
 
 @click.group()
-@click.option("-m", "--mode", type=click.Choice(["dev", "prod"], case_sensitive=False), default=APP_ENV, help="Run mode: dev or prod")
+@click.option(
+    "-m",
+    "--mode",
+    type=click.Choice(["dev", "prod"], case_sensitive=False),
+    default=APP_ENV,
+    help="Run mode: dev or prod",
+)
 @click.pass_context
 def cli(ctx: click.Context, mode: str):
     """Sirens Control (sirens-ctl) - Emergency threat status management."""
@@ -68,7 +74,9 @@ def _apply_and_print(
 
             target_event = "air_raid_alert" if alert_active else "air_raid_alert_cancelled"
             if shelling_active is not None:
-                target_event = "threat_of_shelling" if shelling_active else "threat_of_shelling_cancelled"
+                target_event = (
+                    "threat_of_shelling" if shelling_active else "threat_of_shelling_cancelled"
+                )
 
             try:
                 tg_res = run_broadcast_sync(target_cid, target_event)
@@ -97,15 +105,34 @@ def _apply_and_print(
 
 # --- Threat commands: alert on/off, shelling on/off ---
 
+
 @cli.command(name="alert")
 @click.argument("district")
 @click.argument("state_val", type=click.Choice(["on", "off"], case_sensitive=False))
 @click.option("-s", "--source", default=None, help="Source link or label")
-@click.option("-d", "--date", "date_str", default=None, help="Event date (Kyiv timezone, DD.MM or YYYY-MM-DD; default: today)")
-@click.option("-t", "--time", "time_str", default=None, help="Event time (Kyiv timezone, HH:MM; default: now)")
-@click.option("-b", "--broadcast", is_flag=True, default=False, help="Broadcast alert to Telegram channel")
+@click.option(
+    "-d",
+    "--date",
+    "date_str",
+    default=None,
+    help="Event date (Kyiv timezone, DD.MM or YYYY-MM-DD; default: today)",
+)
+@click.option(
+    "-t", "--time", "time_str", default=None, help="Event time (Kyiv timezone, HH:MM; default: now)"
+)
+@click.option(
+    "-b", "--broadcast", is_flag=True, default=False, help="Broadcast alert to Telegram channel"
+)
 @click.pass_context
-def alert_cmd(ctx: click.Context, district: str, state_val: str, source: str | None, date_str: str | None, time_str: str | None, broadcast: bool):
+def alert_cmd(
+    ctx: click.Context,
+    district: str,
+    state_val: str,
+    source: str | None,
+    date_str: str | None,
+    time_str: str | None,
+    broadcast: bool,
+):
     """Air raid alert on or off (Europe/Kyiv datetime)."""
     active = state_val.lower() == "on"
     _apply_and_print(
@@ -124,11 +151,33 @@ def alert_cmd(ctx: click.Context, district: str, state_val: str, source: str | N
 @click.argument("district")
 @click.argument("state_val", type=click.Choice(["on", "off"], case_sensitive=False))
 @click.option("-s", "--source", default=None, help="Source link or label")
-@click.option("-d", "--date", "date_str", default=None, help="Event date (Kyiv timezone, DD.MM or YYYY-MM-DD; default: today)")
-@click.option("-t", "--time", "time_str", default=None, help="Event time (Kyiv timezone, HH:MM; default: now)")
-@click.option("-b", "--broadcast", is_flag=True, default=False, help="Broadcast shelling threat to Telegram channel")
+@click.option(
+    "-d",
+    "--date",
+    "date_str",
+    default=None,
+    help="Event date (Kyiv timezone, DD.MM or YYYY-MM-DD; default: today)",
+)
+@click.option(
+    "-t", "--time", "time_str", default=None, help="Event time (Kyiv timezone, HH:MM; default: now)"
+)
+@click.option(
+    "-b",
+    "--broadcast",
+    is_flag=True,
+    default=False,
+    help="Broadcast shelling threat to Telegram channel",
+)
 @click.pass_context
-def shelling_cmd(ctx: click.Context, district: str, state_val: str, source: str | None, date_str: str | None, time_str: str | None, broadcast: bool):
+def shelling_cmd(
+    ctx: click.Context,
+    district: str,
+    state_val: str,
+    source: str | None,
+    date_str: str | None,
+    time_str: str | None,
+    broadcast: bool,
+):
     """Shelling threat on or off (Europe/Kyiv datetime)."""
     active = state_val.lower() == "on"
     _apply_and_print(
@@ -145,8 +194,16 @@ def shelling_cmd(ctx: click.Context, district: str, state_val: str, source: str 
 
 # --- Inspection and query commands ---
 
+
 @cli.command(name="ls")
-@click.option("-a", "--all", "show_all", is_flag=True, default=False, help="Show all districts (default: active threats only)")
+@click.option(
+    "-a",
+    "--all",
+    "show_all",
+    is_flag=True,
+    default=False,
+    help="Show all districts (default: active threats only)",
+)
 @click.option("--oblast", default=None, help="Filter by oblast key")
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON")
 @click.pass_context
@@ -169,7 +226,9 @@ def ls_cmd(ctx: click.Context, show_all: bool, oblast: str | None, as_json: bool
 
     if not districts:
         if not show_all:
-            console.print("  [dim green]○ No active alerts or shellings.[/]  (use 'ls -a' to view all districts)")
+            console.print(
+                "  [dim green]○ No active alerts or shellings.[/]  (use 'ls -a' to view all districts)"
+            )
         else:
             console.print("  [dim]No districts found.[/]")
         return

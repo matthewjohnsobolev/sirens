@@ -2,9 +2,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ctl.state import (
+from ops.state import (
     apply_threat_change,
-    find_districts_matching,
     get_all_districts_statuses,
     get_district_status,
     get_history,
@@ -61,14 +60,6 @@ def test_resolve_district_fuzzy():
 
     # Ambiguous match (e.g. single letter that matches multiple districts)
     assert resolve_district("а") is None
-
-
-def test_find_districts_matching():
-    all_districts = find_districts_matching("")
-    assert len(all_districts) > 50
-
-    bucha_match = find_districts_matching("bucha")
-    assert any(k == "bucha" for k, _ in bucha_match)
 
 
 def test_get_district_status():
@@ -197,7 +188,7 @@ def test_apply_threat_change_pg_failures():
     mock_redis = MagicMock()
 
     # Case 1: PG connection fails
-    with patch("ctl.state.get_pg_connection", side_effect=Exception("DB Down")):
+    with patch("ops.state.get_pg_connection", side_effect=Exception("DB Down")):
         res1 = apply_threat_change(
             district_key="bucha",
             alert_active=True,

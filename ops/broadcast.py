@@ -1,5 +1,5 @@
 """
-Telegram broadcaster for sirens-ctl.
+Telegram broadcaster for sirens-ops.
 Sends alert messages and updates channel avatars when --broadcast is explicitly requested.
 """
 
@@ -57,7 +57,7 @@ async def broadcast_alert_to_telegram(
     if not message_text:
         raise ValueError(f"No message template configured for alert type: {alert_type}")
 
-    session_file = str(SESSION_PATH / "sirens_ctl")
+    session_file = str(SESSION_PATH / "sirens_ops")
     client = TelegramClient(session_file, int(TELEGRAM_API_ID), TELEGRAM_API_HASH)
 
     result = {

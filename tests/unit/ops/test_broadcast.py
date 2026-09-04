@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from telethon.tl.types import MessageActionChatEditPhoto, MessageService, UpdateNewChannelMessage
 
-from ctl.broadcast import (
+from ops.broadcast import (
     broadcast_alert_to_telegram,
     build_message_link,
     run_broadcast_sync,
@@ -26,7 +26,7 @@ def test_build_message_link():
 
 @pytest.mark.asyncio
 async def test_broadcast_missing_credentials():
-    with patch("ctl.broadcast.TELEGRAM_API_ID", None):
+    with patch("ops.broadcast.TELEGRAM_API_ID", None):
         with pytest.raises(ValueError, match="TELEGRAM_API_ID or TELEGRAM_API_HASH is not set"):
             await broadcast_alert_to_telegram(-100123, "air_raid_alert")
 
@@ -34,8 +34,8 @@ async def test_broadcast_missing_credentials():
 @pytest.mark.asyncio
 async def test_broadcast_unknown_alert_type():
     with (
-        patch("ctl.broadcast.TELEGRAM_API_ID", "12345"),
-        patch("ctl.broadcast.TELEGRAM_API_HASH", "hash123"),
+        patch("ops.broadcast.TELEGRAM_API_ID", "12345"),
+        patch("ops.broadcast.TELEGRAM_API_HASH", "hash123"),
     ):
         with pytest.raises(ValueError, match="No message template configured"):
             await broadcast_alert_to_telegram(-100123, "unknown_type")
@@ -67,9 +67,9 @@ async def test_broadcast_success_with_photo_update():
     mock_client.return_value = mock_edit_res
 
     with (
-        patch("ctl.broadcast.TELEGRAM_API_ID", "12345"),
-        patch("ctl.broadcast.TELEGRAM_API_HASH", "hash123"),
-        patch("ctl.broadcast.TelegramClient", return_value=mock_client),
+        patch("ops.broadcast.TELEGRAM_API_ID", "12345"),
+        patch("ops.broadcast.TELEGRAM_API_HASH", "hash123"),
+        patch("ops.broadcast.TelegramClient", return_value=mock_client),
     ):
         res = await broadcast_alert_to_telegram(-1001234567, "air_raid_alert", update_photo=True)
 
@@ -99,9 +99,9 @@ async def test_broadcast_fallback_session_authorization():
     clients = [client_primary, client_fallback]
 
     with (
-        patch("ctl.broadcast.TELEGRAM_API_ID", "12345"),
-        patch("ctl.broadcast.TELEGRAM_API_HASH", "hash123"),
-        patch("ctl.broadcast.TelegramClient", side_effect=clients),
+        patch("ops.broadcast.TELEGRAM_API_ID", "12345"),
+        patch("ops.broadcast.TELEGRAM_API_HASH", "hash123"),
+        patch("ops.broadcast.TelegramClient", side_effect=clients),
     ):
         res = await broadcast_alert_to_telegram(
             -1001234567, "air_raid_alert_cancelled", update_photo=False
@@ -122,9 +122,9 @@ async def test_broadcast_unauthorized_error():
     clients = [client_primary, client_fallback]
 
     with (
-        patch("ctl.broadcast.TELEGRAM_API_ID", "12345"),
-        patch("ctl.broadcast.TELEGRAM_API_HASH", "hash123"),
-        patch("ctl.broadcast.TelegramClient", side_effect=clients),
+        patch("ops.broadcast.TELEGRAM_API_ID", "12345"),
+        patch("ops.broadcast.TELEGRAM_API_HASH", "hash123"),
+        patch("ops.broadcast.TelegramClient", side_effect=clients),
     ):
         with pytest.raises(RuntimeError, match="Telegram client is not authorized"):
             await broadcast_alert_to_telegram(-1001234567, "air_raid_alert")
@@ -145,9 +145,9 @@ async def test_broadcast_photo_upload_failure_handled():
     mock_client.upload_file.side_effect = Exception("Upload failed")
 
     with (
-        patch("ctl.broadcast.TELEGRAM_API_ID", "12345"),
-        patch("ctl.broadcast.TELEGRAM_API_HASH", "hash123"),
-        patch("ctl.broadcast.TelegramClient", return_value=mock_client),
+        patch("ops.broadcast.TELEGRAM_API_ID", "12345"),
+        patch("ops.broadcast.TELEGRAM_API_HASH", "hash123"),
+        patch("ops.broadcast.TelegramClient", return_value=mock_client),
     ):
         res = await broadcast_alert_to_telegram(-1001234567, "air_raid_alert", update_photo=True)
         assert res["photo_updated"] is False
@@ -156,7 +156,7 @@ async def test_broadcast_photo_upload_failure_handled():
 
 def test_run_broadcast_sync():
     with patch(
-        "ctl.broadcast.broadcast_alert_to_telegram",
+        "ops.broadcast.broadcast_alert_to_telegram",
         new_callable=AsyncMock,
         return_value={"message_id": 1},
     ) as mock_async:

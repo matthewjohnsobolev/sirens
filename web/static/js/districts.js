@@ -26,7 +26,7 @@ const PILL_VARIANTS = {
     partial:   { cls: 'hatched-oblast-button', icon: 'air-raid-alert-icon.svg',           label: 'Тривога у районах' },
     shelling:  { cls: 'yellow-oblast-button',  icon: 'yellow-logo.svg',                   label: 'Загроза артобстрілу' },
     explosion: { cls: 'red-oblast-button',     icon: 'channel-red.svg',                   label: 'Чутно вибухи' },
-    unknown:   { cls: 'gray-oblast-button',    icon: 'air-raid-alert-cancelled-icon.svg', label: 'Немає даних' }
+    unknown:   { cls: 'gray-oblast-button',    icon: 'no-data-icon.svg',                  label: 'Немає даних' }
 };
 
 const MINUTE = 60;

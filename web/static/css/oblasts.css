@@ -266,17 +266,24 @@
     width: 10px;
 }
 
+/* Прозорі поля лишаємо тільки з боків: вони звужують смугу до 4px. Поля
+   згори й знизу вкорочували б доріжку, і вона не діставала б до краю
+   останньої плашки. */
 .scrollable-content::-webkit-scrollbar-track {
     background: rgba(0, 0, 0, 0.05);
     background-clip: padding-box;
-    border: 3px solid transparent;
+    border: 0 solid transparent;
+    border-left-width: 3px;
+    border-right-width: 3px;
     border-radius: 5px;
 }
 
 .scrollable-content::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.25);
     background-clip: padding-box;
-    border: 3px solid transparent;
+    border: 0 solid transparent;
+    border-left-width: 3px;
+    border-right-width: 3px;
     border-radius: 5px;
     min-height: 24px;
 }

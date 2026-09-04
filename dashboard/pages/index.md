@@ -389,10 +389,7 @@ order by later.subscribers desc
 
 ## Weekly Growth Rate by Channel
 
-Same seven days as above, but relative to each channel's own size, so a small
-channel adding a few hundred subscribers is not buried under Kyiv adding a few
-thousand. Channels with no snapshot to compare against are left out. The smaller
-the channel, the more a single busy day moves its rate.
+Seven-day subscriber growth per channel, relative to each channel's own size.
 
 ```sql channel_growth
 select

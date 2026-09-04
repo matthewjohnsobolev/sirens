@@ -369,6 +369,7 @@ def static_url(filename: str) -> str:
 def add_caching_headers(response: Response) -> Response:
     if request.path == "/api":
         response.headers["Cache-Control"] = "public, max-age=2, s-maxage=2"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
     elif request.path == "/sitemap.xml":
         response.headers["Cache-Control"] = "public, max-age=86400"
     elif request.path.startswith("/static/") or request.path.endswith(".geojson"):

@@ -52,6 +52,7 @@ def test_api_route(client):
     assert response.status_code == 200
     assert response.json == payload
     assert response.headers.get("Cache-Control") == "public, max-age=2, s-maxage=2"
+    assert response.headers.get("X-Robots-Tag") == "noindex, nofollow"
     mock_data.assert_called_once_with()
 
 

@@ -46,7 +46,7 @@ function getMarkerPopupContent(marker, threats) {
     const winner = threats[dominant] || threats.alert || {};
 
     return `<div class='channel-popup-name'>${marker.name}</div>`
-         + renderPill({ variant: dominant, updatedAt: winner.updated_at, source: winner.source })
+         + renderPill({ variant: dominant, at: eventSeconds(winner), source: winner.source })
          + subscribeButtonHtml(marker.channel);
 }
 

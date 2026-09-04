@@ -71,7 +71,10 @@ export function renderHtml(data: any, measurementId = ""): string {
             // з'являється лише там, де є що показувати, — у ненастроєного
             // компонента й у години без даних він удавав би моніторинг.
             const isLive = comp.monitored && index === hoursList.length - 1 && hour.state !== 'nodata';
-            return `<div class="bar${isLive ? ' bar--live' : ''}" role="button" tabindex="0" data-state="${hour.state}"${timeAttr}${statusAttr} data-title="${title}" aria-label="${title}"></div>`;
+            // The label is carried once: `aria-label` is required anyway, and
+            // status.js already falls back to it, so the identical data-title
+            // that used to sit beside it was ~5 KB of repeated text per render.
+            return `<div class="bar${isLive ? ' bar--live' : ''}" role="button" tabindex="0" data-state="${hour.state}"${timeAttr}${statusAttr} aria-label="${title}"></div>`;
           }).join('')}
         </div>
         <div class="scale">

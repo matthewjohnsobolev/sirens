@@ -46,6 +46,11 @@ export interface TelemetryAlert {
     type: string;
     region?: string;
     district?: string;
+    // One name for the place: the city when the district broadcasts, the
+    // district otherwise. `district_name`/`city_name` were two keys holding
+    // that one string; they stay readable here only so a snapshot written by
+    // an alerts service that has not been redeployed yet still renders.
+    location_name?: string;
     district_name?: string;
     city_name?: string;
     location_title?: string;

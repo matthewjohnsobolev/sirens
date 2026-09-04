@@ -315,8 +315,7 @@ async def _record_alert_state(
             "type": alert_type,
             "region": oblast_key,
             "district": district_key,
-            "district_name": loc_name,
-            "city_name": loc_name,
+            "location_name": loc_name,
             "location_title": loc_title,
             "timestamp": now_utc_iso,
             "message_id": message_id,
@@ -763,9 +762,11 @@ async def push_telemetry_to_kv() -> None:
             "last_fallback_message_at": last_fallback_iso,
             "active_source": active_source_name,
             "active_alerts_count": active_count,
+            # One flag, because there is one measurement: Telethon reports a
+            # single client connection. The per-source pair that used to sit
+            # here echoed this same boolean and read as if primary and
+            # fallback were probed apart.
             "source_connected": source_connected,
-            "primary_source_connected": source_connected,
-            "fallback_source_connected": source_connected,
             "updated_at": now_dt.isoformat(),
         }
 
@@ -957,8 +958,7 @@ async def _prime_monitoring_state(primary_source: int, fallback_source: int | No
                         "type": row["type"],
                         "region": row["oblast_key"],
                         "district": d_key,
-                        "district_name": loc_name,
-                        "city_name": loc_name,
+                        "location_name": loc_name,
                         "location_title": loc_title,
                         "timestamp": dt_iso,
                         "message_id": row["message_id"],

@@ -142,8 +142,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
             type: "air_raid_alert",
             region: "kyiv_oblast",
             district: "bilatserkva",
-            district_name: "Біла Церква",
-            city_name: "Біла Церква",
+            location_name: "Біла Церква",
             timestamp: mockLastAlertIso,
             message_id: 12345,
             message_link: "https://t.me/sirens_kyiv_obl/12345"

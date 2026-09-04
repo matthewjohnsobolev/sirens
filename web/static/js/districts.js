@@ -7,13 +7,22 @@ const ALERT_COLORS = {
 
 const FALLBACK_ORDER = ['explosion', 'alert', 'shelling'];
 
+// `time` is an ISO-8601 instant with a UTC offset; everything that used to
+// read `updated_at` goes through here instead, so there is exactly one time
+// field in the payload and no zone left to guess.
+function eventSeconds(threat) {
+    if (!threat || !threat.time) return 0;
+    const ms = Date.parse(threat.time);
+    return Number.isNaN(ms) ? 0 : Math.floor(ms / 1000);
+}
+
 function pickDominant(threats) {
     if (!threats) return null;
     let best = null;
     for (const kind of FALLBACK_ORDER) {
         const t = threats[kind];
         if (!t || !t.status) continue;
-        if (!best || (t.updated_at || 0) > (threats[best].updated_at || 0)) {
+        if (!best || eventSeconds(t) > eventSeconds(threats[best])) {
             best = kind;
         }
     }
@@ -33,9 +42,9 @@ const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-function formatDuration(updatedAt) {
-    if (!updatedAt) return '';
-    const seconds = Math.max(0, Math.floor(Date.now() / 1000) - updatedAt);
+function formatDuration(at) {
+    if (!at) return '';
+    const seconds = Math.max(0, Math.floor(Date.now() / 1000) - at);
 
     if (seconds < MINUTE) return 'щойно';
     if (seconds < HOUR) return `${Math.floor(seconds / MINUTE)} хв`;
@@ -57,9 +66,9 @@ function messageLink(source) {
     return MESSAGE_LINK_RE.test(trimmed) ? trimmed : null;
 }
 
-function renderPill({ variant, text, updatedAt, source, showTime = true }) {
+function renderPill({ variant, text, at, source, showTime = true }) {
     const v = PILL_VARIANTS[variant] || PILL_VARIANTS.unknown;
-    const duration = (showTime && updatedAt) ? formatDuration(updatedAt) : '';
+    const duration = showTime ? formatDuration(at) : '';
     const timeHtml = duration ? `<div class="oblast-description-time">${duration}</div>` : '';
     const body = `
         <button class="${v.cls}">
@@ -84,7 +93,7 @@ function districtPillState(oblastData, key) {
     const dominant = pickDominant(threats) || 'idle';
     const winner = threats[dominant] || district.alert || {};
 
-    return { variant: dominant, updatedAt: winner.updated_at, source: winner.source };
+    return { variant: dominant, at: eventSeconds(winner), source: winner.source };
 }
 
 const DISTRICT_MARKERS = [
@@ -145,14 +154,6 @@ function getMarkerThreats(apiData, marker) {
         alert = oblastData.alert;
     }
 
-    if (marker.district && apiData[marker.district] && apiData[marker.district].shelling) {
-        if (!shelling || !shelling.status) {
-            if (apiData[marker.district].shelling.status) {
-                shelling = apiData[marker.district].shelling;
-            }
-        }
-    }
-
     const explosion = oblastData.explosion;
 
     return { alert, explosion, shelling };
@@ -164,6 +165,7 @@ if (typeof module !== 'undefined' && module.exports) {
         FALLBACK_ORDER,
         PILL_VARIANTS,
         pickDominant,
+        eventSeconds,
         formatDuration,
         messageLink,
         renderPill,

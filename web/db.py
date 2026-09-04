@@ -8,6 +8,7 @@ import logging
 import time
 from functools import partial
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import psycopg2
 import redis
@@ -527,34 +528,48 @@ def rehydrate_state_from_db() -> None:
     log.info("Redis state rehydrated successfully from PostgreSQL (%d records)", len(rows))
 
 
-DEFAULT_THREAT: dict[str, Any] = {
+KYIV_TZ = ZoneInfo("Europe/Kyiv")
+
+# Internal shape, as read out of Redis. `updated_at` is the epoch the record was
+# written at and the only clock worth trusting: the "HH:MM" string stored next
+# to it is the same instant with the date and the zone thrown away. The public
+# shape below keeps the epoch and spends it on a single ISO-8601 `time`, so the
+# response no longer carries one moment twice and no longer asks the reader to
+# guess which zone a bare "14:23" was written in.
+IDLE_THREAT: dict[str, Any] = {
     "status": False,
-    "time": "None",
-    "source": "None",
+    "source": None,
     "updated_at": 0,
 }
 
 
-def _aggregate_shelling(districts: dict[str, Any]) -> dict[str, Any]:
-    active_shellings = [
-        d["shelling"]
-        for d in districts.values()
-        if d.get("shelling") and d["shelling"].get("status")
-    ]
-    if not active_shellings:
-        return DEFAULT_THREAT.copy()
-
-    latest = max(active_shellings, key=lambda s: s.get("updated_at", 0))
-    return {
-        "status": True,
-        "time": latest.get("time", "None"),
-        "source": latest.get("source", "None"),
-        "updated_at": latest.get("updated_at", 0),
+def _public_threat(entry: dict[str, Any]) -> dict[str, Any]:
+    updated_at = entry.get("updated_at") or 0
+    source = entry.get("source")
+    public: dict[str, Any] = {
+        "status": bool(entry.get("status")),
+        "time": (
+            datetime.datetime.fromtimestamp(updated_at, KYIV_TZ).isoformat() if updated_at else None
+        ),
+        "source": source if source and source != "None" else None,
     }
+    if "type" in entry:
+        public["type"] = entry["type"]
+    return public
+
+
+def _aggregate_shelling(districts: dict[str, Any]) -> dict[str, Any]:
+    active = [d for d in districts.values() if d.get("status")]
+    if not active:
+        return IDLE_THREAT.copy()
+    return max(active, key=lambda s: s.get("updated_at", 0)).copy()
 
 
 def get_all_threats_data() -> dict[str, Any]:
-    tables = ["alerts", "explosions", "shellings"]
+    # Only alerts and explosions are tracked at oblast level. An oblast's
+    # shelling state is the latest of its districts', so `threat:shellings:
+    # <oblast>` was read 27 times per request and never looked at.
+    tables = ["alerts", "explosions"]
     oblasts = [
         "cherkasy_oblast",
         "chernihiv_oblast",
@@ -618,7 +633,6 @@ def get_all_threats_data() -> dict[str, Any]:
     raw_data: dict[str, dict[str, Any]] = {
         "alerts": {},
         "explosions": {},
-        "shellings": {},
         "city_alerts": {},
         "city_shellings": {},
         "active_districts": {},
@@ -628,9 +642,9 @@ def get_all_threats_data() -> dict[str, Any]:
         if category == "active_districts":
             raw_data["active_districts"][target] = list(data) if data else []
         elif not data:
-            entry = DEFAULT_THREAT.copy()
+            entry = IDLE_THREAT.copy()
             if category == "city_alerts":
-                entry["type"] = "None"
+                entry["type"] = None
             raw_data[category][target] = entry
         else:
             raw_status = data.get("status", False)
@@ -641,8 +655,7 @@ def get_all_threats_data() -> dict[str, Any]:
 
             entry = {
                 "status": _normalize_status(raw_status),
-                "time": data.get("time", "None"),
-                "source": data.get("source", "None"),
+                "source": data.get("source"),
                 "updated_at": updated_at_val,
             }
             if category == "city_alerts":
@@ -662,40 +675,34 @@ def get_all_threats_data() -> dict[str, Any]:
         tracked = DISTRICTS_BY_OBLAST.get(oblast, [])
         active = [d for d in raw_data["active_districts"].get(oblast, []) if d in tracked]
 
-        oblast_alert = raw_data["alerts"].get(oblast, DEFAULT_THREAT).copy()
-        oblast_alert["active_districts"] = active
-        oblast_alert["tracked_districts"] = tracked
+        oblast_alert = raw_data["alerts"].get(oblast, IDLE_THREAT).copy()
         if active:
             oblast_alert["status"] = True
             oblast_alert["coverage"] = "full" if len(active) >= len(tracked) else "partial"
         else:
             oblast_alert["coverage"] = "none"
 
+        # The district ids behind `coverage` are not listed separately: the
+        # keys of `districts` are the tracked set, and the active subset is
+        # the ones whose own alert is up.
+        shellings = {d: raw_data["city_shellings"].get(d, IDLE_THREAT) for d in tracked}
         districts_map = {
             d: {
                 "name": DISTRICT_CONFIG[d]["name"],
-                "alert": raw_data["city_alerts"].get(d, DEFAULT_THREAT),
-                "shelling": raw_data["city_shellings"].get(d, DEFAULT_THREAT),
+                "alert": _public_threat(raw_data["city_alerts"].get(d, IDLE_THREAT)),
+                "shelling": _public_threat(shellings[d]),
             }
             for d in tracked
         }
 
         return {
-            "alert": oblast_alert,
-            "explosion": raw_data["explosions"].get(oblast, DEFAULT_THREAT),
-            "shelling": _aggregate_shelling(districts_map),
+            "alert": _public_threat(oblast_alert) | {"coverage": oblast_alert["coverage"]},
+            "explosion": _public_threat(raw_data["explosions"].get(oblast, IDLE_THREAT)),
+            "shelling": _public_threat(_aggregate_shelling(shellings)),
             "districts": districts_map,
         }
 
     for o in oblasts:
         result[o] = build_oblast_entry(o)
-
-    for city, parent_oblast in [
-        ("nikopol", "dnipropetrovsk_oblast"),
-        ("kherson", "kherson_oblast"),
-    ]:
-        entry = build_oblast_entry(parent_oblast)
-        entry["shelling"] = raw_data["city_shellings"].get(city, DEFAULT_THREAT)
-        result[city] = entry
 
     return result

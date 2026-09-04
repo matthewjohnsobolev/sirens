@@ -69,8 +69,9 @@ function setOblastStyle(layer, data) {
 }
 
 function getOblastPopupContent(oblastData) {
-    const alert = (oblastData && oblastData.alert) || {};
-    const tracked = alert.tracked_districts || [];
+    // The tracked set is the keys of `districts`: the payload no longer
+    // repeats it as a separate list on every alert object.
+    const tracked = Object.keys((oblastData && oblastData.districts) || {});
 
     if (!tracked.length) {
         return `

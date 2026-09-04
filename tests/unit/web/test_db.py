@@ -571,48 +571,60 @@ def test_get_all_threats_data_queries_every_table_and_oblast(threats_store):
     get_all_threats_data()
 
     keys = [k for _, k in threats_store.operations]
-    for table in ("alerts", "explosions", "shellings"):
+    for table in ("alerts", "explosions"):
         assert f"threat:{table}:kyiv" in keys
+    # Shelling is tracked per district only; the oblast-level key was read and
+    # never used, so it is no longer requested. ("kyiv" is both an oblast and a
+    # district key, so the assertion needs an oblast that is only an oblast.)
+    assert "threat:shellings:lviv_oblast" not in keys
+    assert "threat:shellings:nikopol" in keys
 
 
 def test_get_all_threats_data_normalises_status(threats_store):
     result = get_all_threats_data()
 
     assert result["kyiv"]["alert"]["status"] is True
-    assert result["kyiv"]["alert"]["time"] == "10:00"
-    assert result["kyiv"]["alert"]["updated_at"] == 1000
     assert result["lviv_oblast"]["alert"]["status"] is False
+
+
+def test_get_all_threats_data_time_is_an_offset_aware_instant(threats_store):
+    """`time` carries the date and the Kyiv offset, not a bare "HH:MM"."""
+    result = get_all_threats_data()
+
+    stamp = result["kyiv"]["alert"]["time"]
+    parsed = datetime.datetime.fromisoformat(stamp)
+    assert parsed.tzinfo is not None
+    assert parsed.timestamp() == 1000
+    assert "updated_at" not in result["kyiv"]["alert"]
 
 
 def test_get_all_threats_data_defaults_missing_keys(threats_store):
     result = get_all_threats_data()
 
     assert result["crimea"]["alert"]["status"] is False
-    assert result["crimea"]["alert"]["updated_at"] == 0
+    assert result["crimea"]["alert"]["time"] is None
+    assert result["crimea"]["alert"]["source"] is None
     assert result["crimea"]["explosion"]["status"] is False
-    assert result["crimea"]["explosion"]["updated_at"] == 0
+    assert result["crimea"]["explosion"]["time"] is None
 
 
-@pytest.mark.parametrize(
-    "city, parent_oblast",
-    [
-        ("nikopol", "dnipropetrovsk_oblast"),
-        ("kherson", "kherson_oblast"),
-    ],
-)
-def test_get_all_threats_data_maps_cities_to_parent_oblast(threats_store, city, parent_oblast):
+@pytest.mark.parametrize("city", ["nikopol", "kherson"])
+def test_get_all_threats_data_has_no_top_level_city_entries(threats_store, city):
+    """Front-line cities are districts of their oblast, not oblasts of their own."""
     result = get_all_threats_data()
 
-    assert result[city]["alert"] == result[parent_oblast]["alert"]
-    assert result[city]["explosion"] == result[parent_oblast]["explosion"]
+    assert city not in result
 
 
 def test_get_all_threats_data_aggregates_shelling(threats_store):
     result = get_all_threats_data()
 
-    assert result["nikopol"]["shelling"]["status"] is True
-    assert result["kherson"]["shelling"]["status"] is False
-    assert result["dnipropetrovsk_oblast"]["shelling"]["status"] is True
+    dnipro = result["dnipropetrovsk_oblast"]
+    assert dnipro["districts"]["nikopol"]["shelling"]["status"] is True
+    assert dnipro["districts"]["nikopol"]["shelling"]["source"] == "sh-nikopol"
+    assert dnipro["shelling"]["status"] is True
+    assert result["kherson_oblast"]["districts"]["kherson"]["shelling"]["status"] is False
+    assert result["kherson_oblast"]["shelling"]["status"] is False
     assert result["kyiv"]["shelling"]["status"] is False
 
 
@@ -629,8 +641,12 @@ def test_get_all_threats_data_coverage_partial(mock_web_redis):
     kyiv_obl = result["kyiv_oblast"]
     assert kyiv_obl["alert"]["status"] is True
     assert kyiv_obl["alert"]["coverage"] == "partial"
-    assert kyiv_obl["alert"]["active_districts"] == ["bucha"]
-    assert set(kyiv_obl["alert"]["tracked_districts"]) == set(DISTRICTS_BY_OBLAST["kyiv_oblast"])
+    # The tracked set is the district keys; the active subset is the districts
+    # whose own alert is up. Neither is repeated as a list on the alert object.
+    assert "active_districts" not in kyiv_obl["alert"]
+    assert "tracked_districts" not in kyiv_obl["alert"]
+    assert set(kyiv_obl["districts"]) == set(DISTRICTS_BY_OBLAST["kyiv_oblast"])
+    assert [d for d, e in kyiv_obl["districts"].items() if e["alert"]["status"]] == ["bucha"]
     assert "bucha" in kyiv_obl["districts"]
     assert kyiv_obl["districts"]["bucha"]["alert"]["status"] is True
 
@@ -647,8 +663,7 @@ def test_get_all_threats_data_coverage_full(mock_web_redis):
     assert result["volyn_oblast"]["alert"]["coverage"] == "full"
     assert result["lviv_oblast"]["alert"]["coverage"] == "full"
     assert result["crimea"]["alert"]["coverage"] == "none"
-    assert result["crimea"]["alert"]["active_districts"] == []
-    assert result["crimea"]["alert"]["tracked_districts"] == []
+    assert result["crimea"]["districts"] == {}
 
 
 def test_get_all_threats_data_carries_district_names(mock_web_redis):
@@ -680,28 +695,35 @@ def test_get_all_threats_data_filters_untracked_from_active_districts(mock_web_r
     mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
     result = get_all_threats_data()
 
-    assert result["kyiv_oblast"]["alert"]["active_districts"] == ["bucha"]
     assert result["kyiv_oblast"]["alert"]["coverage"] == "partial"
+    assert "nonexistent_district" not in result["kyiv_oblast"]["districts"]
 
 
 def test_aggregate_shelling_selects_latest():
-    from web.db import DEFAULT_THREAT, _aggregate_shelling
+    from web.db import IDLE_THREAT, _aggregate_shelling
 
-    districts_empty = {}
-    assert _aggregate_shelling(districts_empty) == DEFAULT_THREAT
+    assert _aggregate_shelling({}) == IDLE_THREAT
 
-    districts_no_active = {
-        "d1": {"shelling": {"status": False, "time": "10:00", "updated_at": 50}},
+    no_active = {"d1": {"status": False, "source": "s1", "updated_at": 50}}
+    assert _aggregate_shelling(no_active) == IDLE_THREAT
+
+    multi = {
+        "d1": {"status": True, "source": "s1", "updated_at": 100},
+        "d2": {"status": True, "source": "s2", "updated_at": 200},
+        "d3": {"status": False, "source": "s3", "updated_at": 300},
     }
-    assert _aggregate_shelling(districts_no_active) == DEFAULT_THREAT
-
-    districts_multi = {
-        "d1": {"shelling": {"status": True, "time": "10:00", "source": "s1", "updated_at": 100}},
-        "d2": {"shelling": {"status": True, "time": "11:00", "source": "s2", "updated_at": 200}},
-        "d3": {"shelling": {"status": False, "time": "12:00", "source": "s3", "updated_at": 300}},
-    }
-    agg = _aggregate_shelling(districts_multi)
+    agg = _aggregate_shelling(multi)
     assert agg["status"] is True
-    assert agg["time"] == "11:00"
     assert agg["source"] == "s2"
     assert agg["updated_at"] == 200
+
+
+def test_public_threat_drops_the_none_sentinels():
+    """ "None" was a string standing in for absence; the API now sends null."""
+    from web.db import _public_threat
+
+    assert _public_threat({"status": False, "source": "None", "updated_at": 0}) == {
+        "status": False,
+        "time": None,
+        "source": None,
+    }

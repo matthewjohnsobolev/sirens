@@ -387,6 +387,61 @@ order by later.subscribers desc
     }}
 />
 
+## Weekly Growth Rate by Channel
+
+Same seven days as above, but relative to each channel's own size, so a small
+channel adding a few hundred subscribers is not buried under Kyiv adding a few
+thousand. Channels with no snapshot to compare against are left out. The smaller
+the channel, the more a single busy day moves its rate.
+
+```sql channel_growth
+select
+    display_name,
+    subscribers,
+    change_7d,
+    change_7d_pct,
+    week_ago_label,
+    case
+        when change_7d > 0 then 'Gained'
+        when change_7d < 0 then 'Lost'
+        else 'Unchanged'
+    end as direction
+from ${by_channel}
+where change_7d is not null
+order by change_7d_pct desc
+```
+
+<BarChart
+    data={channel_growth}
+    x=display_name
+    y=change_7d_pct
+    yFmt=pct1
+    series=direction
+    seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
+    swapXY=true
+    sort=false
+    yAxisTitle="7-day growth"
+    emptySet=pass
+    emptyMessage="No channel has a full week of history yet"
+    echartsOptions={{
+        tooltip: {
+            formatter: (params) => {
+                const point = Array.isArray(params) ? params[0] : params;
+                const name = point.value[1] ?? point.name;
+                const row = Array.from(channel_growth).find((d) => d.display_name === name) ?? {};
+                return (
+                    tipHead(name) +
+                    tipRow(
+                        row.week_ago_label ? 'vs ' + row.week_ago_label : 'vs 7 days ago',
+                        delta(row.change_7d, row.change_7d_pct)
+                    ) +
+                    tipRow('subscribers', num(row.subscribers))
+                );
+            }
+        }
+    }}
+/>
+
 Data as of {movement_window[0].later}. Historical tracking begins from the date
 metrics collection was enabled. To ensure data integrity, incomplete snapshots
 are omitted rather than recorded partially — any gaps in the trend line indicate

@@ -92,7 +92,18 @@ def test_get_history():
     mock_cur = MagicMock()
     mock_pg.cursor.return_value.__enter__.return_value = mock_cur
     mock_cur.fetchall.return_value = [
-        (1, "2026-09-04 12:00:00", "2026-09-04", "12:00", "bucha", "kyiv_oblast", "air_raid_alert", -1001754447620, 123, "manual:cli"),
+        (
+            1,
+            "2026-09-04 12:00:00",
+            "2026-09-04",
+            "12:00",
+            "bucha",
+            "kyiv_oblast",
+            "air_raid_alert",
+            -1001754447620,
+            123,
+            "manual:cli",
+        ),
     ]
 
     history = get_history(district_key="bucha", limit=5, pg_conn=mock_pg)

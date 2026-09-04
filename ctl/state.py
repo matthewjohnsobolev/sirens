@@ -148,7 +148,9 @@ def get_district_status(
         "has_channel": channel_id is not None,
         "alert": {
             "status": alert_status,
-            "type": alert_raw.get("type", "air_raid_alert" if alert_status else "air_raid_alert_cancelled"),
+            "type": alert_raw.get(
+                "type", "air_raid_alert" if alert_status else "air_raid_alert_cancelled"
+            ),
             "time": alert_raw.get("time", "None"),
             "source": alert_raw.get("source", "None"),
             "updated_at": int(alert_raw.get("updated_at", 0) or 0),
@@ -202,26 +204,28 @@ def get_all_districts_statuses(
             continue
 
         conf = DISTRICT_CONFIG[d_key]
-        districts.append({
-            "key": d_key,
-            "name": conf.get("name", d_key),
-            "display_name": conf.get("display_name") or conf.get("name", d_key),
-            "oblast_key": conf.get("oblast", ""),
-            "channel_id": channels.get(d_key),
-            "has_channel": d_key in channels,
-            "alert": {
-                "status": alert_status,
-                "time": alert_raw.get("time", "None"),
-                "source": alert_raw.get("source", "None"),
-                "updated_at": int(alert_raw.get("updated_at", 0) or 0),
-            },
-            "shelling": {
-                "status": shelling_status,
-                "time": shelling_raw.get("time", "None"),
-                "source": shelling_raw.get("source", "None"),
-                "updated_at": int(shelling_raw.get("updated_at", 0) or 0),
-            },
-        })
+        districts.append(
+            {
+                "key": d_key,
+                "name": conf.get("name", d_key),
+                "display_name": conf.get("display_name") or conf.get("name", d_key),
+                "oblast_key": conf.get("oblast", ""),
+                "channel_id": channels.get(d_key),
+                "has_channel": d_key in channels,
+                "alert": {
+                    "status": alert_status,
+                    "time": alert_raw.get("time", "None"),
+                    "source": alert_raw.get("source", "None"),
+                    "updated_at": int(alert_raw.get("updated_at", 0) or 0),
+                },
+                "shelling": {
+                    "status": shelling_status,
+                    "time": shelling_raw.get("time", "None"),
+                    "source": shelling_raw.get("source", "None"),
+                    "updated_at": int(shelling_raw.get("updated_at", 0) or 0),
+                },
+            }
+        )
 
     return districts
 
@@ -230,6 +234,7 @@ def get_kyiv_timezone():
     """Resolve Europe/Kyiv timezone with robust fallback."""
     try:
         from zoneinfo import ZoneInfo
+
         return ZoneInfo("Europe/Kyiv")
     except Exception:
         return datetime.timezone(datetime.timedelta(hours=3))
@@ -268,14 +273,18 @@ def parse_kyiv_datetime(
         if not matched:
             for fmt in ("%d.%m", "%d/%m"):
                 try:
-                    parsed = datetime.datetime.strptime(f"{clean_date}.{now_kyiv.year}", f"{fmt}.%Y")
+                    parsed = datetime.datetime.strptime(
+                        f"{clean_date}.{now_kyiv.year}", f"{fmt}.%Y"
+                    )
                     target_date = parsed.date()
                     matched = True
                     break
                 except ValueError:
                     pass
         if not matched:
-            raise ValueError(f"Invalid date format: '{date_str}'. Expected 'YYYY-MM-DD' or 'DD.MM'.")
+            raise ValueError(
+                f"Invalid date format: '{date_str}'. Expected 'YYYY-MM-DD' or 'DD.MM'."
+            )
 
     # 2. Parse time
     target_time = now_kyiv.time()
@@ -336,27 +345,31 @@ def apply_threat_change(
 
     if alert_active is not None:
         event_type = "air_raid_alert" if alert_active else "air_raid_alert_cancelled"
-        changes_plan.append({
-            "component": "alert",
-            "to": alert_active,
-            "event_type": event_type,
-            "redis_keys": [
-                f"threat:alerts:city:{district_key}",
-                f"threat:alerts:active:{oblast_key}",
-                f"threat:alerts:{oblast_key}",
-            ],
-        })
+        changes_plan.append(
+            {
+                "component": "alert",
+                "to": alert_active,
+                "event_type": event_type,
+                "redis_keys": [
+                    f"threat:alerts:city:{district_key}",
+                    f"threat:alerts:active:{oblast_key}",
+                    f"threat:alerts:{oblast_key}",
+                ],
+            }
+        )
 
     if shelling_active is not None:
         event_type = "threat_of_shelling" if shelling_active else "threat_of_shelling_cancelled"
-        changes_plan.append({
-            "component": "shelling",
-            "to": shelling_active,
-            "event_type": event_type,
-            "redis_keys": [
-                f"threat:shellings:{district_key}",
-            ],
-        })
+        changes_plan.append(
+            {
+                "component": "shelling",
+                "to": shelling_active,
+                "event_type": event_type,
+                "redis_keys": [
+                    f"threat:shellings:{district_key}",
+                ],
+            }
+        )
 
     result = {
         "district_key": district_key,
@@ -516,18 +529,20 @@ def get_history(
             rows = cur.fetchall()
             history = []
             for row in rows:
-                history.append({
-                    "id": row[0],
-                    "datetime": row[1],
-                    "date": str(row[2]),
-                    "time": row[3],
-                    "district_key": row[4],
-                    "oblast_key": row[5],
-                    "type": row[6],
-                    "channel_id": row[7],
-                    "message_id": row[8],
-                    "message_link": row[9],
-                })
+                history.append(
+                    {
+                        "id": row[0],
+                        "datetime": row[1],
+                        "date": str(row[2]),
+                        "time": row[3],
+                        "district_key": row[4],
+                        "oblast_key": row[5],
+                        "type": row[6],
+                        "channel_id": row[7],
+                        "message_id": row[8],
+                        "message_link": row[9],
+                    }
+                )
             return history
     finally:
         if owns_conn:

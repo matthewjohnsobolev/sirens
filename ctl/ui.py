@@ -94,7 +94,11 @@ def render_ls_table(districts: list[dict[str, Any]]) -> Table:
             time_val = d["alert"].get("time", "")
         updated_epoch = d["alert"].get("updated_at") or d["shelling"].get("updated_at")
         elapsed = format_elapsed(updated_epoch, time_val)
-        updated_str = f"{time_val} ({elapsed})" if (time_val and elapsed and elapsed != time_val) else (time_val or "-")
+        updated_str = (
+            f"{time_val} ({elapsed})"
+            if (time_val and elapsed and elapsed != time_val)
+            else (time_val or "-")
+        )
 
         chan = str(d["channel_id"]) if d.get("has_channel") and d.get("channel_id") else "map-only"
 
@@ -125,10 +129,18 @@ def print_show_detail(data: dict[str, Any]) -> None:
     shelling_time = shelling.get("time", "-")
 
     disp_name = data.get("display_name")
-    name_str = f"{data['name']} / {disp_name}" if disp_name and disp_name != data["name"] else data["name"]
-    channel_info = str(data["channel_id"]) if data.get("has_channel") and data.get("channel_id") else "map-only (no channel)"
+    name_str = (
+        f"{data['name']} / {disp_name}" if disp_name and disp_name != data["name"] else data["name"]
+    )
+    channel_info = (
+        str(data["channel_id"])
+        if data.get("has_channel") and data.get("channel_id")
+        else "map-only (no channel)"
+    )
     console.print(f"[bold white]{data['key']}[/] ({name_str}) · [dim]{data['oblast_key']}[/]")
-    console.print(f"  air raid:  {alert_dot} since {alert_time_fmt}  [dim]type: {alert.get('type')}[/]")
+    console.print(
+        f"  air raid:  {alert_dot} since {alert_time_fmt}  [dim]type: {alert.get('type')}[/]"
+    )
     console.print(f"  shelling:  {shelling_dot} since {shelling_time}")
     console.print(f"  channel:   [dim]{channel_info}[/]")
     if alert.get("source") and alert.get("source") != "None":

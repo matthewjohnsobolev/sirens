@@ -1,4 +1,4 @@
-from run_ctl import cli
+from ctl.cli import cli
 
 if __name__ == "__main__":
     cli()

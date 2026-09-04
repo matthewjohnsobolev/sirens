@@ -83,10 +83,6 @@ function formatUkrainianTime(timeStr, dateObj = new Date()) {
   return getDefaultTimeStr(dateObj);
 }
 
-function formatUkrainianDateTime(dateObj, timeStr) {
-  return `${formatUkrainianDate(dateObj)} ${formatUkrainianTime(timeStr, dateObj)}`;
-}
-
 const isOther = () => SETS[tab].length === 0;
 
 function render(){

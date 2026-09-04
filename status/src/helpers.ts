@@ -3,23 +3,17 @@ export const UK_MONTHS = [
     "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"
 ];
 
-// [однина, множина] — форма підбирається під назву компонента.
-// Наразі всі назви компонентів однинні, тож множина не використовується.
-export const STATUS_WORDS: Record<string, [string, string]> = {
-    "ok": ["працює", "працюють"],
-    "minor": ["часткові збої", "часткові збої"],
-    "major": ["не працює", "не працюють"],
-    "down": ["не працює", "не працюють"],
-    "mnt": ["планові роботи", "планові роботи"],
-    "nodata": ["немає даних", "немає даних"],
+export const STATUS_WORDS: Record<string, string> = {
+    "ok": "працює",
+    "minor": "часткові збої",
+    "major": "не працює",
+    "down": "не працює",
+    "mnt": "планові роботи",
+    "nodata": "немає даних",
 };
 
-const PLURAL_COMPONENTS = new Set<string>([]);
-
-export function statusWord(state: string, componentKey?: string): string {
-    const forms = STATUS_WORDS[state];
-    if (!forms) return state;
-    return PLURAL_COMPONENTS.has(componentKey || "") ? forms[1] : forms[0];
+export function statusWord(state: string): string {
+    return STATUS_WORDS[state] ?? state;
 }
 
 export const LOCATION_LOCATIVE: Record<string, string> = {
@@ -143,8 +137,8 @@ export function pluralHours(count: number): string {
     return "годин";
 }
 
-export function formatHourParts(isoDate: string, state: string, componentKey?: string) {
-    const word = statusWord(state, componentKey);
+export function formatHourParts(isoDate: string, state: string) {
+    const word = statusWord(state);
     try {
         const d = new Date(isoDate);
         const p = getKyivParts(d);
@@ -165,8 +159,8 @@ export function formatHourParts(isoDate: string, state: string, componentKey?: s
     }
 }
 
-export function formatHourTitle(isoDate: string, state: string, componentKey?: string): string {
-    return formatHourParts(isoDate, state, componentKey).fullTitle;
+export function formatHourTitle(isoDate: string, state: string): string {
+    return formatHourParts(isoDate, state).fullTitle;
 }
 
 export function summarizeHours(items: any[]): string {

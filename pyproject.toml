@@ -14,9 +14,6 @@ dependencies = { file = ["requirements.txt"] }
 [tool.setuptools]
 packages = ["alerts", "bi", "data", "domain", "web"]
 
-[tool.setuptools.package-data]
-alerts = ["img/*.png"]
-
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",

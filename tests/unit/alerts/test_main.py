@@ -2342,7 +2342,6 @@ async def test_push_telemetry_to_kv_includes_fallback_data(monkeypatch):
     assert mock_put.called
     body = json.loads(mock_put.call_args.kwargs["data"])
     assert body["active_source"] == "fallback"
-    assert body["primary_source_connected"] is True
-    assert body["fallback_source_connected"] is True
+    assert body["source_connected"] is True
     assert "last_primary_message_at" in body
     assert "last_fallback_message_at" in body

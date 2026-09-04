@@ -118,8 +118,6 @@ async def fetch_subscribers(client: TelegramClient, channel_id: int) -> int | No
     return None
 
 
-fetch_participants = fetch_subscribers
-
 
 async def collect(client: TelegramClient, channels: dict) -> list[ChannelCount]:
     counts: list[ChannelCount] = []
@@ -175,8 +173,6 @@ async def export_stats_csv(pool) -> str:
 
     return buffer.getvalue()
 
-
-export_subscribers_csv = export_stats_csv
 
 
 def upload_to_r2(csv_content: str) -> None:

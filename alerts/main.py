@@ -764,8 +764,6 @@ async def push_telemetry_to_kv() -> None:
             "active_source": active_source_name,
             "active_alerts_count": active_count,
             "source_connected": source_connected,
-            "primary_source_connected": source_connected,
-            "fallback_source_connected": source_connected,
             "updated_at": now_dt.isoformat(),
         }
 

@@ -1,8 +1,7 @@
 const ALERT_COLORS = {
     IDLE: '#8A8A8A',
     ALERT: '#FF831A',
-    EXPLOSION: '#FF1A1A',
-    SHELLING: '#FFDA1A'
+    EXPLOSION: '#FF1A1A'
 };
 
 const FALLBACK_ORDER = ['explosion', 'alert', 'shelling'];

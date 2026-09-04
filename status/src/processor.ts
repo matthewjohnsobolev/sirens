@@ -211,7 +211,7 @@ export async function computeStatusData(env: Env) {
             const dateIso = hourStart.toISOString();
 
             if (!historyKnown || actualEnd <= actualStart) {
-                const parts = formatHourParts(dateIso, "nodata", spec.key);
+                const parts = formatHourParts(dateIso, "nodata");
                 hours.push({
                     date: dateIso,
                     state: "nodata",
@@ -237,7 +237,7 @@ export async function computeStatusData(env: Env) {
             if (hasDownInterval) state = "down";
             else if (down > 0) state = "minor";
 
-            const parts = formatHourParts(dateIso, state, spec.key);
+            const parts = formatHourParts(dateIso, state);
             hours.push({
                 date: dateIso,
                 state,
@@ -259,7 +259,7 @@ export async function computeStatusData(env: Env) {
                 finalState = probe.live === "major" ? "down" : probe.live;
             }
             hours[hours.length - 1].state = finalState;
-            const updatedParts = formatHourParts(hours[hours.length - 1].date, finalState, spec.key);
+            const updatedParts = formatHourParts(hours[hours.length - 1].date, finalState);
             hours[hours.length - 1].timeText = updatedParts.timeText;
             hours[hours.length - 1].statusText = updatedParts.statusText;
             hours[hours.length - 1].title = updatedParts.fullTitle;

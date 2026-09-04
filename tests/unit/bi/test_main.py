@@ -15,7 +15,7 @@ from bi.main import (
     MAX_ATTEMPTS,
     ChannelCount,
     collect,
-    fetch_participants,
+    fetch_subscribers,
     main,
     run_snapshot,
     store,
@@ -33,45 +33,45 @@ def _client(*side_effect):
 
 
 @pytest.mark.asyncio
-async def test_fetch_participants_returns_count():
+async def test_fetch_subscribers_returns_count():
     client = _client(full_channel(1234))
 
-    assert await fetch_participants(client, CHANNEL_ID) == 1234
+    assert await fetch_subscribers(client, CHANNEL_ID) == 1234
 
     request = client.call_args.args[0]
     assert isinstance(request, GetFullChannelRequest)
 
 
 @pytest.mark.asyncio
-async def test_fetch_participants_waits_out_a_flood_wait_then_succeeds(caplog):
+async def test_fetch_subscribers_waits_out_a_flood_wait_then_succeeds(caplog):
     caplog.set_level(logging.WARNING)
     client = _client(FloodWaitError(request=None), full_channel(77))
 
     with patch("bi.main.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-        assert await fetch_participants(client, CHANNEL_ID) == 77
+        assert await fetch_subscribers(client, CHANNEL_ID) == 77
 
     mock_sleep.assert_awaited_once()
     assert "Rate-limited" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_fetch_participants_gives_up_after_max_attempts(caplog):
+async def test_fetch_subscribers_gives_up_after_max_attempts(caplog):
     caplog.set_level(logging.ERROR)
     client = _client(*[FloodWaitError(request=None)] * MAX_ATTEMPTS)
 
     with patch("bi.main.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-        assert await fetch_participants(client, CHANNEL_ID) is None
+        assert await fetch_subscribers(client, CHANNEL_ID) is None
 
     assert mock_sleep.await_count == MAX_ATTEMPTS
     assert "Giving up" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_fetch_participants_does_not_retry_other_errors(caplog):
+async def test_fetch_subscribers_does_not_retry_other_errors(caplog):
     caplog.set_level(logging.ERROR)
     client = _client(RuntimeError("channel is gone"))
 
-    assert await fetch_participants(client, CHANNEL_ID) is None
+    assert await fetch_subscribers(client, CHANNEL_ID) is None
 
     assert client.await_count == 1
     assert "Failed to read subscriber count" in caplog.text
@@ -158,13 +158,13 @@ async def test_store_overwrites_the_same_day_instead_of_duplicating(bi_pool):
 
 
 @pytest.mark.asyncio
-async def test_fetch_participants_skips_when_flood_wait_exceeds_cap(caplog):
+async def test_fetch_subscribers_skips_when_flood_wait_exceeds_cap(caplog):
     caplog.set_level(logging.ERROR)
     err = FloodWaitError(request=None, capture=600)
     err.seconds = 600
     client = _client(err)
 
-    assert await fetch_participants(client, CHANNEL_ID) is None
+    assert await fetch_subscribers(client, CHANNEL_ID) is None
     assert "past the 300s cap" in caplog.text
 
 

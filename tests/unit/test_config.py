@@ -42,14 +42,12 @@ def test_config_cloudflare_r2_keys_and_buckets(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_R2_ACCESS_KEY_ID", "cf-key-id")
     monkeypatch.setenv("CLOUDFLARE_R2_SECRET_ACCESS_KEY", "cf-secret")
     monkeypatch.setenv("CLOUDFLARE_R2_BI_DATA_BUCKET", "cf-data-bucket")
-    monkeypatch.setenv("CLOUDFLARE_R2_BI_WEB_BUCKET", "cf-web-bucket")
 
     importlib.reload(config)
 
     assert config.CLOUDFLARE_R2_ACCESS_KEY_ID == "cf-key-id"
     assert config.CLOUDFLARE_R2_SECRET_ACCESS_KEY == "cf-secret"
     assert config.CLOUDFLARE_R2_BI_DATA_BUCKET == "cf-data-bucket"
-    assert config.CLOUDFLARE_R2_BI_WEB_BUCKET == "cf-web-bucket"
 
 
 def test_config_cloudflare_kv_keys(monkeypatch):
@@ -62,32 +60,16 @@ def test_config_cloudflare_kv_keys(monkeypatch):
     assert config.CLOUDFLARE_TELEMETRY_NAMESPACE_ID == "cf-kv-namespace-id"
 
 
-def test_config_healthchecks_keys(monkeypatch):
-    monkeypatch.setenv("HEALTHCHECKS_API_KEY", "hc-key")
+def test_config_healthchecks_ping_urls(monkeypatch):
     monkeypatch.setenv("HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/source")
     monkeypatch.setenv("HEALTHCHECKS_ALERTS_BROADCAST_PING_URL", "https://hc-ping.com/bcast")
     monkeypatch.setenv("HEALTHCHECKS_WEB_PING_URL", "https://hc-ping.com/web")
-    monkeypatch.setenv("HEALTHCHECKS_BACKUP_PING_URL", "https://hc-ping.com/backup")
-    monkeypatch.setenv("HEALTHCHECKS_BI_PING_URL", "https://hc-ping.com/bi")
 
     importlib.reload(config)
 
-    assert config.HEALTHCHECKS_API_KEY == "hc-key"
     assert config.HEALTHCHECKS_ALERTS_SOURCE_PING_URL == "https://hc-ping.com/source"
     assert config.HEALTHCHECKS_ALERTS_BROADCAST_PING_URL == "https://hc-ping.com/bcast"
     assert config.HEALTHCHECKS_WEB_PING_URL == "https://hc-ping.com/web"
-    assert config.HEALTHCHECKS_BACKUP_PING_URL == "https://hc-ping.com/backup"
-    assert config.HEALTHCHECKS_BI_PING_URL == "https://hc-ping.com/bi"
-
-
-def test_config_uptimerobot_keys(monkeypatch):
-    monkeypatch.setenv("UPTIMEROBOT_API_MONITOR_KEY", "ur-api")
-    monkeypatch.setenv("UPTIMEROBOT_WEB_MONITOR_KEY", "ur-web")
-
-    importlib.reload(config)
-
-    assert config.UPTIMEROBOT_API_MONITOR_KEY == "ur-api"
-    assert config.UPTIMEROBOT_WEB_MONITOR_KEY == "ur-web"
 
 
 def test_config_app_and_database(monkeypatch):

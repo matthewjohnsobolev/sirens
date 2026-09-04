@@ -90,7 +90,6 @@ real_channels = {
     "izmail": -1002062806630,
 }
 
-SOURCE_KEYS = frozenset()
 BROADCAST_DISTRICTS = frozenset(real_channels)
 
 REGION_CONFIG = {
@@ -98,8 +97,6 @@ REGION_CONFIG = {
     for key, conf in DISTRICT_CONFIG.items()
     if key in BROADCAST_DISTRICTS
 }
-
-CITIES_LIST = [(key, data["display_name"]) for key, data in REGION_CONFIG.items()]
 
 BROADCAST_CITIES = {
     "bilatserkva": "Біла Церква",

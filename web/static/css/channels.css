@@ -23,38 +23,7 @@
     line-height: 14px;
 }
   
-.channel-popup-button-special {
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    margin-top: 10px;
-    border: none; 
-    width: 310px;
-    height: 40px;
-    display: flex;
-    padding: 0;
-    border-radius: 10px;
-    align-items: center; 
-    color: #000;
-    background-color: #FFF09D;
-    text-align: left;
-    line-height: 14px;
-}
-  
-.icon-container-marker-special {
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-  
 .channel-popup-button a {
-    color: #000;
-    text-decoration: none;
-}
-  
-.channel-popup-button-special a {
     color: #000;
     text-decoration: none;
 }
@@ -77,6 +46,3 @@
     width: 20px;
 }
 
-.error-report {
-    font-size: 10px;
-}

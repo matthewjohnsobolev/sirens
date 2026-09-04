@@ -49,7 +49,7 @@ export function renderHtml(data: any, measurementId = ""): string {
         const hoursList = comp.hours || [];
         const summaryText = getSummary(hoursList);
         const badgeCls = getBadgeClass(comp.state);
-        const badgeLabel = statusWord(comp.state, comp.key);
+        const badgeLabel = statusWord(comp.state);
 
         return `
       <section class="comp" data-key="${comp.key}" data-monitored="${comp.monitored ? 'true' : 'false'}">
@@ -64,7 +64,7 @@ export function renderHtml(data: any, measurementId = ""): string {
         ${comp.desc ? `<p class="comp-desc">${comp.desc}</p>` : ''}
         <div class="bars" role="group" aria-label="${comp.name}: ${summaryText}">
           ${hoursList.map((hour: any, index: number) => {
-            const title = hour.title || getTitle(hour.date, hour.state, comp.key);
+            const title = hour.title || getTitle(hour.date, hour.state);
             const timeAttr = hour.timeText ? ` data-time="${hour.timeText}"` : '';
             const statusAttr = hour.statusText ? ` data-status-text="${hour.statusText}"` : '';
             // Остання смужка — година, яка ще триває: вона пульсує. Пульс

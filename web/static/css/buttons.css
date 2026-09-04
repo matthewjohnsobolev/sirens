@@ -1,15 +1,3 @@
-@keyframes gradientAnimation {
-    0% {
-        background-position: 0% 50%;
-    }
-    50% {
-        background-position: 100% 50%;
-    }
-    100% {
-        background-position: 0% 50%;
-    }
-}
-
 .contact-button {
     position: relative;
     height: 29.5px;
@@ -61,52 +49,3 @@
     color: white;
 }
 
-.markers-hidden .leaflet-marker-icon {
-    display: none;
-}
-
-.donate-icon {
-    height: 22px;
-    width: 23px;
-    position: relative;
-    z-index: 1;
-}
-
-
-.donate-button:hover {
-    background-color: #F4F4F4;
-}
-
-.donate-button {
-    position: relative;
-    z-index: 1000;
-}
-
-.donate-button {
-    position: relative;
-    height: 29.5px;
-    width: 29.5px;
-    top: 115px;
-    left: 12px;
-    cursor: pointer;
-    z-index: 1000;
-    border-radius: 3px;
-    outline: 2px solid rgba(97, 97, 97, 0.4);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background-color: #FFFFFF;
-    background-size: 200% 200%;
-    animation: gradientAnimation 3s ease infinite;
-    overflow: hidden;
-}
-
-@media only screen and (max-width: 600px) {
-    .donate-button {
-        position: relative;
-        top: -50px;
-        left: auto;
-        right: 12px;
-        margin-left: auto;
-    }
-}

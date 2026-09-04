@@ -1,37 +1,16 @@
-"""
-Database access and state management for Sirens.
-Handles PostgreSQL schema/storage and Redis threat state caching.
-"""
+"""PostgreSQL schema and Redis threat-state access."""
 
-import datetime
 import logging
 import time
-from functools import partial
 from typing import Any
 
 import psycopg2
 import redis
 
 from config import DATABASE_URL, REDIS_URL
-from domain import (
-    DISTRICT_CONFIG,
-    DISTRICTS_BY_OBLAST,
-    real_channels,
-    test_channels,
-)
+from domain import DISTRICT_CONFIG, DISTRICTS_BY_OBLAST
 
 log = logging.getLogger(__name__)
-
-
-def get_region_by_channel_id(channel_id: int) -> str | None:
-    for name, cid in real_channels.items():
-        if cid == channel_id:
-            return name
-    for name, cid in test_channels.items():
-        if cid == channel_id:
-            return name
-    return None
-
 
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 DEFAULT_SOURCE = "telegram"
@@ -235,215 +214,10 @@ def ensure_pg_tables() -> None:
     log.info("PostgreSQL schema ready")
 
 
-THREAT_TABLES = {"alerts", "explosions", "shellings"}
-
-
-def _validate_table(table_name: str) -> None:
-    if table_name not in THREAT_TABLES:
-        raise ValueError(f"Invalid threat table: {table_name}")
-
-
 def _normalize_status(val: Any) -> bool:
     if val is None:
         return False
     return str(val).lower() in ["true", "1", "active"]
-
-
-def _get_threat_field(table_name: str, target: str, field_name: str) -> bool | str:
-    _validate_table(table_name)
-    key = f"threat:{table_name}:{target}"
-    val = redis_client.hget(key, field_name)
-    if field_name == "status":
-        return _normalize_status(val)
-    return str(val) if val is not None else "None"
-
-
-def get_threat_status(table_name: str, target: str) -> bool:
-    return bool(_get_threat_field(table_name, target, "status"))
-
-
-def get_threat_time(table_name: str, target: str) -> str:
-    return str(_get_threat_field(table_name, target, "time"))
-
-
-def get_threat_source(table_name: str, target: str) -> str:
-    return str(_get_threat_field(table_name, target, "source"))
-
-
-def update_threat_status(
-    table_name: str,
-    target: str,
-    status: bool | int | str = True,
-    time_val: str | None = None,
-    source_val: str | None = None,
-) -> None:
-    _validate_table(table_name)
-    key = f"threat:{table_name}:{target}"
-    if time_val is None:
-        time_val = datetime.datetime.now().strftime("%H:%M")
-
-    st_bool = _normalize_status(status)
-    updates = {
-        "status": "true" if st_bool else "false",
-        "time": time_val,
-        "updated_at": str(int(time.time())),
-    }
-    if source_val is not None:
-        updates["source"] = source_val
-
-    redis_client.hset(key, mapping=updates)
-
-
-def reset_threat_status(table_name: str, target: str) -> None:
-    _validate_table(table_name)
-    key = f"threat:{table_name}:{target}"
-    redis_client.hset(
-        key,
-        mapping={
-            "status": "false",
-            "time": "None",
-            "source": "None",
-            "updated_at": str(int(time.time())),
-        },
-    )
-
-
-update_explosion_status = partial(update_threat_status, "explosions", status=True)
-reset_explosion_status = partial(reset_threat_status, "explosions")
-update_shelling_status = partial(update_threat_status, "shellings", status=True)
-reset_shelling_status = partial(reset_threat_status, "shellings")
-
-get_alert_status = partial(get_threat_status, "alerts")
-get_explosion_status = partial(get_threat_status, "explosions")
-get_shelling_status = partial(get_threat_status, "shellings")
-
-get_alert_time = partial(get_threat_time, "alerts")
-get_explosion_time = partial(get_threat_time, "explosions")
-get_shelling_time = partial(get_threat_time, "shellings")
-
-get_alert_source = partial(get_threat_source, "alerts")
-get_explosion_source = partial(get_threat_source, "explosions")
-get_shelling_source = partial(get_threat_source, "shellings")
-
-
-def update_explosion_source(target: str, link: str) -> None:
-    update_threat_status("explosions", target, source_val=link)
-
-
-def update_shelling_source(target: str, link: str) -> None:
-    update_threat_status("shellings", target, source_val=link)
-
-
-def update_alert_source(channel_id: int, link: str) -> None:
-    district_key = get_region_by_channel_id(channel_id)
-    if district_key and district_key in DISTRICT_CONFIG:
-        oblast_key = DISTRICT_CONFIG[district_key]["oblast"]
-        redis_client.hset(f"threat:alerts:{oblast_key}", "source", link)
-        redis_client.hset(f"threat:alerts:city:{district_key}", "source", link)
-
-
-async def update_alert_status(
-    channel_id: int,
-    status: str,
-    message_id: int | None = None,
-    message_link: str | None = None,
-) -> None:
-    district_key = get_region_by_channel_id(channel_id)
-    if not district_key or district_key not in DISTRICT_CONFIG:
-        return
-
-    oblast_key = DISTRICT_CONFIG[district_key]["oblast"]
-
-    now = datetime.datetime.now()
-    current_time = now.strftime("%H:%M")
-    now_epoch = str(int(time.time()))
-    source = message_link or DEFAULT_SOURCE
-
-    event_type = None
-    is_active: bool | None = None
-    if status in ("Повітряна тривога", "air_raid_alert"):
-        is_active = True
-        event_type = "air_raid_alert"
-    elif status in ("Відбій повітряної тривоги", "air_raid_alert_cancelled"):
-        is_active = False
-        event_type = "air_raid_alert_cancelled"
-    elif status in ("Загроза артилерійського обстрілу", "threat_of_shelling"):
-        is_active = True
-        event_type = "threat_of_shelling"
-    elif status in ("Відбій загрози артобстрілу", "threat_of_shelling_cancelled"):
-        is_active = False
-        event_type = "threat_of_shelling_cancelled"
-
-    if "shelling" in (event_type or ""):
-        if is_active is not None:
-            redis_client.hset(
-                f"threat:shellings:{district_key}",
-                mapping={
-                    "status": "true" if is_active else "false",
-                    "time": current_time,
-                    "source": source,
-                    "updated_at": now_epoch,
-                },
-            )
-    else:
-        city_key = f"threat:alerts:city:{district_key}"
-        updates = {"time": current_time, "updated_at": now_epoch}
-        if is_active is not None:
-            updates["status"] = "true" if is_active else "false"
-            updates["source"] = source
-            if event_type:
-                updates["type"] = event_type
-
-        redis_client.hset(city_key, mapping=updates)
-
-        if is_active is not None:
-            active_set_key = f"threat:alerts:active:{oblast_key}"
-            if is_active:
-                redis_client.sadd(active_set_key, district_key)
-            else:
-                redis_client.srem(active_set_key, district_key)
-
-            active_count = redis_client.scard(active_set_key)
-            try:
-                is_active_oblast = int(active_count or 0) > 0
-            except (ValueError, TypeError):
-                is_active_oblast = bool(active_count)
-
-            redis_client.hset(
-                f"threat:alerts:{oblast_key}",
-                mapping={
-                    "status": "true" if is_active_oblast else "false",
-                    "time": current_time,
-                    "source": source,
-                    "updated_at": now_epoch,
-                },
-            )
-
-    if event_type:
-        try:
-            with get_pg_conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """INSERT INTO alert_history
-                           (datetime, date, time, district_key, oblast_key, type,
-                            channel_id, message_id, message_link)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                        (
-                            now,
-                            now.date(),
-                            current_time,
-                            district_key,
-                            oblast_key,
-                            event_type,
-                            channel_id,
-                            message_id,
-                            message_link,
-                        ),
-                    )
-                conn.commit()
-        except Exception:
-            log.exception("Failed to record alert %s for %s in history", event_type, district_key)
-            raise
 
 
 def rehydrate_state_from_db() -> None:

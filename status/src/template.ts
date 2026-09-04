@@ -67,9 +67,8 @@ export function renderHtml(data: any, measurementId = ""): string {
             const title = hour.title || getTitle(hour.date, hour.state);
             const timeAttr = hour.timeText ? ` data-time="${hour.timeText}"` : '';
             const statusAttr = hour.statusText ? ` data-status-text="${hour.statusText}"` : '';
-            // Остання смужка — година, яка ще триває: вона пульсує. Пульс
-            // з'являється лише там, де є що показувати, — у ненастроєного
-            // компонента й у години без даних він удавав би моніторинг.
+            // Остання смужка — година, що триває: пульсує. Але не там, де
+            // показувати нічого: пульс удавав би моніторинг.
             const isLive = comp.monitored && index === hoursList.length - 1 && hour.state !== 'nodata';
             return `<div class="bar${isLive ? ' bar--live' : ''}" role="button" tabindex="0" data-state="${hour.state}"${timeAttr}${statusAttr} data-title="${title}" aria-label="${title}"></div>`;
           }).join('')}

@@ -1,6 +1,4 @@
-"""
-Unit tests for bi.main (subscriber statistics snapshot and export).
-"""
+"""Unit tests for bi.main (snapshot, storage, export, and upload)."""
 
 import datetime
 import logging

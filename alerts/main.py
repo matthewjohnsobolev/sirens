@@ -1,9 +1,4 @@
-"""
-Sirens - Air Raid Alert Monitoring System.
-
-This module monitors a source Telegram channel for air raid alerts
-and broadcasts them to Sirens network channels.
-"""
+"""Watches the source Telegram channels and broadcasts alerts to the network."""
 
 import asyncio
 import datetime
@@ -413,10 +408,9 @@ async def _record_alert_state(
             log.error("Failed to insert alert history into PG: %s", e)
 
 
-# SET ... GET claims the key and hands back what it displaced in one round
-# trip. A plain GET followed by a SET only after the message was away let two
-# events for the same district - the same alert reaching us from both sources
-# at once - both read the stale state and both go out.
+# The restore is conditional because the claim below is a single SET ... GET:
+# with a plain GET-then-SET, the same alert arriving from both sources at once
+# let two events read the stale state and both go out.
 _RESTORE_STATE_LUA = """
 if redis.call('GET', KEYS[1]) == ARGV[1] then
     if ARGV[2] == '' then
@@ -432,12 +426,11 @@ return 1
 async def _claim_alert_state(
     state_key: str, alert_type: str, label: str
 ) -> tuple[bool, str | None]:
-    """Claims the district's state for this alert and says whether to go ahead.
+    """Claims the district's state and says whether to go ahead.
 
-    Also returns the state the claim displaced. A caller that never gets its
-    message out has to hand that back to `_release_alert_state`, or the
-    district keeps a state it never announced and the next real event of that
-    type is deduplicated away.
+    Also returns the state it displaced: a caller whose message never goes out
+    must hand that back to `_release_alert_state`, or the district keeps a
+    state it never announced and the next real event is deduplicated away.
     """
     if not redis_client:
         return True, None
@@ -460,9 +453,8 @@ async def _claim_alert_state(
 async def _release_alert_state(state_key: str, alert_type: str, previous: str | None) -> None:
     """Puts back the state a claim displaced when the message never went out.
 
-    Conditional on the key still holding this claim: if a later event has
-    already moved the district on, that newer state is the truth, and writing
-    ours over it would silence the announcement that follows.
+    Only if the key still holds this claim: a later event that moved the
+    district on has the truth, and overwriting it would silence its message.
     """
     if not redis_client:
         return
@@ -624,10 +616,9 @@ SECTION_HEADER_RE = re.compile(
 def split_alert_sections(message_text: str) -> list[str]:
     """Splits a post into per-event sections.
 
-    A single post can stack several standalone header lines (e.g. "🚨 Повітряна
-    тривога" followed by "🟢 Відбій тривоги"), each followed by its own list of
-    districts. Splitting keeps each district's alert type tied to the header
-    above it instead of whichever keyword happens to appear first in the post.
+    One post can stack several header lines ("🚨 Повітряна тривога" then
+    "🟢 Відбій тривоги"), each with its own districts. Splitting ties every
+    district to the header above it, not to the first keyword in the post.
     """
     headers = list(SECTION_HEADER_RE.finditer(message_text))
     if len(headers) < 2:
@@ -638,7 +629,6 @@ def split_alert_sections(message_text: str) -> list[str]:
 
 
 def match_districts(message_text: str) -> dict[str, str]:
-    """Maps mentioned districts to their alert event type."""
     matched: dict[str, str] = {}
     for section in split_alert_sections(message_text):
         matched.update(_match_districts_in_section(section))
@@ -674,7 +664,6 @@ reported_unknown_districts: set[str] = set()
 
 
 def log_unrecognised_districts(message_text: str) -> None:
-    """Logs district names present in the post but missing from configuration."""
     unknown = (
         {" ".join(mention.split()) for mention in DISTRICT_MENTION_RE.findall(message_text)}
         - KNOWN_DISTRICT_TRIGGERS
@@ -698,7 +687,6 @@ ACTIVE_SOURCE_KEY = "service:alerts:active_source"
 
 
 async def push_telemetry_to_kv() -> None:
-    """Pushes a snapshot of current telemetry state to Cloudflare KV."""
     if not (CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_TELEMETRY_NAMESPACE_ID and CLOUDFLARE_API_TOKEN):
         return
 
@@ -801,11 +789,7 @@ async def _debounced_telemetry_push(delay: float) -> None:
 
 
 def request_telemetry_sync(delay: float | None = None) -> asyncio.Task:
-    """Schedule a coalesced/debounced telemetry push to Cloudflare KV.
-
-    If multiple state changes happen in quick succession (e.g. 35 districts in one post),
-    only a single KV PUT request is executed after the burst settles.
-    """
+    """Coalesces a burst of state changes (35 districts in one post) into one PUT."""
     global _telemetry_sync_task
 
     actual_delay = TELEMETRY_SYNC_DELAY if delay is None else delay
@@ -834,7 +818,6 @@ def request_telemetry_sync(delay: float | None = None) -> asyncio.Task:
 async def record_source_message(
     moment: datetime.datetime | None = None, source_type: str = "primary"
 ) -> None:
-    """Records the timestamp of the latest source message received from primary or fallback source."""
     global \
         last_source_message_at, \
         last_primary_message_at, \
@@ -866,7 +849,6 @@ async def record_source_message(
 
 
 async def record_broadcast(succeeded: bool) -> None:
-    """Records the timestamp of the latest successful broadcast."""
     global last_broadcast_at
 
     if not succeeded:
@@ -1218,7 +1200,6 @@ async def _healthcheck_loop(client: TelegramClient, has_fallback: bool = True) -
 
 
 async def _broadcast_watchdog_loop(client: TelegramClient) -> None:
-    """Monitors Telegram broadcast pipeline liveness and pings healthchecks."""
     if not HEALTHCHECKS_ALERTS_BROADCAST_PING_URL:
         log.warning(
             "HEALTHCHECKS_ALERTS_BROADCAST_PING_URL not set; skipping broadcast health pings"

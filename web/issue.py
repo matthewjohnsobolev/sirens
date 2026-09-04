@@ -1,6 +1,4 @@
-"""
-Issue form configuration and dictionary for the web interface and Sentry.
-"""
+"""Options for the /issue form and the tags they map to in Sentry."""
 
 from domain import BROADCAST_CITIES, DISTRICT_CONFIG
 

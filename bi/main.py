@@ -1,10 +1,7 @@
-"""
-Sirens - subscriber count snapshot.
+"""Subscriber-count snapshot, one row per channel per day.
 
-Counts every channel in the network and writes one row per channel per day.
-One-shot by design: scheduling lives in cron (deploy/bi.sh), so nothing stays
-resident on a server with under 200 MB to spare. See "Channel Statistics" in
-README.md.
+One-shot by design: scheduling is cron's job (deploy/bi.sh), so nothing stays
+resident on a server with under 200 MB to spare.
 """
 
 import asyncio

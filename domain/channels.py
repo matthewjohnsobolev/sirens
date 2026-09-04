@@ -1,6 +1,4 @@
-"""
-Telegram channels configuration for real and test modes, broadcast districts and city mappings.
-"""
+"""Telegram channel IDs per district, for the real network and for test runs."""
 
 from domain.geo import DISTRICT_CONFIG, OBLAST_TRIGGERS
 

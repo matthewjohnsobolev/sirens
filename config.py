@@ -11,9 +11,8 @@ VERSION = "1.1.0"
 
 load_dotenv()
 
-# APP_ENV is both the 12-factor environment name and the run mode the workers
-# take on the command line (docker-compose passes it straight to `-m`), so the
-# long spellings have to collapse onto the two the CLI accepts.
+# APP_ENV doubles as the run mode on the command line (docker-compose passes it
+# straight to `-m`), so the long spellings fold onto the two the CLI accepts.
 APP_ENV_ALIASES = {
     "dev": "dev",
     "development": "dev",
@@ -61,12 +60,10 @@ HEALTHCHECKS_WEB_PING_URL = os.getenv("HEALTHCHECKS_WEB_PING_URL", "")
 
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 
-# The GA4 property the public pages report to. Kept configurable so a staging
-# deployment can blank it out instead of polluting the production stream.
+# Blank this on staging rather than polluting the production GA4 stream.
 GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "G-JC48ZJGBHM").strip()
 
-# Absolute URLs live in canonical tags and the sitemap, where a relative path
-# is meaningless, so the public origin has to be known server-side.
+# Canonical tags and the sitemap need absolute URLs, so the origin must be known.
 SITE_URL = os.getenv("SITE_URL", "https://sirens.live").strip().rstrip("/")
 GITHUB_PAT = os.getenv("GITHUB_PAT", "")
 _raw_repo = os.getenv("GITHUB_REPO", "matthewjohnsobolev/sirens")

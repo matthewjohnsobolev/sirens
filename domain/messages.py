@@ -1,6 +1,4 @@
-"""
-Alert message templates for sirens broadcasts.
-"""
+"""Text of each broadcast message."""
 
 MESSAGES = {
     "air_raid_alert": "🟠 Повітряна тривога!",

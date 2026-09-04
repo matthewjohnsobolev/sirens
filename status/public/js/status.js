@@ -180,8 +180,7 @@
     let left = Math.round(barCenterX - tipWidth / 2);
     left = Math.max(margin, Math.min(left, window.innerWidth - tipWidth - margin));
 
-    // --arrow-x відлічується від padding-box, як і сам вказівник;
-    // він не заходить на заокруглені кути.
+    // --arrow-x відлічується від padding-box і не заходить на заокруглені кути.
     const borderLeft = tip.clientLeft;
     const tipInnerWidth = tipWidth - borderLeft * 2;
     const arrowEdge = metrics.arrow + metrics.radius;
@@ -301,12 +300,10 @@
   document.addEventListener('pointerup', onTouchEnd, true);
   document.addEventListener('pointercancel', onTouchCancel, true);
 
-  // Дотик і клік самі наводять фокус на смужку вже після того, як тултип
-  // показано. Повторний showTip на ту саму смужку не встигав вийти по
-  // ранньому return (клас .is-visible ставиться лише в наступному кадрі)
-  // і скидав таймер автоприховування — тултип на дотику лишався висіти,
-  // а разом з ним завмирав і пульс. Фокус показує тултип тільки тоді,
-  // коли він справді переїхав на іншу смужку — з клавіатури.
+  // Дотик наводить фокус уже після показу тултипа, а .is-visible ставиться
+  // лише в наступному кадрі — повторний showTip не виходив по ранньому return
+  // і скидав таймер автоприховування. Тому фокус показує тултип лише коли той
+  // справді переїхав на іншу смужку, тобто з клавіатури.
   document.addEventListener('focusin', function(event) {
     const bar = event.target && event.target.closest ? event.target.closest('.bar') : null;
     if (bar && bar !== currentBar) {
@@ -355,7 +352,7 @@
       due = Date.now() + 10000;
       return;
     }
-    // Прапорець переживає перезавантаження і гасить page_view на тому боці:
+    // Прапорець переживає перезавантаження і гасить там page_view:
     // хвилинне оновлення — це не новий перегляд сторінки.
     try {
       sessionStorage.setItem('sirens:auto-refresh', '1');

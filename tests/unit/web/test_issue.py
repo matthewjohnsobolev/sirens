@@ -1,4 +1,4 @@
-"""Directory configuration for /issue: defines rendered options and server validation rules."""
+"""Unit tests for web.issue (the /issue option catalogue and its lookups)."""
 
 from domain import BROADCAST_CITIES, BROADCAST_DISTRICTS, DISTRICT_CONFIG
 from web import issue

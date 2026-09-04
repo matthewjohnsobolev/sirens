@@ -5,10 +5,9 @@ import { renderHtml } from "../src/template";
 import { formatHourParts, formatHourTitle, summarizeHours } from "../src/helpers";
 import { getMockStatusData } from "../src/mock";
 
-// UptimeRobot на безкоштовному плані дає ~10 запитів на хвилину на акаунт,
-// а сторінка робить два (по одному на монітор). Кеш живе окремо в кожному
-// дата-центрі Cloudflare, тож 60 с при п'яти активних точках — це рівно ліміт.
-// 120 с дає дворазовий запас і нічого не змінює на око: смужки погодинні.
+// UptimeRobot дає ~10 запитів/хв на акаунт, сторінка робить два, а кеш живе
+// окремо в кожному дата-центрі: 60 с при п'яти точках — рівно ліміт. 120 с
+// дає дворазовий запас і на око нічого не змінює: смужки погодинні.
 const PAGE_CACHE_SECONDS = 120;
 const ERROR_CACHE_SECONDS = 15;
 
@@ -70,8 +69,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         });
     }
 
-    // Ключ кеша — тільки шлях: інакше будь-який ?x=1 промахується повз кеш
-    // і запускає повний похід в апстріми.
+    // Ключ — тільки шлях: інакше будь-який ?x=1 тягне повний похід в апстріми.
     const cacheKey = new Request(new URL(url.pathname, url.origin).toString(), { method: "GET" });
     const cache = caches.default;
 
@@ -87,9 +85,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 }
             });
         } catch (error) {
-            // Провайдер, який не відповів, тепер гасить лише свої компоненти,
-            // тож сюди веде тільки справжня помилка розрахунку. Кешуємо її
-            // ненадовго, щоб баг не перетворився на цикл запитів в апстріми.
+            // Мовчазний провайдер гасить лише свої компоненти, тож сюди веде
+            // тільки справжня помилка. Кешуємо ненадовго, щоб баг не став циклом.
             console.error("Error generating status page:", error);
             response = new Response(renderHtml(getFallbackStatusData(new Date()), measurementId), {
                 status: 500,

@@ -27,8 +27,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
     const isMock = Boolean(mockParam) && env.ENVIRONMENT === "development";
 
-    // Ключ кеша — тільки шлях, щоб довільна query-строка не промахувалась
-    // повз кеш і не тягла за собою повний розрахунок.
+    // Ключ — тільки шлях: інакше довільна query-строка тягне повний розрахунок.
     const cacheKey = new Request(new URL(url.pathname, url.origin).toString(), { method: "GET" });
     const cache = caches.default;
 

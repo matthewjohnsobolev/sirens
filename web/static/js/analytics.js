@@ -1,9 +1,8 @@
 (function () {
     'use strict';
 
-    // Хелпер приходить з _analytics.html і мовчить, коли gtag.js вирізав
-    // блокувальник. Перевірка лишається на випадок, коли сторінку віддали
-    // без партіала: аналітика не повинна ламати мапу.
+    // Хелпер приходить з _analytics.html і мовчить, коли gtag.js вирізали.
+    // Перевірка — на випадок сторінки без партіала: мапа не має ламатись.
     function send(name, params) {
         if (window.track) window.track(name, params);
     }
@@ -26,8 +25,7 @@
         return 'unknown';
     }
 
-    // Район усередині обласного попапа має власну назву, місто — свою,
-    // область — свою. Беремо найточнішу з наявних.
+    // Район, місто й область мають свої назви — беремо найточнішу з наявних.
     function regionName(node) {
         var city = node.closest('.popup-city');
         var name = city && city.querySelector('.popup-city-name');
@@ -73,8 +71,7 @@
 
         var control = target.closest('.layer-control');
         if (control) {
-            // Свій обробник кнопки вже відпрацював на етапі спливання,
-            // тож іконка показує новий стан.
+            // Обробник кнопки вже відпрацював, тож іконка показує новий стан.
             var icon = control.querySelector('.layer-control-icon');
             var src = icon ? icon.getAttribute('src') || '' : '';
             send('markers_toggle', {

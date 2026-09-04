@@ -115,8 +115,8 @@ def status() -> Any:
     return redirect("https://status.sirens.live", code=301)
 
 
-# The pages this origin serves. The status page is a separate host and ships its
-# own pair of files: a sitemap may only list URLs under the origin serving it.
+# Status lives on another host and ships its own sitemap: a sitemap may only
+# list URLs under the origin serving it.
 SITEMAP_PATHS = ("/", "/issue")
 
 

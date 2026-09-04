@@ -1,7 +1,6 @@
-// Both spellings are declared on purpose: the names on the left are the ones
-// wrangler.toml and the .env now use, the ones on the right are what a Pages
-// project provisioned before the rename still has bound. Reads go through the
-// accessors below so neither half goes stale.
+// Both spellings on purpose: the left names are current, the right ones are
+// still bound on Pages projects provisioned before the rename. Reads go
+// through the accessors below so neither half goes stale.
 export interface Env {
     HEALTHCHECKS_API_KEY?: string;
     HEALTHCHECKS_API?: string;

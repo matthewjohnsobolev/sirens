@@ -13,15 +13,13 @@ interface Probe {
     last_ping: string | null;
 }
 
-// Провайдер налаштований, але не відповів. Це не те саме, що «не налаштовано»:
-// present:true лишає компонент у списку, flips_ok:false робить усі смужки
-// порожніми, live:null не дає перебити їх живим станом. Відмова одного
-// провайдера гасить тільки його компоненти, решта сторінки живе далі.
+// Налаштований, але не відповів — не те саме, що «не налаштовано»: present
+// лишає компонент у списку, flips_ok спорожнює смужки, live не дає перебити
+// їх живим станом. Відмова провайдера гасить тільки його компоненти.
 function unreachable(): Probe {
     return { present: true, live: null, flips: [], flips_ok: false, history_start: null, last_ping: null };
 }
 
-// Компонент, для якого моніторинг не заведено взагалі.
 function notConfigured(): Probe {
     return { present: false, live: null, flips: [], flips_ok: false, history_start: null, last_ping: null };
 }
@@ -144,8 +142,7 @@ export async function computeStatusData(env: Env) {
 
     const probes: Record<string, any> = {};
 
-    // Обидва провайдери опитуються паралельно: послідовно це до шести
-    // round-trip на кожен холодний рендер.
+    // Паралельно: послідовно це до шести round-trip на холодний рендер.
     const [hcProbes, urProbes] = await Promise.all([
         collectHealthchecks(COMPONENTS_SPEC.filter(c => c.source === "healthchecks"), env),
         collectUptimeRobot(COMPONENTS_SPEC.filter(c => c.source === "uptimerobot"), env)
@@ -311,8 +308,7 @@ export async function computeStatusData(env: Env) {
     const coreFailing = components.filter(c => (c.key === "source" || c.key === "broadcast") && ["down", "major", "minor"].includes(c.state) && c.monitored);
     const auxFailing = components.filter(c => (c.key === "map" || c.key === "api") && ["down", "major", "minor"].includes(c.state) && c.monitored);
 
-    // Обидва кінці ланцюга без даних: ми не знаємо, чи проходить розсилка,
-    // і не маємо права стверджувати, що вона працює.
+    // Обидва кінці ланцюга без даних — стверджувати, що розсилка працює, не можна.
     const coreKnown = components.filter(c => (c.key === "source" || c.key === "broadcast") && c.monitored);
     const coreUnknown = !coreKnown.length || coreKnown.every(c => c.state === "nodata");
 

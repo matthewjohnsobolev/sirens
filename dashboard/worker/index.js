@@ -85,8 +85,7 @@ async function serve(bucket, key, request) {
     // or an unlucky shape slips through and we answer 200 with an empty body.
     if (!('body' in object) || object.body == null) {
         // R2 reports every failed precondition identically, so only the request
-        // says which answer is right: a browser revalidating with If-None-Match
-        // wants 304, while a failed If-Match is 412.
+        // says which answer is right: If-None-Match wants 304, If-Match 412.
         const revalidating =
             request.headers.has('if-none-match') || request.headers.has('if-modified-since');
         return new Response(null, { status: revalidating ? 304 : 412, headers });

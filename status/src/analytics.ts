@@ -1,8 +1,7 @@
 import { Env } from "./api";
 
-// Той самий measurement ID, що й на sirens.live: GA4 кладе свою cookie на
-// батьківський домен, тож сесія переходить між sirens.live і
-// status.sirens.live сама — окремого cross-domain налаштування не треба.
+// Той самий ID, що й на sirens.live: GA4 кладе cookie на батьківський домен,
+// тож сесія переходить між піддоменами без cross-domain налаштування.
 const DEFAULT_MEASUREMENT_ID = "G-JC48ZJGBHM";
 
 export function gaMeasurementId(env?: Env): string {
@@ -13,10 +12,8 @@ export function gaMeasurementId(env?: Env): string {
     return (configured === undefined ? DEFAULT_MEASUREMENT_ID : configured).trim();
 }
 
-// Сторінка сама перезавантажується раз на хвилину. Без прапорця кожна
-// відкрита вкладка малювала б по 60 переглядів на годину: у звітах це
-// вбиває і сесії, і показник відмов. Автооновлення шле власну подію, а
-// page_view лишається тільки за живим заходом.
+// Сторінка перезавантажується раз на хвилину. Без прапорця це 60 переглядів
+// на годину з вкладки, що вбиває сесії й показник відмов у звітах.
 export function analyticsHead(measurementId: string, systemState: string): string {
     if (!measurementId) return "";
 

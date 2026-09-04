@@ -1,6 +1,4 @@
-"""
-Domain layer for Sirens: geographic data, Telegram channels, and message templates.
-"""
+"""Geography, channel mappings, and message templates."""
 
 from domain.channels import (
     BROADCAST_CITIES,

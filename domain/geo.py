@@ -1,6 +1,4 @@
-"""
-Ukrainian geographical districts, aliases, triggers, and oblast mappings.
-"""
+"""Ukrainian districts: names, aliases, match triggers, and oblast mapping."""
 
 APOSTROPHES = ("'", "’")
 

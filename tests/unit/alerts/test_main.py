@@ -1,6 +1,4 @@
-"""
-Unit tests for alerts.main (alert monitoring, state persistence, and broadcasting).
-"""
+"""Unit tests for alerts.main (matching, dedup, broadcasting, and telemetry)."""
 
 import argparse
 import asyncio

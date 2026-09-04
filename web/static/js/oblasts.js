@@ -75,7 +75,7 @@ function getOblastPopupContent(oblastData) {
     if (!tracked.length) {
         return `
       <div class="container">
-          ${renderPill({ variant: 'unknown', text: 'Немає даних по районах', showTime: false })}
+          ${renderPill({ variant: 'unknown', showTime: false })}
       </div>`;
     }
 
@@ -94,6 +94,14 @@ function getOblastPopupContent(oblastData) {
           <div class="scrollable-content">${rows}
           </div>
       </div>`;
+}
+
+// Місто-регіон — полігон, що збігається з єдиним своїм районом (нині це Київ).
+// Розповідати про нього двічі й по-різному нема про що, тож картку полігона
+// збираємо тим самим кодом, що й картку маркера.
+const CITY_REGIONS = {};
+for (const marker of DISTRICT_MARKERS) {
+    if (marker.oblast === marker.district) CITY_REGIONS[marker.oblast] = marker;
 }
 
 var customOptions = {'maxWidth': '310', 'width': '310'};
@@ -127,9 +135,12 @@ fetch('/api')
                             'zhytomyr_oblast': 'Житомирська область'
                         };
                         const name = nameMap[regionId] || regionId;
-                        
+                        const cityMarker = CITY_REGIONS[regionId];
+
                         layer.bindPopup(
-                            () => '<div class="oblast-name">' + name + '</div>' + getOblastPopupContent(data),
+                            () => cityMarker
+                                ? getMarkerPopupContent(cityMarker, getMarkerThreats(apiData, cityMarker))
+                                : '<div class="oblast-name">' + name + '</div>' + getOblastPopupContent(data),
                             customOptions
                         );
                         layer.on('popupopen', () => {

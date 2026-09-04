@@ -143,6 +143,8 @@ def test_robots_allows_the_pages_and_points_at_the_sitemap(client):
     assert "User-agent: *" in body
     assert "Allow: /" in body
     assert "Disallow: /api" in body
+    assert "Content-Signal: search=yes,ai-input=yes,ai-train=no,use=reference" in body
+    assert "Attribution required" in body
     assert "Sitemap: https://sirens.live/sitemap.xml" in body
 
 

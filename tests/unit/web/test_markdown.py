@@ -94,6 +94,8 @@ def test_render_index_markdown():
     assert "https://status.sirens.live" in md
     assert "```json" in md
     assert "WebApplication" in md
+    assert "AI & Data Attribution" in md
+    assert "посилання на **Sirens** (https://sirens.live) є обов'язковим" in md
 
 
 def test_render_issue_markdown():

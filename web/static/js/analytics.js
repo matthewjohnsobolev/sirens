@@ -13,7 +13,6 @@
         'orange-oblast-button': 'alert',
         'hatched-oblast-button': 'partial',
         'yellow-oblast-button': 'shelling',
-        'red-oblast-button': 'explosion',
         'gray-oblast-button': 'unknown'
     };
 

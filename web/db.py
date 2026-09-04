@@ -238,7 +238,7 @@ def ensure_pg_tables() -> None:
     log.info("PostgreSQL schema ready")
 
 
-THREAT_TABLES = {"alerts", "explosions", "shellings"}
+THREAT_TABLES = {"alerts", "shellings"}
 
 
 def _validate_table(table_name: str) -> None:
@@ -311,26 +311,17 @@ def reset_threat_status(table_name: str, target: str) -> None:
     )
 
 
-update_explosion_status = partial(update_threat_status, "explosions", status=True)
-reset_explosion_status = partial(reset_threat_status, "explosions")
 update_shelling_status = partial(update_threat_status, "shellings", status=True)
 reset_shelling_status = partial(reset_threat_status, "shellings")
 
 get_alert_status = partial(get_threat_status, "alerts")
-get_explosion_status = partial(get_threat_status, "explosions")
 get_shelling_status = partial(get_threat_status, "shellings")
 
 get_alert_time = partial(get_threat_time, "alerts")
-get_explosion_time = partial(get_threat_time, "explosions")
 get_shelling_time = partial(get_threat_time, "shellings")
 
 get_alert_source = partial(get_threat_source, "alerts")
-get_explosion_source = partial(get_threat_source, "explosions")
 get_shelling_source = partial(get_threat_source, "shellings")
-
-
-def update_explosion_source(target: str, link: str) -> None:
-    update_threat_status("explosions", target, source_val=link)
 
 
 def update_shelling_source(target: str, link: str) -> None:
@@ -568,10 +559,9 @@ def _aggregate_shelling(districts: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_all_threats_data() -> dict[str, Any]:
-    # Only alerts and explosions are tracked at oblast level. An oblast's
-    # shelling state is the latest of its districts', so `threat:shellings:
-    # <oblast>` was read 27 times per request and never looked at.
-    tables = ["alerts", "explosions"]
+    # Alerts are the only threat held at oblast level. Shelling is per district
+    # and an oblast's is the latest of theirs, so `threat:shellings:<oblast>`
+    # was read 27 times per request and never looked at.
     # The regions and their names come from one registry in the domain layer;
     # this endpoint used to hardcode the id list and ship no names at all.
     oblasts = list(REGIONS)
@@ -583,11 +573,9 @@ def get_all_threats_data() -> dict[str, Any]:
     try:
         pipeline = redis_client.pipeline()
 
-        for table in tables:
-            for oblast in oblasts:
-                key = f"threat:{table}:{oblast}"
-                pipeline.hgetall(key)
-                keys_order.append((table, oblast))
+        for oblast in oblasts:
+            pipeline.hgetall(f"threat:alerts:{oblast}")
+            keys_order.append(("alerts", oblast))
 
         for district in districts:
             pipeline.hgetall(f"threat:alerts:city:{district}")
@@ -608,7 +596,6 @@ def get_all_threats_data() -> dict[str, Any]:
 
     raw_data: dict[str, dict[str, Any]] = {
         "alerts": {},
-        "explosions": {},
         "city_alerts": {},
         "city_shellings": {},
         "active_districts": {},
@@ -682,7 +669,6 @@ def get_all_threats_data() -> dict[str, Any]:
             "name": name,
             "name_en": name_en,
             "alert": _public_threat(oblast_alert) | {"coverage": oblast_alert["coverage"]},
-            "explosion": _public_threat(raw_data["explosions"].get(oblast, IDLE_THREAT)),
             "shelling": _public_threat(_aggregate_shelling(shellings)),
             "districts": districts_map,
         }

@@ -1,11 +1,10 @@
 const ALERT_COLORS = {
     IDLE: '#8A8A8A',
     ALERT: '#FF831A',
-    EXPLOSION: '#FF1A1A',
     SHELLING: '#FFDA1A'
 };
 
-const FALLBACK_ORDER = ['explosion', 'alert', 'shelling'];
+const FALLBACK_ORDER = ['alert', 'shelling'];
 
 // `time` is an ISO-8601 instant with a UTC offset; everything that used to
 // read `updated_at` goes through here instead, so there is exactly one time
@@ -34,7 +33,6 @@ const PILL_VARIANTS = {
     alert:     { cls: 'orange-oblast-button',  icon: 'air-raid-alert-icon.svg',           label: 'Повітряна тривога' },
     partial:   { cls: 'hatched-oblast-button', icon: 'air-raid-alert-icon.svg',           label: 'Тривога у районах' },
     shelling:  { cls: 'yellow-oblast-button',  icon: 'yellow-logo.svg',                   label: 'Загроза артобстрілу' },
-    explosion: { cls: 'red-oblast-button',     icon: 'channel-red.svg',                   label: 'Чутно вибухи' },
     unknown:   { cls: 'gray-oblast-button',    icon: 'air-raid-alert-cancelled-icon.svg', label: 'Немає даних' }
 };
 
@@ -87,8 +85,7 @@ function districtPillState(oblastData, key) {
     const district = (oblastData.districts && oblastData.districts[key]) || {};
     const threats = {
         alert: district.alert,
-        shelling: district.shelling,
-        explosion: oblastData.explosion
+        shelling: district.shelling
     };
     const dominant = pickDominant(threats) || 'idle';
     const winner = threats[dominant] || district.alert || {};
@@ -138,10 +135,10 @@ const DISTRICT_MARKERS = [
 ];
 
 function getMarkerThreats(apiData, marker) {
-    if (!apiData) return { alert: null, explosion: null, shelling: null };
+    if (!apiData) return { alert: null, shelling: null };
     const oblastData = apiData[marker.oblast];
     if (!oblastData) {
-        return { alert: null, explosion: null, shelling: null };
+        return { alert: null, shelling: null };
     }
 
     let alert = null;
@@ -154,9 +151,7 @@ function getMarkerThreats(apiData, marker) {
         alert = oblastData.alert;
     }
 
-    const explosion = oblastData.explosion;
-
-    return { alert, explosion, shelling };
+    return { alert, shelling };
 }
 
 if (typeof module !== 'undefined' && module.exports) {

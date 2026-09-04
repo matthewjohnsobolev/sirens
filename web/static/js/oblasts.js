@@ -46,16 +46,15 @@ function ensureHatchDefs(map) {
 const OBLAST_STYLES = {
     idle:      { color: ALERT_COLORS.IDLE,      weight: 2, fillColor: ALERT_COLORS.IDLE,      fillOpacity: OBLAST_FILL_OPACITY.idle },
     partial:   { color: ALERT_COLORS.ALERT,     weight: 2 },
-    full:      { color: ALERT_COLORS.ALERT,     weight: 2, fillColor: ALERT_COLORS.ALERT,     fillOpacity: OBLAST_FILL_OPACITY.alert },
-    explosion: { color: ALERT_COLORS.EXPLOSION, weight: 2, fillColor: ALERT_COLORS.EXPLOSION, fillOpacity: 0.55 }
+    full:      { color: ALERT_COLORS.ALERT,     weight: 2, fillColor: ALERT_COLORS.ALERT,     fillOpacity: OBLAST_FILL_OPACITY.alert }
 };
 
+// Alerts are the only threat an oblast carries, so its state is just how far
+// the alert reaches. Shelling is a district-level pill, not an oblast fill.
 function oblastState(data) {
-    const dominant = pickDominant({
-        alert: data.alert, explosion: data.explosion,
-    });
-    return dominant === 'alert' ? (data.alert ? data.alert.coverage : 'idle')
-         : dominant || 'idle';
+    const alert = data && data.alert;
+    if (!alert || !alert.status) return 'idle';
+    return alert.coverage || 'idle';
 }
 
 function setOblastStyle(layer, data) {

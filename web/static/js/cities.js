@@ -1,11 +1,4 @@
 function setMarkerStyle(dominant) {
-    if (dominant === 'explosion') {
-        return (typeof redChannelIcon !== 'undefined' && redChannelIcon) ? redChannelIcon : L.icon({
-            iconUrl: 'static/img/icons/channel-red.svg',
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-    }
     if (dominant === 'alert') {
         return (typeof orangeChannelIcon !== 'undefined' && orangeChannelIcon) ? orangeChannelIcon : L.icon({
             iconUrl: 'static/img/icons/air-raid-alert-marker.svg',

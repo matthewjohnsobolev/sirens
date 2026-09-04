@@ -1,6 +1,6 @@
 # Sirens
 
-A comprehensive, real-time web-based monitoring tool designed to track and report emergency events across Ukraine, including air raid alerts, threats of shelling, and explosions.
+A comprehensive, real-time web-based monitoring tool designed to track and report emergency events across Ukraine: air raid alerts and threats of artillery shelling.
 
 > **Disclaimer:** This project parses official Telegram channels to aggregate data about life-threatening situations (air raid alerts, shellings, etc.). As with any automated parsing pipeline, technical errors, delays, or service disruptions may occur. **This tool is NOT a replacement for official state emergency notification systems.** Rely on it at your own risk.
 
@@ -104,7 +104,6 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
       "source": "https://t.me/kyiv_alert/512",
       "coverage": "full"
     },
-    "explosion": { "status": false, "time": null, "source": null },
     "shelling": { "status": false, "time": null, "source": null },
     "districts": {
       "kyiv": {
@@ -129,7 +128,6 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
       "source": "https://t.me/bucha_alert/77",
       "coverage": "partial"
     },
-    "explosion": { "status": false, "time": null, "source": null },
     "shelling": { "status": false, "time": null, "source": null },
     "districts": {
       "bucha": {
@@ -162,7 +160,7 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 **Schema Details:**
 * Every key of the response is a region: the 24 oblasts plus Kyiv, Sevastopol and Crimea. Cities are not regions — a city appears as a district of its oblast, under `districts`.
 * `name` / `name_en`: the region's label in Ukrainian and in English (`"Київська область"` / `"Kyiv Oblast"`), so a client needs no name table of its own.
-* `alert`, `explosion`, `shelling` and `districts` are present for **all** regions.
+* `alert`, `shelling` and `districts` are present for **all** regions.
 * `status`: `true` (active) or `false` (inactive). On a region's `alert` it is the same verdict as `coverage`, read off the same count: `status` is `true` exactly when `coverage` is not `"none"`.
 * `time`: when the event was recorded, as an ISO-8601 timestamp with the Kyiv UTC offset (`2025-09-04T14:23:11+03:00`), or `null` when there is no event. Parse it; do not read the offset off the string, it changes with DST.
 * `source`: URL of the message the event came from, so the map can link a pill straight to it. For a district with its own channel that is the broadcast (e.g. `https://t.me/kyiv_alert/512`); for a district tracked on the map only, it is the source channel's post. Falls back to `"telegram"` for events recorded before message links were stored or whose link could not be resolved, and `null` when there is no event at all.

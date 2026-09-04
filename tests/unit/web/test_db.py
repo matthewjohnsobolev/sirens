@@ -34,7 +34,6 @@ from web.db import (
     reset_threat_status,
     update_alert_source,
     update_alert_status,
-    update_explosion_source,
     update_shelling_source,
     update_threat_status,
 )
@@ -169,8 +168,8 @@ def test_get_threat_time_returns_stored_value(mock_web_redis):
 def test_get_threat_source_defaults_to_none_string(mock_web_redis):
     mock_web_redis.hget.return_value = None
 
-    assert get_threat_source("explosions", "kyiv") == "None"
-    mock_web_redis.hget.assert_called_once_with("threat:explosions:kyiv", "source")
+    assert get_threat_source("shellings", "kyiv") == "None"
+    mock_web_redis.hget.assert_called_once_with("threat:shellings:kyiv", "source")
 
 
 def test_update_threat_status(mock_web_redis):
@@ -187,13 +186,13 @@ def test_update_threat_status(mock_web_redis):
 
 def test_update_threat_status_includes_source_when_given(mock_web_redis):
     update_threat_status(
-        "explosions", "kyiv", status=True, time_val="12:00", source_val="https://t.me/x/1"
+        "shellings", "kyiv", status=True, time_val="12:00", source_val="https://t.me/x/1"
     )
 
     mock_web_redis.hset.assert_called_once()
     key = mock_web_redis.hset.call_args.args[0]
     mapping = mock_web_redis.hset.call_args.kwargs["mapping"]
-    assert key == "threat:explosions:kyiv"
+    assert key == "threat:shellings:kyiv"
     assert mapping["status"] == "true"
     assert mapping["time"] == "12:00"
     assert mapping["source"] == "https://t.me/x/1"
@@ -224,17 +223,10 @@ def test_reset_threat_status(mock_web_redis):
     assert "updated_at" in mapping
 
 
-@pytest.mark.parametrize(
-    "func, table",
-    [
-        (update_explosion_source, "explosions"),
-        (update_shelling_source, "shellings"),
-    ],
-)
-def test_update_threat_source_marks_threat_active(mock_web_redis, func, table):
-    func("kyiv", "https://t.me/channel/1")
+def test_update_threat_source_marks_threat_active(mock_web_redis):
+    update_shelling_source("kyiv", "https://t.me/channel/1")
 
-    assert mock_web_redis.hset.call_args.args[0] == f"threat:{table}:kyiv"
+    assert mock_web_redis.hset.call_args.args[0] == "threat:shellings:kyiv"
     mapping = mock_web_redis.hset.call_args.kwargs["mapping"]
     assert mapping["source"] == "https://t.me/channel/1"
     assert mapping["status"] == "true"
@@ -531,12 +523,6 @@ def threats_store(mock_web_redis):
             "source": "tg-lviv",
             "updated_at": "1000",
         },
-        "threat:explosions:dnipropetrovsk_oblast": {
-            "status": "true",
-            "time": "11:30",
-            "source": "ex-dnipro",
-            "updated_at": "1000",
-        },
         "threat:shellings:nikopol": {
             "status": "true",
             "time": "11:45",
@@ -573,8 +559,9 @@ def test_get_all_threats_data_queries_every_table_and_oblast(threats_store):
     get_all_threats_data()
 
     keys = [k for _, k in threats_store.operations]
-    for table in ("alerts", "explosions"):
-        assert f"threat:{table}:kyiv" in keys
+    assert "threat:alerts:kyiv" in keys
+    # Explosions were never written by anything, so they are no longer read.
+    assert not any(k.startswith("threat:explosions:") for k in keys)
     # Shelling is tracked per district only; the oblast-level key was read and
     # never used, so it is no longer requested. ("kyiv" is both an oblast and a
     # district key, so the assertion needs an oblast that is only an oblast.)
@@ -606,8 +593,6 @@ def test_get_all_threats_data_defaults_missing_keys(threats_store):
     assert result["crimea"]["alert"]["status"] is False
     assert result["crimea"]["alert"]["time"] is None
     assert result["crimea"]["alert"]["source"] is None
-    assert result["crimea"]["explosion"]["status"] is False
-    assert result["crimea"]["explosion"]["time"] is None
 
 
 @pytest.mark.parametrize("city", ["nikopol", "kherson"])

@@ -8,11 +8,15 @@ version = "1.1.0"
 requires-python = ">=3.10"
 dynamic = ["dependencies"]
 
+[project.scripts]
+sirens-ops = "ops.cli:cli"
+
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
 
 [tool.setuptools]
-packages = ["alerts", "bi", "data", "domain", "web"]
+packages = ["alerts", "bi", "data", "domain", "ops", "web"]
+py-modules = ["config"]
 
 [tool.setuptools.package-data]
 alerts = ["img/*.png"]

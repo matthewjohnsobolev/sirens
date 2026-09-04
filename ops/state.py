@@ -1,5 +1,5 @@
 """
-State manager for Sirens CLI (sirens-ctl).
+State manager for Sirens Operations CLI (sirens-ops).
 Handles querying and mutating Redis live state and PostgreSQL alert history.
 """
 
@@ -92,26 +92,6 @@ def resolve_district(query: str) -> tuple[str, dict[str, Any]] | None:
         return candidates[0]
 
     return None
-
-
-def find_districts_matching(query: str) -> list[tuple[str, dict[str, Any]]]:
-    """Find all matching districts for suggestions."""
-    cleaned = query.strip().lower()
-    if not cleaned:
-        return list(DISTRICT_CONFIG.items())
-
-    results = []
-    for key, conf in DISTRICT_CONFIG.items():
-        pool = [
-            key,
-            (conf.get("display_name") or "").lower(),
-            (conf.get("name") or "").lower(),
-            (conf.get("city") or "").lower(),
-            *[a.lower() for a in conf.get("aliases", [])],
-        ]
-        if any(cleaned in item for item in pool if item):
-            results.append((key, conf))
-    return results
 
 
 def get_district_status(

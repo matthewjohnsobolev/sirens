@@ -1,6 +1,6 @@
 """
-Minimalist CLI for sirens-ctl.
-Direct emergency threat status management: alert on/off, shelling on/off, ls, show, history.
+Minimalist CLI for sirens-ops.
+Direct emergency threat status management: alert on/off, shelling on/off, status, show, history.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.table import Table
 
 from config import APP_ENV
-from ctl import state
+from ops import state
 
 if sys.platform == "win32":
     try:
@@ -61,7 +61,7 @@ def format_elapsed(epoch: int | float | None, time_str: str | None = None) -> st
     return f"{hours}h ago"
 
 
-def render_ls_table(districts: list[dict[str, Any]]) -> Table:
+def render_status_table(districts: list[dict[str, Any]]) -> Table:
     """Render compact status list matching dot style:
     ● bucha       Kyiv       alert     19:15 (24m ago)  chan:-1001754447620
     ○ nikopol     Dnipro     clear     17:05            chan:-1001754447620
@@ -125,6 +125,9 @@ def render_ls_table(districts: list[dict[str, Any]]) -> Table:
         )
 
     return table
+
+
+render_ls_table = render_status_table
 
 
 def print_show_detail(data: dict[str, Any]) -> None:
@@ -207,11 +210,19 @@ def print_history_list(history: list[dict[str, Any]], district: str | None = Non
     default=APP_ENV,
     help="Run mode: dev or prod",
 )
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    default=False,
+    help="Do not prompt for confirmation before broadcast on prod",
+)
 @click.pass_context
-def cli(ctx: click.Context, mode: str):
-    """Sirens Control (sirens-ctl) - Emergency threat status management."""
+def cli(ctx: click.Context, mode: str, yes: bool):
+    """Sirens Operations (sirens-ops) - Emergency threat status management."""
     ctx.ensure_object(dict)
     ctx.obj["mode"] = mode.lower()
+    ctx.obj["yes"] = yes
 
 
 def _apply_and_print(
@@ -223,6 +234,7 @@ def _apply_and_print(
     date_str: str | None = None,
     time_str: str | None = None,
     broadcast: bool = False,
+    yes: bool = False,
 ) -> None:
     env = ctx.obj["mode"]
     resolved = state.resolve_district(district_query)
@@ -231,6 +243,14 @@ def _apply_and_print(
         sys.exit(1)
 
     district_key, _ = resolved
+
+    skip_prompt = yes or ctx.obj.get("yes", False)
+    if broadcast and env == "prod" and not skip_prompt:
+        click.confirm(
+            f"Broadcast to {district_key} Telegram channel?",
+            default=False,
+            abort=True,
+        )
 
     try:
         res = state.apply_threat_change(
@@ -254,7 +274,7 @@ def _apply_and_print(
         if not target_cid:
             broadcast_msg = " [yellow](channel not configured; broadcast skipped)[/]"
         else:
-            from ctl.broadcast import run_broadcast_sync
+            from ops.broadcast import run_broadcast_sync
 
             target_event = "air_raid_alert" if alert_active else "air_raid_alert_cancelled"
             if shelling_active is not None:
@@ -307,6 +327,13 @@ def _apply_and_print(
 @click.option(
     "-b", "--broadcast", is_flag=True, default=False, help="Broadcast alert to Telegram channel"
 )
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    default=False,
+    help="Do not prompt for confirmation before broadcast on prod",
+)
 @click.pass_context
 def alert_cmd(
     ctx: click.Context,
@@ -316,6 +343,7 @@ def alert_cmd(
     date_str: str | None,
     time_str: str | None,
     broadcast: bool,
+    yes: bool,
 ):
     """Air raid alert on or off (Europe/Kyiv datetime)."""
     active = state_val.lower() == "on"
@@ -328,6 +356,7 @@ def alert_cmd(
         date_str=date_str,
         time_str=time_str,
         broadcast=broadcast,
+        yes=yes,
     )
 
 
@@ -352,6 +381,13 @@ def alert_cmd(
     default=False,
     help="Broadcast shelling threat to Telegram channel",
 )
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    default=False,
+    help="Do not prompt for confirmation before broadcast on prod",
+)
 @click.pass_context
 def shelling_cmd(
     ctx: click.Context,
@@ -361,6 +397,7 @@ def shelling_cmd(
     date_str: str | None,
     time_str: str | None,
     broadcast: bool,
+    yes: bool,
 ):
     """Shelling threat on or off (Europe/Kyiv datetime)."""
     active = state_val.lower() == "on"
@@ -373,13 +410,14 @@ def shelling_cmd(
         date_str=date_str,
         time_str=time_str,
         broadcast=broadcast,
+        yes=yes,
     )
 
 
 # --- Inspection and query commands ---
 
 
-@cli.command(name="ls")
+@cli.command(name="status")
 @click.option(
     "-a",
     "--all",
@@ -391,8 +429,8 @@ def shelling_cmd(
 @click.option("--oblast", default=None, help="Filter by oblast key")
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON")
 @click.pass_context
-def ls_cmd(ctx: click.Context, show_all: bool, oblast: str | None, as_json: bool):
-    """List district statuses (shows active threats by default; use -a for all)."""
+def status_cmd(ctx: click.Context, show_all: bool, oblast: str | None, as_json: bool):
+    """Show district statuses (shows active threats by default; use -a for all)."""
     env = ctx.obj["mode"]
     try:
         districts = state.get_all_districts_statuses(
@@ -411,13 +449,13 @@ def ls_cmd(ctx: click.Context, show_all: bool, oblast: str | None, as_json: bool
     if not districts:
         if not show_all:
             console.print(
-                "  [dim green]○ No active alerts or shellings.[/]  (use 'ls -a' to view all districts)"
+                "  [dim green]○ No active alerts or shellings.[/]  (use 'status -a' to view all districts)"
             )
         else:
             console.print("  [dim]No districts found.[/]")
         return
 
-    console.print(render_ls_table(districts))
+    console.print(render_status_table(districts))
 
 
 @cli.command(name="show")

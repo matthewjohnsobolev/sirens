@@ -473,4 +473,3 @@ def test_entrypoints_importable():
     import run_alerts  # noqa: F401
     import run_bi  # noqa: F401
     import run_ops  # noqa: F401
-

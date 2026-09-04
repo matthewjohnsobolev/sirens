@@ -376,8 +376,8 @@ Nothing below is in code — it is one-time work in the GA4 interface:
 
 ### SEO
 
-`/robots.txt` is served at the edge by Cloudflare; `/sitemap.xml` is served by
-Flask; the status page carries its own pair as static files, because a sitemap
+`/robots.txt` is served at the edge by Cloudflare across all hosts; `/sitemap.xml` is served by
+Flask, while the status page carries its sitemap as a static file, because a sitemap
 may only list URLs on the origin that serves it. Every public page declares a canonical URL and
 `index, follow, max-image-preview:large`; the error page stays `noindex`.
 The map page ships `Organization`, `WebSite` and `WebApplication` JSON-LD, the

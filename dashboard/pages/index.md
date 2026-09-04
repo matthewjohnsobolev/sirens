@@ -2,13 +2,59 @@
 title: Sirens Network Analytics
 ---
 
+<script>
+    // Tooltip helpers. Backtick templates are avoided on purpose: the page is
+    // parsed as markdown before Svelte sees it, and backticks read as code spans.
+    const num = (value) =>
+        value === null || value === undefined ? 'n/a' : Number(value).toLocaleString('en-US');
+
+    const signed = (value) =>
+        value === null || value === undefined
+            ? 'n/a'
+            : (value > 0 ? '+' : value < 0 ? '-' : '') + Math.abs(value).toLocaleString('en-US');
+
+    const signedPct = (value) =>
+        value === null || value === undefined
+            ? null
+            : (value > 0 ? '+' : value < 0 ? '-' : '') + (Math.abs(value) * 100).toFixed(1) + '%';
+
+    // Same green/red/grey the movement chart uses, so a gain reads the same
+    // everywhere on the page.
+    const delta = (change, pct) => {
+        if (change === null || change === undefined) return 'no data';
+        const color = change > 0 ? '#2f9e44' : change < 0 ? '#e03131' : '#868e96';
+        const percent = signedPct(pct);
+        return (
+            '<span style="color: ' +
+            color +
+            '">' +
+            signed(change) +
+            (percent ? ' (' + percent + ')' : '') +
+            '</span>'
+        );
+    };
+
+    // Mirrors the markup of Evidence's built-in tooltip so the custom ones do
+    // not look grafted on.
+    const tipHead = (text) => '<span style="font-weight: 600;">' + text + '</span>';
+
+    const tipRow = (label, value) =>
+        '<br/><span>' +
+        label +
+        ': </span><span style="float: right; margin-left: 10px;">' +
+        value +
+        '</span>';
+</script>
+
 Total audience reach and growth dynamics across all Sirens alert channels.
 Snapshots are recorded throughout the day.
 
 ```sql headline
 -- Comparisons are looked up by date rather than with lag(n): a missed snapshot
 -- leaves a gap in the history, and counting rows back would measure against
--- the wrong day.
+-- the wrong day. Baselines are the most recent day at or before the target, so
+-- a gap shifts the comparison instead of blanking the metric, which is why
+-- every comparison carries the date it actually measured against.
 with per_snapshot as (
     select
         date,
@@ -29,30 +75,57 @@ latest_per_day as (
         from per_snapshot
     )
     where rn = 1
+),
+current_day as (
+    select date, total
+    from latest_per_day
+    order by date desc
+    limit 1
+),
+prev_day as (
+    select day.date, day.total
+    from latest_per_day day, current_day
+    where day.date < current_day.date
+    order by day.date desc
+    limit 1
+),
+week_ago as (
+    select day.date, day.total
+    from latest_per_day day, current_day
+    where day.date <= current_day.date - 7
+    order by day.date desc
+    limit 1
 )
 select
-    day.total,
-    day.total - prev_day.total  as change_1d,
-    day.total - prev_week.total as change_7d
-from latest_per_day day
-left join latest_per_day prev_day  on prev_day.date  = day.date - 1
-left join latest_per_day prev_week on prev_week.date = day.date - 7
-order by day.date desc
-limit 1
+    current_day.total,
+    current_day.total - prev_day.total as change_1d,
+    (current_day.total - prev_day.total) / nullif(prev_day.total, 0)::double as change_1d_pct,
+    strftime(prev_day.date, '%b %-d') as prev_day_label,
+    current_day.total - week_ago.total as change_7d,
+    (current_day.total - week_ago.total) / nullif(week_ago.total, 0)::double as change_7d_pct,
+    strftime(week_ago.date, '%b %-d') as week_ago_label
+from current_day
+left join prev_day on true
+left join week_ago on true
 ```
 
 <BigValue
     data={headline}
     value=total
     title="Total Network Audience"
-    comparison=change_1d
-    comparisonTitle="since yesterday"
+    comparison=change_1d_pct
+    comparisonFmt=pct1
+    comparisonTitle="({signed(headline[0].change_1d)}) since {headline[0].prev_day_label ?? 'previous run'}"
 />
 
 <BigValue
     data={headline}
     value=change_7d
+    fmt="+#,##0;-#,##0"
     title="7-Day Net Growth"
+    comparison=change_7d_pct
+    comparisonFmt=pct1
+    comparisonTitle="vs {headline[0].week_ago_label ?? 'start of history'}"
 />
 
 ## Network Growth
@@ -90,28 +163,28 @@ latest_per_day as (
 view_24h as (
     select
         date,
-        total
+        total,
+        strftime(date, '%b %-d, %H:%M') as label
     from per_snapshot
     where date >= (select max(date) from per_snapshot) - interval '24 hours'
 ),
 view_7d as (
     select
         date::timestamp as date,
-        total
+        total,
+        strftime(date, '%b %-d') as label
     from latest_per_day
     where date >= (select max(date) from latest_per_day) - interval '7 days'
 ),
 view_30d as (
     select
         date::timestamp as date,
-        total
+        total,
+        strftime(date, '%b %-d') as label
     from latest_per_day
     where date >= (select max(date) from latest_per_day) - interval '30 days'
-)
-select
-    date,
-    total
-from (
+),
+selected as (
     select * from view_24h
     where '${inputs.timeframe.value}' = '24h' or '${inputs.timeframe}' = '24h'
     union all
@@ -123,6 +196,18 @@ from (
     select * from view_30d
     where '${inputs.timeframe.value}' = '30d' or '${inputs.timeframe}' = '30d'
 )
+-- The step back is over the points actually plotted, so on a day with no
+-- snapshot the tooltip compares against the previous point it can name rather
+-- than silently against the wrong day.
+select
+    date,
+    total,
+    label,
+    total - lag(total) over (order by date) as change,
+    (total - lag(total) over (order by date))
+        / nullif(lag(total) over (order by date), 0)::double as change_pct,
+    lag(label) over (order by date) as prev_label
+from selected
 order by 1
 ```
 
@@ -134,7 +219,24 @@ order by 1
     yScale=true
     markers=true
     chartAreaHeight=280
-    echartsOptions={{useUTC: true}}
+    echartsOptions={{
+        useUTC: true,
+        tooltip: {
+            formatter: (params) => {
+                const point = Array.isArray(params) ? params[0] : params;
+                const row = daily_total[point.dataIndex] ?? {};
+                // The first point of a window has nothing behind it to compare
+                // against, so it just shows the count.
+                return (
+                    tipHead(row.label ?? point.axisValueLabel) +
+                    tipRow('subscribers', num(point.value[1])) +
+                    (row.prev_label
+                        ? tipRow('vs ' + row.prev_label, delta(row.change, row.change_pct))
+                        : '')
+                );
+            }
+        }
+    }}
 />
 
 ## Daily Channel Movement
@@ -209,15 +311,54 @@ order by change desc, later.display_name
 
 ## Subscribers by Channel
 
-Audience distribution by channel, ranked by total subscriber count.
+Audience distribution by channel, ranked by total subscriber count. Hovering a
+bar shows how that channel moved over the same seven days the 7-Day Net Growth
+metric measures.
 
 ```sql by_channel
+-- The 7-day baseline is picked exactly the way the 7-Day Net Growth headline
+-- picks it (most recent snapshot day at or before D-7), so the per-channel
+-- changes in the tooltip add up to that metric.
+with day_runs as (
+    select
+        date::date as day_date,
+        max(date) as run_time
+    from sirens.subscribers
+    group by 1
+),
+current_run as (
+    select day_date, run_time
+    from day_runs
+    order by day_date desc
+    limit 1
+),
+week_ago_run as (
+    select day_runs.day_date, day_runs.run_time
+    from day_runs, current_run
+    where day_runs.day_date <= current_run.day_date - 7
+    order by day_runs.day_date desc
+    limit 1
+),
+later_counts as (
+    select display_name, subscribers
+    from sirens.subscribers, current_run
+    where date = current_run.run_time
+),
+earlier_counts as (
+    select display_name, subscribers
+    from sirens.subscribers, week_ago_run
+    where date = week_ago_run.run_time
+)
 select
-    display_name,
-    subscribers
-from sirens.subscribers
-where date = (select max(date) from sirens.subscribers)
-order by subscribers desc
+    later.display_name,
+    later.subscribers,
+    later.subscribers - earlier.subscribers as change_7d,
+    (later.subscribers - earlier.subscribers) / nullif(earlier.subscribers, 0)::double as change_7d_pct,
+    (select strftime(day_date, '%b %-d') from week_ago_run) as week_ago_label
+from later_counts later
+left join earlier_counts earlier
+       on earlier.display_name = later.display_name
+order by later.subscribers desc
 ```
 
 <BarChart
@@ -226,6 +367,24 @@ order by subscribers desc
     y=subscribers
     swapXY=true
     yAxisTitle="subscribers"
+    echartsOptions={{
+        tooltip: {
+            formatter: (params) => {
+                const point = Array.isArray(params) ? params[0] : params;
+                // swapXY puts the category in value[1]; name is the fallback.
+                const name = point.value[1] ?? point.name;
+                const row = Array.from(by_channel).find((d) => d.display_name === name) ?? {};
+                return (
+                    tipHead(name) +
+                    tipRow('subscribers', num(point.value[0])) +
+                    tipRow(
+                        row.week_ago_label ? 'vs ' + row.week_ago_label : 'vs 7 days ago',
+                        delta(row.change_7d, row.change_7d_pct)
+                    )
+                );
+            }
+        }
+    }}
 />
 
 Data as of {movement_window[0].later}. Historical tracking begins from the date

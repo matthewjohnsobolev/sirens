@@ -13,10 +13,10 @@ export function gaMeasurementId(env?: Env): string {
     return (configured === undefined ? DEFAULT_MEASUREMENT_ID : configured).trim();
 }
 
-// Сторінка сама перезавантажується раз на хвилину. Без прапорця кожна
-// відкрита вкладка малювала б по 60 переглядів на годину: у звітах це
-// вбиває і сесії, і показник відмов. Автооновлення шле власну подію, а
-// page_view лишається тільки за живим заходом.
+// Сторінка оновлюється сама раз на хвилину, але вже не перезавантажується:
+// status.js міняє картку на місці. Тож page_view знову означає рівно один
+// живий захід, а про тихе оновлення звітує окрема подія звідти ж —
+// вигадувати тут прапорці й гасити page_view більше нема потреби.
 export function analyticsHead(measurementId: string, systemState: string): string {
     if (!measurementId) return "";
 
@@ -29,19 +29,10 @@ function gtag(){dataLayer.push(arguments);}
 window.track = function (name, params) {
   try { gtag('event', name, params || {}); } catch (error) {}
 };
-var sirensAutoRefresh = false;
-try {
-  sirensAutoRefresh = sessionStorage.getItem('sirens:auto-refresh') === '1';
-  sessionStorage.removeItem('sirens:auto-refresh');
-} catch (error) {}
 gtag('js', new Date());
 gtag('config', '${measurementId}', {
   page_type: 'status',
-  system_state: '${systemState}',
-  send_page_view: !sirensAutoRefresh
+  system_state: '${systemState}'
 });
-if (sirensAutoRefresh) {
-  window.track('status_auto_refresh', { system_state: '${systemState}' });
-}
 </script>`;
 }

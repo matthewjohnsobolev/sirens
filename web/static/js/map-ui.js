@@ -16,10 +16,6 @@
     var STATUS_PAGE = 'https://status.sirens.live';
     var POLL_MS = 60000;
 
-    // Ширина, з якої плитка оновлення переїжджає в правий верхній кут.
-    // Той самий поріг, що в mobile.css: «телефон» у проєкті означає одне.
-    var NARROW = '(max-width: 600px)';
-
     // Телеметрію в KV кладе бот: за подіями і раз на 15 хвилин
     // (TELEMETRY_PERIODIC_SYNC_INTERVAL в alerts/main.py). TTL у ключа
     // немає, тож коли збір даних стає, час не зникає, а застигає. Поріг —
@@ -322,30 +318,10 @@
     control('topleft', statusTile).addTo(map);
 
     // Плитка оновлення не стає в стопку інструментів: ті про перегляд, ця
-    // про дані. На широкому екрані вона йде в нижній лівий кут — далі від
-    // тривог і ближче до кута, куди й так дивляться за службовим; на
-    // телефоні переїжджає в правий верхній, під великий палець, бо низ
-    // екрана там забирає браузер.
-    if (window.SirensThreats) {
-        var syncControl = control('bottomleft', syncTile).addTo(map);
-        var narrow = window.matchMedia(NARROW);
-
-        var placeSync = function () {
-            syncControl.setPosition(narrow.matches ? 'topright' : 'bottomleft');
-
-            // Смуга чіпа аварії тримається центру між тим, що стоїть по
-            // краях. Праворуч тепер може стояти плитка — і клас про це
-            // каже, щоб поріг «телефона» лишався в одному місці, тут.
-            L.DomUtil[narrow.matches ? 'addClass' : 'removeClass'](
-                map.getContainer(), 'map-sync-topright'
-            );
-        };
-
-        placeSync();
-
-        if (narrow.addEventListener) narrow.addEventListener('change', placeSync);
-        else narrow.addListener(placeSync);
-    }
+    // про дані. Кут у неї свій — нижній лівий, і на телефоні теж: ліва
+    // вертикаль на мапі одна, тож плитка продовжує ту саму лінію знизу, а
+    // не заводить другу з іншого боку екрана.
+    if (window.SirensThreats) control('bottomleft', syncTile).addTo(map);
 
     statusChip();
 

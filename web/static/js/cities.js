@@ -65,9 +65,8 @@ function markerThreats(marker) {
 
 function buildCities(data) {
     DISTRICT_MARKERS.forEach(marker => {
-        const layer = L.marker([marker.lat, marker.lng], {
-            icon: setMarkerStyle(pickDominant(getMarkerThreats(data, marker)))
-        });
+        const state = pickDominant(getMarkerThreats(data, marker)) || 'idle';
+        const layer = L.marker([marker.lat, marker.lng], { icon: setMarkerStyle(state) });
 
         layer.bindPopup(() => getMarkerPopupContent(marker, markerThreats(marker)), customOptions);
         layer.on('popupopen', () => {
@@ -79,7 +78,7 @@ function buildCities(data) {
         });
 
         layer.addTo(map);
-        CITY_MARKERS.push({ marker: marker, layer: layer });
+        CITY_MARKERS.push({ marker: marker, layer: layer, state: state });
     });
 }
 
@@ -90,7 +89,16 @@ function paintCities(data) {
     }
 
     for (const entry of CITY_MARKERS) {
-        entry.layer.setIcon(setMarkerStyle(pickDominant(getMarkerThreats(data, entry.marker))));
+        const state = pickDominant(getMarkerThreats(data, entry.marker)) || 'idle';
+
+        // Відповідь приходить кожні кілька секунд, а стан маркера за нею
+        // змінюється рідко. setIcon перестворює <img>, тож ставити ту саму
+        // іконку означало б регулярно висмикувати з-під курсора те, на що
+        // читач саме наводиться.
+        if (entry.state === state) continue;
+
+        entry.state = state;
+        entry.layer.setIcon(setMarkerStyle(state));
     }
 }
 

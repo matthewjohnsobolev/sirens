@@ -151,6 +151,13 @@ The application provides a public RESTful API endpoint at `/api` that returns a 
 * `districts`: every district of the region, keyed by district id, each with its Ukrainian `name` and its own `alert` and `shelling` state. Alerts are tracked for all districts of the government-controlled regions; Crimea, Sevastopol, Donetsk and Luhansk regions carry an empty map.
 * `coverage`: `"full"` when every district of the region is under alert, `"partial"` when only some are, `"none"` when none are. `active_districts` and `tracked_districts` list the district ids behind that verdict.
 
+The map polls this endpoint every fifteen seconds — an air-raid alert is
+declared once and the tab is left open for hours, so the page must not need
+reloading to be true. It repaints the layers it already built instead of
+rebuilding them, and only where the state actually changed, so zoom, position
+and an open popup all survive the update. Responses carry `max-age=2`, which is
+what makes a poll that frequent cheap.
+
 ## Monitoring and the Status Page
 
 `/status` shows four components. Each one asserts something the others cannot,
@@ -354,11 +361,11 @@ Enhanced Measurement already fires those names on any `submit` event, and the
 report form submits over `fetch` after `preventDefault()`, so the built-in
 events would double-count — including attempts that failed validation.
 
-The status page reloads itself once a minute. A tab left open would otherwise
-report sixty page views an hour and wreck both session counts and bounce rate,
-so the reload sets a `sessionStorage` flag, the next load configures itself
-with `send_page_view: false`, and `status_auto_refresh` records the refresh
-instead.
+The status page refreshes itself once a minute without reloading — it fetches
+its own HTML and swaps the card in place — so a tab left open still reports one
+page view, and `status_auto_refresh` records each silent refresh. The map
+repaints from `/api` on its own schedule and sends nothing for it: an event
+every fifteen seconds from every open tab would say less than it cost.
 
 ### Setting the property up
 

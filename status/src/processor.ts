@@ -1,4 +1,4 @@
-import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry, healthchecksSlug, uptimeRobotKey } from "./api";
+import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry, fetchMaintenance, healthchecksSlug, uptimeRobotKey } from "./api";
 import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts, formatLocationLocative, relativeDayLabel } from "./helpers";
 
 const WINDOW_HOURS = 24;
@@ -137,7 +137,22 @@ export async function computeStatusData(env: Env) {
     const now = new Date();
     const nowKyiv = getKyivParts(now);
 
-    const telemetry = await fetchTelemetry(env);
+    const [telemetry, maintenance] = await Promise.all([
+        fetchTelemetry(env),
+        fetchMaintenance(env)
+    ]);
+
+    const activeMaintenance = (maintenance && maintenance.active)
+        ? maintenance
+        : (telemetry?.maintenance && telemetry.maintenance.active)
+            ? telemetry.maintenance
+            : null;
+
+    const mntAppliesToComp = (key: string) => {
+        if (!activeMaintenance) return false;
+        const comps = activeMaintenance.components || ["all"];
+        return comps.includes("all") || comps.includes(key);
+    };
 
     const currentHourStart = getHourStart(now);
     const firstHourStart = new Date(currentHourStart.getTime() - (WINDOW_HOURS - 1) * 3600 * 1000);
@@ -278,14 +293,27 @@ export async function computeStatusData(env: Env) {
             }
         }
 
+        let compState = hours.length > 0 ? hours[hours.length - 1].state : "nodata";
+        if (mntAppliesToComp(spec.key)) {
+            compState = "mnt";
+            outageSince = null;
+            if (hours.length > 0) {
+                hours[hours.length - 1].state = "mnt";
+                const updatedParts = formatHourParts(hours[hours.length - 1].date, "mnt", spec.key);
+                hours[hours.length - 1].timeText = updatedParts.timeText;
+                hours[hours.length - 1].statusText = updatedParts.statusText;
+                hours[hours.length - 1].title = updatedParts.fullTitle;
+            }
+        }
+
         components.push({
             key: spec.key,
             name: spec.name,
             desc: spec.desc,
             uptime: uptimePct,
             hours,
-            monitored: probe.present,
-            state: hours.length > 0 ? hours[hours.length - 1].state : "nodata",
+            monitored: probe.present || Boolean(activeMaintenance),
+            state: compState,
             outage_since: outageSince
         });
     }
@@ -331,7 +359,12 @@ export async function computeStatusData(env: Env) {
         }
     }
 
-    if (!monitored.length || monitored.every(c => c.state === "nodata")) {
+    const hasMaintenance = Boolean(activeMaintenance) || monitored.some(c => c.state === "mnt");
+
+    if (hasMaintenance) {
+        headline = activeMaintenance?.headline || "Планові роботи";
+        subtitle = activeMaintenance?.subtitle || "Тривають планові технічні роботи.";
+    } else if (!monitored.length || monitored.every(c => c.state === "nodata")) {
         headline = "Немає даних";
         subtitle = "";
     } else if (coreFailing.length > 0) {
@@ -358,9 +391,6 @@ export async function computeStatusData(env: Env) {
             headline = "Сповіщення надходять, API — ні";
             subtitle = `API недоступний${timeStr}. Розсилка в Telegram надходить як зазвичай.`;
         }
-    } else if (monitored.some(c => c.state === "mnt")) {
-        headline = "Планові роботи";
-        subtitle = "Тривають планові технічні роботи.";
     } else {
         if (lastAlertDt && !isNaN(lastAlertDt.getTime())) {
             const p = getKyivParts(lastAlertDt);

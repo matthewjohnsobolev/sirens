@@ -1,6 +1,8 @@
-/* UI мапи: навігаційні кнопки й плашка стану.
+/* UI мапи: навігаційні кнопки й стан сервісу.
    Усе збирається з токенів дизайн-системи (tokens.css) і живе в кутових
-   контейнерах Leaflet, тож жодна кнопка не позиціонується вручну. */
+   контейнерах Leaflet, тож жодна кнопка не позиціонується вручну. Єдиний
+   виняток — чіп аварії: він тримається центру, а такого кута в Leaflet
+   немає. */
 
 /* ── Кутові стопки ──────────────────────────────────────────────────── */
 
@@ -43,9 +45,12 @@
 /* Leaflet фарбує будь-яке посилання всередині мапи у свій синій
    (.leaflet-container a), тож контроли-посилання повертають собі колір
    селектором не легшої ваги. */
-.leaflet-container .map-ctl,
-.leaflet-container .map-status {
+.leaflet-container .map-ctl {
     color: var(--ink);
+}
+
+.leaflet-container .map-chip {
+    color: var(--surface);
 }
 
 /* Тим самим селектором Leaflet вмикає посиланням блакитний спалах на тап
@@ -58,13 +63,12 @@
 /* ── Плитка ─────────────────────────────────────────────────────────── */
 
 /* Спільна основа всього UI мапи: біле поле, волосінь, радіус контрола й
-   тінь картки. Одне правило на всіх — інакше кнопка й плашка розійдуться,
-   щойно в системі зміниться радіус чи тінь. Селектор із .leaflet-touch
-   повторює вагу власних правил Leaflet, інакше вони перемагають. */
+   тінь картки. Одне правило на всіх — інакше кнопки розійдуться, щойно в
+   системі зміниться радіус чи тінь. Селектор із .leaflet-touch повторює
+   вагу власних правил Leaflet, інакше вони перемагають. */
 .map-ctl,
 .leaflet-bar,
-.leaflet-touch .leaflet-bar,
-.map-status {
+.leaflet-touch .leaflet-bar {
     box-sizing: border-box;
     background: var(--surface);
     border: 1px solid var(--hairline);
@@ -105,18 +109,6 @@
     outline-offset: 2px;
 }
 
-/* Натиснутий стан — залита плашка. Сіра, не чорна: стан каже сама іконка,
-   а чорний квадрат на мапі важить більше за все, що під ним. */
-.map-ctl[aria-pressed="true"] {
-    background: var(--ink-muted);
-    border-color: var(--ink-muted);
-    color: var(--surface);
-}
-
-.map-ctl[aria-pressed="true"]:hover {
-    background: var(--ink-muted-hover);
-    border-color: var(--ink-muted-hover);
-}
 
 /* ── Іконки ─────────────────────────────────────────────────────────── */
 
@@ -139,8 +131,8 @@
 /* Кожна іконка — одне правило з маскою: сама маска більше ніде не
    потрібна, тож заводити для неї змінну нема сенсу.
 
-   Око називає дію, а не стан: поки маркери видно, кнопка пропонує їх
-   прибрати — і показує перекреслене око. Файли названі так само. */
+   Око показує стан маркерів: відкрите око, коли маркери видно на мапі,
+   і перекреслене — коли сховані. Файли названі відповідно. */
 .map-ctl-icon--markers-off {
     -webkit-mask-image: url("../img/icons/markers-off-button-icon.svg");
     mask-image: url("../img/icons/markers-off-button-icon.svg");
@@ -157,6 +149,13 @@
     --icon-size: 17px;
     -webkit-mask-image: url("../img/icons/bug-report-button-icon.svg");
     mask-image: url("../img/icons/bug-report-button-icon.svg");
+}
+
+/* Пульс тягнеться на всю ширину поля й лишає порожнім правий верхній
+   кут — саме туди сідає крапка стану, тож вона нічого не перекриває. */
+.map-ctl-icon--status {
+    -webkit-mask-image: url("../img/icons/service-status-button-icon.svg");
+    mask-image: url("../img/icons/service-status-button-icon.svg");
 }
 
 /* Плюс і мінус — такі самі маски, як решта іконок: уся стопка малюється
@@ -253,6 +252,15 @@
     cursor: default;
 }
 
+/* При натисканні іконка знаку збільшується на секунду */
+.leaflet-bar a .map-ctl-icon {
+    transition: transform var(--motion);
+}
+
+.leaflet-bar a.is-zoomed .map-ctl-icon {
+    transform: scale(1.35);
+}
+
 /* ── Приховані маркери ──────────────────────────────────────────────── */
 
 .markers-hidden .leaflet-marker-pane,
@@ -260,41 +268,22 @@
     display: none;
 }
 
-/* ── Плашка стану ───────────────────────────────────────────────────── */
+/* ── Крапка стану ───────────────────────────────────────────────────── */
 
-/* Типографіка тултипа зі статус-сторінки: моно, капітель, .04em. Той
-   самий підпис, що там підписує смужку години, тут підписує мапу. */
-.map-status {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--gap);
-    height: var(--control-h-sm);
-    padding: 0 12px;
-    color: var(--ink);
-    font-family: var(--font-mono);
-    font-size: var(--text-secondary);
-    font-weight: var(--weight-control);
-    letter-spacing: .04em;
-    line-height: 1;
-    text-transform: uppercase;
-    text-decoration: none;
-    white-space: nowrap;
-    transition: background-color var(--motion), border-color var(--motion);
-}
-
-.map-status:hover {
-    background: var(--surface-hover);
-    border-color: var(--hairline-hover);
-}
-
-.map-status:focus-visible {
-    outline: 2px solid var(--ink);
-    outline-offset: 2px;
-}
-
-.map-status-dot {
+/* Стан сервісу — така сама плитка, як решта контролів: іконка називає
+   об'єкт, крапка в кутку каже стан. Окремої плашки зі своїм кеглем і
+   своєю висотою більше немає — менше компонентів, менше місць розійтися.
+   Час останнього оновлення пішов у title і aria-label: за тим, чи він не
+   застиг, стежить код, а не читач. */
+.map-ctl--status {
     position: relative;
-    flex: none;
+}
+
+/* Кільця крапці не треба: навколо неї і так порожнє поле плитки. */
+.map-ctl-badge {
+    position: absolute;
+    top: 5px;
+    right: 5px;
     width: 8px;
     height: 8px;
     border-radius: 50%;
@@ -302,8 +291,8 @@
 }
 
 /* Крапка «дихає» тим самим циклом, що й смужка поточної години на
-   статус-сторінці: сторінка, куди веде плашка, вітає знайомим рухом. */
-.map-status-dot::after {
+   статус-сторінці: сторінка, куди веде плитка, вітає знайомим рухом. */
+.map-ctl-badge::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -318,29 +307,89 @@
     50%      { opacity: .5; }
 }
 
-.map-status[data-state="ok"] .map-status-dot     { background: var(--status-green-bar); }
-.map-status[data-state="minor"] .map-status-dot  { background: var(--status-orange-bar); }
-.map-status[data-state="down"] .map-status-dot   { background: var(--status-red-bar); }
-.map-status[data-state="mnt"] .map-status-dot    { background: var(--status-blue-bar); }
-.map-status[data-state="nodata"] .map-status-dot { background: var(--status-gray-bar); }
+.map-ctl--status[data-state="ok"] .map-ctl-badge     { background: var(--status-green-bar); }
+.map-ctl--status[data-state="minor"] .map-ctl-badge  { background: var(--status-orange-bar); }
+.map-ctl--status[data-state="down"] .map-ctl-badge   { background: var(--status-red-bar); }
+.map-ctl--status[data-state="mnt"] .map-ctl-badge    { background: var(--status-blue-bar); }
+.map-ctl--status[data-state="nodata"] .map-ctl-badge { background: var(--status-gray-bar); }
 
 /* Немає даних — нема чому дихати. */
-.map-status[data-state="nodata"] .map-status-dot::after {
+.map-ctl--status[data-state="nodata"] .map-ctl-badge::after {
     animation: none;
 }
 
-/* Заливка — тільки на аварії. Кольори станів збігаються з кольорами
-   тривог на мапі, тож зелена плашка в куті читалася б як відбій, а не як
-   «сервіс живий»: колір з'являється рівно тоді, коли щось зламалось. */
-.map-status[data-state="down"] {
-    background: var(--status-red);
-    border-color: transparent;
+/* ── Чіп аварії ─────────────────────────────────────────────────────── */
+
+/* Крапка 8px показує стан, але кричати не вміє. Коли сервіс ліг або дані
+   застигли, говорить чіп — той самий, що показує стан години на статус-
+   сторінці: темне поле, моно-капітель, крапка стану. Поле нейтральне, а
+   не червоне: чіп не має сперечатися з тривогами під ним.
+
+   Чіп не контрол Leaflet — він не стоїть у кутовій стопці, а тримається
+   центру, тож живе прямо в контейнері мапи. Обгортка лишається в DOM
+   завжди: порожній aria-live має існувати заздалегідь, інакше поява
+   тексту не озвучиться. */
+.map-chip-live {
+    position: absolute;
+    top: max(var(--map-inset), env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-map-ui);
+    max-width: calc(100% - 2 * var(--map-inset));
+    pointer-events: none;
 }
 
-.map-status[data-state="down"]:hover {
-    background: var(--status-red-hover);
-    border-color: transparent;
+.map-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap);
+    padding: 7px 12px;
+    border-radius: var(--radius-nested);
+    background: var(--ink-solid);
+    color: var(--surface);
+    cursor: pointer;
+    pointer-events: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-secondary);
+    font-weight: var(--weight-control);
+    letter-spacing: .04em;
+    line-height: 1;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .16),
+                0 5px 14px rgba(0, 0, 0, .10);
+    transition: background-color var(--motion);
 }
+
+/* display у чіпа свій, тож браузерне [hidden] { display: none } він
+   перебиває: ховати доводиться явно. */
+.map-chip[hidden] {
+    display: none;
+}
+
+.map-chip:hover {
+    background: var(--ink-solid-hover);
+}
+
+.map-chip:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+}
+
+/* Крапка та сама, що на плитці, лише дрібніша — як у тултипа статус-
+   сторінки. Тут вона не дихає: чіпу є що сказати словами. */
+.map-chip-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-gray-bar);
+}
+
+.map-chip[data-state="minor"] .map-chip-dot  { background: var(--status-orange-bar); }
+.map-chip[data-state="down"] .map-chip-dot   { background: var(--status-red-bar); }
+.map-chip[data-state="nodata"] .map-chip-dot { background: var(--status-gray-bar); }
 
 /* ── Дотик ──────────────────────────────────────────────────────────── */
 
@@ -353,29 +402,22 @@
         border-color: var(--hairline);
     }
 
-    .map-ctl[aria-pressed="true"]:hover {
-        background: var(--ink-muted);
-        border-color: var(--ink-muted);
-    }
-
     .leaflet-bar a:hover,
     .leaflet-touch .leaflet-bar a:hover {
         background: transparent;
     }
 
-    .map-status:hover {
-        background: var(--surface);
-        border-color: var(--hairline);
-    }
-
-    .map-status[data-state="down"]:hover {
-        background: var(--status-red);
-        border-color: transparent;
+    .map-chip:hover {
+        background: var(--ink-solid);
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .map-status-dot::after {
+    .map-ctl-badge::after {
         animation: none;
+    }
+
+    .leaflet-bar a .map-ctl-icon {
+        transition: none;
     }
 }

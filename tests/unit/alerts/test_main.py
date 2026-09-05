@@ -1868,6 +1868,15 @@ async def test_push_telemetry_to_kv_sends_correct_payload(monkeypatch, mock_redi
     mock_client.is_connected.return_value = True
     alerts_main.client = mock_client
 
+    mock_redis.hgetall.return_value = {
+        "active": "true",
+        "components": '["map"]',
+        "headline": "Планові роботи",
+        "subtitle": "Work in progress",
+        "updated_at": "12345",
+        "operator": "dev",
+    }
+
     with patch("requests.put") as mock_put:
         await alerts_main.push_telemetry_to_kv()
 
@@ -1884,6 +1893,9 @@ async def test_push_telemetry_to_kv_sends_correct_payload(monkeypatch, mock_redi
         assert body["last_alert"]["district"] == "bila_tserkva"
         assert body["last_alert"]["district_name"] == "Білоцерківський район"
         assert body["source_connected"] is True
+        assert body["maintenance"]["active"] is True
+        assert body["maintenance"]["components"] == ["map"]
+        assert body["maintenance"]["subtitle"] == "Work in progress"
         assert "updated_at" in body
 
 

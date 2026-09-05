@@ -755,6 +755,27 @@ async def push_telemetry_to_kv() -> None:
             except Exception:
                 pass
 
+        maintenance_data = None
+        if redis_client:
+            try:
+                raw_mnt = await redis_client.hgetall("system:maintenance")
+                if raw_mnt and str(raw_mnt.get("active", "")).lower() in ("true", "1", "active"):
+                    comps_raw = raw_mnt.get("components", '["all"]')
+                    try:
+                        comps = json.loads(comps_raw) if comps_raw else ["all"]
+                    except Exception:
+                        comps = [comps_raw]
+                    maintenance_data = {
+                        "active": True,
+                        "components": comps,
+                        "headline": raw_mnt.get("headline", "Планові роботи"),
+                        "subtitle": raw_mnt.get("subtitle", "Тривають планові технічні роботи."),
+                        "updated_at": raw_mnt.get("updated_at"),
+                        "operator": raw_mnt.get("operator"),
+                    }
+            except Exception:
+                pass
+
         payload = {
             "last_broadcast_at": last_bcast_iso,
             "last_alert": last_alert_payload,
@@ -766,6 +787,7 @@ async def push_telemetry_to_kv() -> None:
             "source_connected": source_connected,
             "primary_source_connected": source_connected,
             "fallback_source_connected": source_connected,
+            "maintenance": maintenance_data,
             "updated_at": now_dt.isoformat(),
         }
 

@@ -54,12 +54,22 @@ export interface TelemetryAlert {
     message_link?: string | null;
 }
 
+export interface MaintenanceData {
+    active: boolean;
+    headline?: string;
+    subtitle?: string;
+    components?: string[];
+    updated_at?: string;
+    operator?: string;
+}
+
 export interface TelemetryData {
     last_broadcast_at?: string | null;
     last_alert?: TelemetryAlert | null;
     last_source_message_at?: string | null;
     active_alerts_count?: number;
     source_connected?: boolean;
+    maintenance?: MaintenanceData | null;
     updated_at?: string;
 }
 
@@ -78,6 +88,18 @@ export async function fetchTelemetry(env: Env): Promise<TelemetryData | null> {
         return data;
     } catch (e) {
         console.warn("Failed to fetch telemetry from KV:", e);
+        return null;
+    }
+}
+
+export async function fetchMaintenance(env: Env): Promise<MaintenanceData | null> {
+    const kv = telemetryKv(env);
+    if (!kv) return null;
+    try {
+        const data = await kv.get<MaintenanceData>("maintenance", "json");
+        return data;
+    } catch (e) {
+        console.warn("Failed to fetch maintenance from KV:", e);
         return null;
     }
 }

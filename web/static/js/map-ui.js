@@ -1,6 +1,8 @@
-/* Навігаційні кнопки й плашка стану на мапі.
+/* Навігаційні кнопки й стан сервісу на мапі.
    Кожна кнопка — окремий контрол Leaflet, тож стопку тримає сам Leaflet:
-   порядок задається порядком addTo, відступи — кутовим контейнером. */
+   порядок задається порядком addTo, відступи — кутовим контейнером.
+   Стан сервісу говорить двома голосами: крапка на плитці — завжди,
+   темний чіп — лише коли є що сказати. */
 (function () {
     'use strict';
 
@@ -10,19 +12,27 @@
     // Статус-сторінка кешує свій JSON на 60 секунд, тож частіше питати
     // нема сенсу: відповідь усе одно буде та сама.
     var STATUS_URL = 'https://status.sirens.live/status.json';
+    var STATUS_PAGE = 'https://status.sirens.live';
     var POLL_MS = 60000;
 
-    // indicator зі status.json → стан плашки й слово для скрінрідера.
-    // Око читає стан кольором крапки, тож у самому підпису слова немає —
-    // але доступна назва без нього залишила б стан невідомим. Слова ті
-    // самі, що в STATUS_WORDS на статус-сторінці.
+    // Телеметрію в KV кладе бот: за подіями і раз на 15 хвилин
+    // (TELEMETRY_PERIODIC_SYNC_INTERVAL в alerts/main.py). TTL у ключа
+    // немає, тож коли збір даних стає, час не зникає, а застигає. Поріг —
+    // потрійний запас від періоду: ловить зупинку, але не сварить за
+    // пропущений такт.
+    var STALE_MS = 45 * 60 * 1000;
+
+    // indicator зі status.json → стан крапки, слово для скрінрідера й те,
+    // чи має сервіс говорити вголос. Крапка каже стан кольором, тож слово
+    // читається лише з підказки — але без нього доступна назва лишила б
+    // стан невідомим. Слова ті самі, що в STATUS_WORDS на статус-сторінці.
     var STATES = {
-        none: { state: 'ok', word: 'Все працює' },
-        minor: { state: 'minor', word: 'Часткові збої' },
-        major: { state: 'down', word: 'Не працює' },
-        critical: { state: 'down', word: 'Не працює' },
-        maintenance: { state: 'mnt', word: 'Планові роботи' },
-        unknown: { state: 'nodata', word: 'Немає даних' }
+        none: { state: 'ok', word: 'Все працює', loud: false },
+        minor: { state: 'minor', word: 'Часткові збої', loud: false },
+        major: { state: 'down', word: 'Не працює', loud: true },
+        critical: { state: 'down', word: 'Не працює', loud: true },
+        maintenance: { state: 'mnt', word: 'Планові роботи', loud: false },
+        unknown: { state: 'nodata', word: 'Немає даних', loud: true }
     };
     var UNKNOWN = STATES.unknown;
 
@@ -35,7 +45,8 @@
         hour12: false
     });
 
-    var badge = null;
+    var tile = null;
+    var chip = null;
 
     function control(position, build) {
         var Control = L.Control.extend({
@@ -77,15 +88,14 @@
         button.setAttribute('aria-pressed', 'false');
         label(button, 'Прибрати маркери');
 
-        // Око показує дію, а не стан, — те саме, що каже підпис: поки
-        // маркери видно, кнопка пропонує їх прибрати.
-        var glyph = icon(button, 'markers-off');
+        // Відкрите око, поки маркери видно; перекреслене — коли сховані.
+        var glyph = icon(button, 'markers-on');
 
         L.DomEvent.on(button, 'click', function () {
             var hidden = map.getContainer().classList.toggle('markers-hidden');
             button.setAttribute('aria-pressed', String(hidden));
             label(button, hidden ? 'Показати маркери' : 'Прибрати маркери');
-            glyph.className = 'map-ctl-icon map-ctl-icon--markers-' + (hidden ? 'on' : 'off');
+            glyph.className = 'map-ctl-icon map-ctl-icon--markers-' + (hidden ? 'off' : 'on');
             if (hidden) map.closePopup();
         });
 
@@ -100,40 +110,96 @@
         return link;
     }
 
-    function statusBadge() {
-        var link = L.DomUtil.create('a', 'map-status');
-        link.href = 'https://status.sirens.live';
+    function statusTile() {
+        var link = L.DomUtil.create('a', 'map-ctl map-ctl--status');
+        link.href = STATUS_PAGE;
         link.rel = 'noopener';
+        icon(link, 'status');
 
-        var dot = L.DomUtil.create('span', 'map-status-dot', link);
+        var dot = L.DomUtil.create('span', 'map-ctl-badge', link);
         dot.setAttribute('aria-hidden', 'true');
 
-        badge = { root: link, time: L.DomUtil.create('span', 'map-status-time', link) };
-        render(UNKNOWN, null);
-
+        tile = link;
         return link;
     }
 
-    function render(info, at) {
-        if (!badge) return;
+    // Чіп не стоїть у кутовій стопці, тож і не є контролом Leaflet: його
+    // тримає сам контейнер мапи. Обгортка з aria-live лишається в DOM
+    // назавжди — порожній регіон має існувати заздалегідь, інакше поява
+    // тексту в ньому не озвучиться.
+    function statusChip() {
+        var live = L.DomUtil.create('div', 'map-chip-live', map.getContainer());
+        live.setAttribute('aria-live', 'polite');
 
-        badge.root.dataset.state = info.state;
-        // Без часу писати «оновлено» нема про що: тоді плашка так і каже.
-        badge.time.textContent = at ? 'Оновлено о ' + at : 'Немає даних';
-        badge.root.setAttribute(
-            'aria-label',
-            at
-                ? 'Стан системи: ' + info.word.toLowerCase() + '. Дані оновлено о ' + at + '.'
-                : 'Стан системи: ' + info.word.toLowerCase() + '.'
-        );
+        var link = L.DomUtil.create('a', 'map-chip', live);
+        link.href = STATUS_PAGE;
+        link.rel = 'noopener';
+        link.hidden = true;
+
+        var dot = L.DomUtil.create('span', 'map-chip-dot', link);
+        dot.setAttribute('aria-hidden', 'true');
+
+        L.DomEvent.disableClickPropagation(link);
+        L.DomEvent.disableScrollPropagation(link);
+
+        chip = { root: link, text: L.DomUtil.create('span', '', link), said: null };
     }
 
-    // Час пишеться, коли воркер востаннє клав телеметрію в KV. Саме він і
-    // застигає, якщо збір даних став, — тоді плашка показує це сама,
-    // не питаючи про це моніторинг.
-    function updatedAt(data) {
-        if (data && data.telemetry && data.telemetry.updated_at) return data.telemetry.updated_at;
-        return data && data.page ? data.page.updated_at : null;
+    function render(info, at, alarm) {
+        if (tile) {
+            tile.dataset.state = info.state;
+            label(tile, at
+                ? 'Стан системи: ' + info.word.toLowerCase() + '. Дані оновлено о ' + at + '.'
+                : 'Стан системи: ' + info.word.toLowerCase() + '.');
+        }
+
+        if (!chip) return;
+
+        // Та сама новина щохвилини — не новина: DOM чіпаємо лише коли
+        // текст справді змінився, інакше aria-live озвучував би її знову.
+        var said = alarm ? alarm.state + '|' + alarm.text : null;
+        if (said === chip.said) return;
+        chip.said = said;
+
+        if (!alarm) {
+            chip.root.hidden = true;
+            chip.text.textContent = '';
+            return;
+        }
+
+        chip.root.dataset.state = alarm.state;
+        chip.text.textContent = alarm.text;
+        chip.root.hidden = false;
+    }
+
+    // Три випадки, коли є що сказати вголос: сервіс ліг, стан невідомий і
+    // — окремо — телеметрія застигла, хоча indicator ще каже, що все
+    // гаразд. Саме третій робить мапу мовчазно неправдивою, тож його
+    // сторожує код, а не читач.
+    function alarmFor(info, data, iso, at) {
+        if (info.loud) {
+            // Слова бере статус-сторінка: хай мапа й вона кажуть про збій
+            // однією фразою.
+            var headline = data && data.status ? data.status.headline : null;
+            return { state: info.state, text: headline || info.word };
+        }
+
+        if (!isStale(iso)) return null;
+        return { state: 'minor', text: 'Дані не оновлюються з ' + at };
+    }
+
+    function isStale(iso) {
+        if (!iso) return false;
+        var date = new Date(iso);
+        return !isNaN(date.getTime()) && Date.now() - date.getTime() > STALE_MS;
+    }
+
+    // Час пишеться, коли бот востаннє клав телеметрію в KV. Саме він і
+    // застигає, якщо збір даних став. Фолбека на page.updated_at тут бути
+    // не може: той завжди «щойно», тож у власному відмовному сценарії
+    // підміняв би застиглий час свіжим.
+    function telemetryAt(data) {
+        return data && data.telemetry ? data.telemetry.updated_at || null : null;
     }
 
     function formatTime(iso) {
@@ -150,16 +216,19 @@
             })
             .then(function (data) {
                 var indicator = data && data.status ? data.status.indicator : null;
-                render(STATES[indicator] || UNKNOWN, formatTime(updatedAt(data)));
+                var info = STATES[indicator] || UNKNOWN;
+                var iso = telemetryAt(data);
+                var at = formatTime(iso);
+                render(info, at, alarmFor(info, data, iso, at));
             })
             .catch(function () {
                 // Причина мовчить навмисне: читачеві важливо, що стан
                 // невідомий, а не яким кодом відповів апстрім.
-                render(UNKNOWN, null);
+                render(UNKNOWN, null, alarmFor(UNKNOWN, null, null, null));
             });
     }
 
-    L.control.zoom({
+    var zoomControl = L.control.zoom({
         position: 'topleft',
         zoomInText: iconMarkup('zoom-in'),
         zoomInTitle: 'Наблизити',
@@ -167,9 +236,34 @@
         zoomOutTitle: 'Віддалити'
     }).addTo(map);
 
+    var zoomContainer = zoomControl.getContainer();
+    if (zoomContainer) {
+        var zoomButtons = zoomContainer.querySelectorAll('a');
+        for (var i = 0; i < zoomButtons.length; i++) {
+            (function (btn) {
+                var timer = null;
+                L.DomEvent.on(btn, 'click', function () {
+                    if (btn.classList.contains('leaflet-disabled')) return;
+                    btn.classList.add('is-zoomed');
+                    if (timer) clearTimeout(timer);
+                    timer = setTimeout(function () {
+                        btn.classList.remove('is-zoomed');
+                        timer = null;
+                    }, 1000);
+                });
+            })(zoomButtons[i]);
+        }
+    }
+
     control('topleft', markersButton).addTo(map);
     control('topleft', issueLink).addTo(map);
-    control('bottomleft', statusBadge).addTo(map);
+    control('bottomleft', statusTile).addTo(map);
+
+    statusChip();
+
+    // Поки перша відповідь не прийшла, стан невідомий — але мовчки:
+    // кричати про аварію, якої ще ніхто не бачив, не можна.
+    render(UNKNOWN, null, null);
 
     poll();
     setInterval(poll, POLL_MS);

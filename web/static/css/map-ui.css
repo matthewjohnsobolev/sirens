@@ -34,9 +34,19 @@
 }
 
 /* Кожна кнопка — окремий контрол Leaflet, тож стопку тримає той самий
-   --gap, що й решта системи. */
+   --gap, що й решта системи. Кнопки на мапі трохи менші за контроли
+   сторінок: головна тут мапа, а не її обв'язка. */
 .leaflet-container {
+    --control-h: 36px;
     font-family: var(--font);
+}
+
+/* Leaflet фарбує будь-яке посилання всередині мапи у свій синій
+   (.leaflet-container a), тож контроли-посилання повертають собі колір
+   селектором не легшої ваги. */
+.leaflet-container .map-ctl,
+.leaflet-container .map-status {
+    color: var(--ink);
 }
 
 @media (pointer: coarse) {
@@ -98,8 +108,8 @@
 /* Іконка малюється маскою по currentColor, тож перефарбовується разом із
    кнопкою: <img> цього не вміє. */
 .map-ctl-icon {
-    width: var(--icon-size, 20px);
-    height: var(--icon-size, 20px);
+    width: var(--icon-size, 18px);
+    height: var(--icon-size, 18px);
     background: currentColor;
     -webkit-mask-repeat: no-repeat;
     mask-repeat: no-repeat;
@@ -119,7 +129,7 @@
 /* Жук нижчий за око і має більше ліній на тому ж полі, тож на однакових
    метриках читався б жирнішим — звідси менший кегль. */
 .map-ctl-icon--issue {
-    --icon-size: 19px;
+    --icon-size: 17px;
     -webkit-mask-image: url("../img/icons/bug-report-button-icon.svg");
     mask-image: url("../img/icons/bug-report-button-icon.svg");
 }
@@ -154,17 +164,24 @@
     border-radius: 0;
     background: transparent;
     color: var(--ink);
+    position: relative;
     font-family: var(--font);
-    font-size: 18px;
-    font-weight: 400;
+    font-size: 17px;
+    font-weight: 600;
     line-height: 1;
     text-align: center;
     text-decoration: none;
     transition: background-color var(--motion), color var(--motion);
 }
 
-.leaflet-bar a + a {
-    border-top: 1px solid var(--hairline);
+.leaflet-bar a + a::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 6px;
+    right: 6px;
+    height: 1px;
+    background: var(--hairline-hover);
 }
 
 .leaflet-bar a:hover,
@@ -264,10 +281,6 @@
     50%      { opacity: .5; }
 }
 
-.map-status-sep {
-    color: var(--hairline-hover);
-}
-
 .map-status[data-state="ok"] .map-status-dot     { background: var(--status-green-bar); }
 .map-status[data-state="minor"] .map-status-dot  { background: var(--status-orange-bar); }
 .map-status[data-state="down"] .map-status-dot   { background: var(--status-red-bar); }
@@ -290,10 +303,6 @@
 .map-status[data-state="down"]:hover {
     background: var(--status-red-hover);
     border-color: transparent;
-}
-
-.map-status[data-state="down"] .map-status-sep {
-    color: rgba(0, 0, 0, .35);
 }
 
 @media (prefers-reduced-motion: reduce) {

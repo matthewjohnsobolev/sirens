@@ -44,6 +44,14 @@
              max(var(--map-inset), env(safe-area-inset-left));
 }
 
+/* Правий нижній кут тримає атрибуцію карти й ліцензії. Відступ від краю
+   такий самий, як у лівої плитки оновлення: обидва кути стоять на одній
+   висоті й шанують безпечну зону (safe area). */
+.leaflet-bottom.leaflet-right {
+    padding: 0 max(var(--map-inset), env(safe-area-inset-right))
+             max(var(--map-inset), env(safe-area-inset-bottom)) 0;
+}
+
 /* Кожна кнопка — окремий контрол Leaflet, тож стопку тримає той самий
    --gap, що й решта системи. Розмір кнопки приходить токеном. */
 .leaflet-container {
@@ -263,19 +271,44 @@
 /* Далі нікуди. Приглушувати саму іконку не треба: вона малюється тим
    самим currentColor і гасне разом із кнопкою. */
 .leaflet-bar a.leaflet-disabled,
-.leaflet-touch .leaflet-bar a.leaflet-disabled {
+.leaflet-bar a.leaflet-disabled:hover,
+.leaflet-touch .leaflet-bar a.leaflet-disabled,
+.leaflet-touch .leaflet-bar a.leaflet-disabled:hover {
     background: transparent;
     color: var(--hairline-hover);
     cursor: default;
 }
 
-/* При натисканні іконка знаку збільшується на секунду */
-.leaflet-bar a .map-ctl-icon {
-    transition: transform var(--motion);
+/* Мапа їде своєю кривою, а не тією, що зашита в Leaflet: там різкий старт
+   і довге доїжджання, тут — той самий рух, що й у решти системи. Правило
+   спільне для всього з класом leaflet-zoom-animated — полотна MapLibre,
+   областей, маркерів, — тож підкладка й усе на ній їдуть разом,
+   а не врізнобій. */
+.leaflet-zoom-anim .leaflet-zoom-animated {
+    -webkit-transition: -webkit-transform var(--motion-zoom);
+    -moz-transition: -moz-transform var(--motion-zoom);
+    transition: transform var(--motion-zoom);
 }
 
-.leaflet-bar a.is-zoomed .map-ctl-icon {
-    transform: scale(1.35);
+/* Натиск відгукується одним поштовхом іконки — тим самим часом і тією ж
+   кривою, що їде мапа: кнопка й мапа роблять один жест. Клас знімає сам
+   кінець анімації, тож іконка не лишається роздутою після того, як зум
+   уже стався, а другий натиск поспіль починає рух з нуля. */
+.leaflet-bar a.is-pressed .map-ctl-icon {
+    transform-origin: center;
+    will-change: transform;
+    animation: map-zoom-press var(--motion-zoom);
+}
+
+/* Порожні 0% і 100% браузер бере з самого елемента: іконка виростає з
+   власного розміру й у нього ж повертається. Назад вона йде довше, ніж
+   росла, і власною кривою: різкий виїзд читається як відповідь на натиск,
+   різке повернення — як смикання. */
+@keyframes map-zoom-press {
+    40% {
+        transform: scale(1.28);
+        animation-timing-function: cubic-bezier(0.4, 0, 0.3, 1);
+    }
 }
 
 /* ── Плитка оновлення ───────────────────────────────────────────────── */
@@ -312,13 +345,41 @@
 
 /* Поки триває запит, крутиться сама іконка: поле не смикається, а час
    лишається старим — підмінити його на прочерк означало б на секунду
-   сказати, що даних немає. */
+   сказати, що даних немає.
+
+   Коло сповільнюється до кінця оберту, і зупиняють його лише на цілому
+   колі — тривалість продубльована в map-ui.js. Відповідь із кешу приходить
+   за десяток мілісекунд, і зупинка «де застало» лишала б стрілку лежати
+   боком. */
+.map-ctl--sync[aria-busy="true"] {
+    cursor: default;
+}
+
 .map-ctl--sync[aria-busy="true"] .map-ctl-icon--refresh {
+    transform-origin: center;
+    will-change: transform;
     animation: map-sync-spin .9s cubic-bezier(.5, 0, .5, 1) infinite;
 }
 
 @keyframes map-sync-spin {
+    from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+}
+
+/* Новий час не підмінює старий беззвучно: коротке проявлення знизу — те
+   саме, яким приходить чіп. Анімується лише справжня зміна: відповіді
+   приходять щокілька секунд, а хвилина на плитці міняється рідше, і
+   блимати щотакту їй нема з чого. */
+.map-sync-time.is-fresh {
+    will-change: transform, opacity;
+    animation: map-sync-stamp var(--motion);
+}
+
+@keyframes map-sync-stamp {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
 }
 
 /* ── Приховані маркери ──────────────────────────────────────────────── */
@@ -487,6 +548,95 @@
 .map-chip[data-state="down"] .map-chip-dot   { background: var(--status-red-bar); }
 .map-chip[data-state="nodata"] .map-chip-dot { background: var(--status-gray-bar); }
 
+/* ── Атрибуція мапи ─────────────────────────────────────────────────── */
+
+/* Плашка атрибуції зібрана з токенів системи: напівпрозоре біле поле
+   із розмиттям підкладки (backdrop-filter), тонка волосінь, радіус
+   вкладеного елемента та шрифт Inter замість сирого дефолту Leaflet. */
+.leaflet-container .leaflet-control-attribution {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 3px 8px;
+    background: rgba(255, 255, 255, 0.85);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-nested);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    font-family: var(--font);
+    font-size: var(--text-secondary);
+    font-weight: var(--weight-control);
+    line-height: 1.35;
+    color: var(--ink-muted);
+    user-select: none;
+    transition: background-color var(--motion),
+                border-color var(--motion),
+                box-shadow var(--motion);
+}
+
+.leaflet-container .leaflet-control-attribution:hover {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: var(--hairline-hover);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* Посилання в атрибуції: спокійний сірий тон замість синього Leaflet,
+   із проявом до чорного на наведенні */
+.leaflet-container .leaflet-control-attribution a {
+    color: var(--ink-muted);
+    text-decoration: none;
+    transition: color var(--motion);
+}
+
+.leaflet-container .leaflet-control-attribution a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+}
+
+/* Вертикальний розділювач Leaflet (|) */
+.leaflet-container .leaflet-control-attribution span[aria-hidden="true"] {
+    margin: 0 4px;
+    color: var(--hairline-hover);
+    font-weight: 300;
+}
+
+/* Прапорець України в префіксі Leaflet */
+.leaflet-control-attribution .leaflet-attribution-flag {
+    display: inline-block;
+    vertical-align: -1px;
+    width: 12px;
+    height: 8px;
+    margin-right: 4px;
+    border-radius: 1px;
+}
+
+/* Векторний логотип Сирен поруч із назвою */
+.map-attribution-logo {
+    display: inline-block;
+    vertical-align: -1.5px;
+    width: 12px;
+    height: 12px;
+    margin-right: 3px;
+    border-radius: 2px;
+}
+
+/* ── Поява ──────────────────────────────────────────────────────────── */
+
+/* Контроли додає скрипт, а не розмітка, тож на оновленій сторінці вони
+   вискакують поверх уже намальованої підкладки. Проявлення без руху:
+   стопка стоїть у кутку, з якого їй нема звідки приїхати. Воно довше за
+   решту переходів — це перший кадр сторінки, а не відповідь на натиск. */
+.leaflet-control {
+    animation: map-ctl-in 0.3s ease-out;
+}
+
+@keyframes map-ctl-in {
+    from { opacity: 0; }
+}
+
 /* ── Дотик ──────────────────────────────────────────────────────────── */
 
 /* Пальцем не «наводять»: без цього скидання кнопка лишалася б підсвіченою
@@ -510,18 +660,33 @@
     .map-chip:hover {
         background: var(--ink-solid);
     }
+
+    .leaflet-container .leaflet-control-attribution:hover {
+        background: rgba(255, 255, 255, 0.85);
+        border-color: var(--hairline);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .leaflet-container .leaflet-control-attribution a:hover {
+        color: var(--ink-muted);
+        text-decoration: none;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .map-ctl-badge::after {
+    .map-ctl-badge::after,
+    .map-chip,
+    .leaflet-control,
+    .leaflet-bar a.is-pressed .map-ctl-icon,
+    .map-sync-time.is-fresh {
         animation: none;
     }
 
-    .map-chip {
-        animation: none;
-    }
-
-    .leaflet-bar a .map-ctl-icon {
+    /* Зум лишається, зникає лише поїздка: саме великий рух під усім
+       екраном і заважає тим, хто просив його прибрати. */
+    .leaflet-zoom-anim .leaflet-zoom-animated {
+        -webkit-transition: none;
+        -moz-transition: none;
         transition: none;
     }
 

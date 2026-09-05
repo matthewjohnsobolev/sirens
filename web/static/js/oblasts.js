@@ -4,8 +4,9 @@
 // того, хто їх не розрізняє, — це одна пляма; сходинка яскравості лишається
 // зрозумілою й тоді, коли колір не читається.
 const OBLAST_FILL_OPACITY = {
-    idle:  0.15,
-    alert: 0.4
+    idle:      0.08,
+    alert:     0.22,
+    explosion: 0.32
 };
 
 const HATCH = { minStripe: 3, maxStripe: 7 };
@@ -35,14 +36,13 @@ function ensureHatchDefs(map) {
 
     let pattern = svg.querySelector('#alert-hatch');
     if (!pattern) {
-        // Смужка тієї самої ваги, що й суцільна заливка тривоги: половина
-        // площі під смужками має читатися як половина області, а не як
-        // щось гучніше за тривогу всюди.
+        // Смужка тієї самої ваги, що й суцільна заливка тривоги.
+        // Проміжок робимо прозорим, щоб не створювати стробоскопічний шум під текстом.
         const defs = L.SVG.create('defs');
         defs.innerHTML = `
       <pattern id="alert-hatch" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
         <rect x="0" fill="${ALERT_COLORS.ALERT}" fill-opacity="${OBLAST_FILL_OPACITY.alert}"/>
-        <rect fill="${ALERT_COLORS.IDLE}" fill-opacity="${OBLAST_FILL_OPACITY.idle}"/>
+        <rect fill="none"/>
       </pattern>`;
         svg.insertBefore(defs, svg.firstChild);
         pattern = svg.querySelector('#alert-hatch');
@@ -52,10 +52,10 @@ function ensureHatchDefs(map) {
 }
 
 const OBLAST_STYLES = {
-    idle:      { color: ALERT_COLORS.IDLE,      weight: 2, fillColor: ALERT_COLORS.IDLE,      fillOpacity: OBLAST_FILL_OPACITY.idle },
-    partial:   { color: ALERT_COLORS.ALERT,     weight: 2 },
-    full:      { color: ALERT_COLORS.ALERT,     weight: 2, fillColor: ALERT_COLORS.ALERT,     fillOpacity: OBLAST_FILL_OPACITY.alert },
-    explosion: { color: ALERT_COLORS.EXPLOSION, weight: 2, fillColor: ALERT_COLORS.EXPLOSION, fillOpacity: 0.55 }
+    idle:      { color: ALERT_COLORS.IDLE,      weight: 1.5, fillColor: ALERT_COLORS.IDLE,      fillOpacity: OBLAST_FILL_OPACITY.idle },
+    partial:   { color: ALERT_COLORS.ALERT,     weight: 2.5 },
+    full:      { color: ALERT_COLORS.ALERT,     weight: 2.5, fillColor: ALERT_COLORS.ALERT,     fillOpacity: OBLAST_FILL_OPACITY.alert },
+    explosion: { color: ALERT_COLORS.EXPLOSION, weight: 2.5, fillColor: ALERT_COLORS.EXPLOSION, fillOpacity: OBLAST_FILL_OPACITY.explosion }
 };
 
 function oblastState(data) {

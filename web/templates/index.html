@@ -131,21 +131,38 @@
         // підкладкам. Ліцензійний рядок джерела дописує сама підкладка —
         // векторна бере його з tiles.json, растрова має його в опції нижче.
         // Так кредит завжди відповідає тому, що реально намальовано.
-        map.attributionControl.addAttribution("<img src='{{  url_for('static', filename='img/favicon.ico')  }}' alt='Sirens' style='vertical-align: middle; height: 13px;'/> <a href='http://www.sirens.live/'>Sirens</a>");
+        map.attributionControl.addAttribution("<img src='{{  url_for('static', filename='img/favicon.svg')  }}' alt='' class='map-attribution-logo' width='12' height='12'/> <a href='https://www.sirens.live/'>Sirens</a>");
 
         // Порядок джерел назви: українська → місцева → англійська. Перше дає
         // Харків замість Kharkiv, друге рятує дрібні села, яким ніхто не
         // проставив name:uk, третє — латиницю там, де немає й місцевої.
         const NAME_UK = ['coalesce', ['get', 'name:uk'], ['get', 'name'], ['get', 'name_en']];
 
+        // Шари з підписами країн, континентів та адміністративних областей/штатів.
+        // На мапі тривог вони створюють візуальний шум і перекривають міста.
+        const HIDDEN_PLACE_LAYERS = new Set([
+            'place_country_1',
+            'place_country_2',
+            'place_continent',
+            'place_state'
+        ]);
+
         // Стиль CARTO нижче z13 підписує все англійською (name_en), і саме це
         // ми й перебиваємо. Чіпаємо тільки ті шари, що підписують назви:
         // номери будинків і номери доріг перекладати нема чого.
         function localizeNames(style) {
+            style.layers = style.layers.filter(layer => !HIDDEN_PLACE_LAYERS.has(layer.id));
             for (const layer of style.layers) {
                 const field = layer.layout && layer.layout['text-field'];
                 if (field && JSON.stringify(field).includes('name')) {
                     layer.layout['text-field'] = NAME_UK;
+
+                    // Покращуємо читабельність підписів міст і селищ крізь заливку:
+                    // темний графітовий колір і чітке біле гало товщиною 2px
+                    if (!layer.paint) layer.paint = {};
+                    layer.paint['text-color'] = '#16181A';
+                    layer.paint['text-halo-color'] = '#FFFFFF';
+                    layer.paint['text-halo-width'] = 2.0;
                 }
             }
             return style;

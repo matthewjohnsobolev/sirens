@@ -16,6 +16,15 @@
     var STATUS_PAGE = 'https://status.sirens.live';
     var POLL_MS = 60000;
 
+    // Оберт іконки оновлення триває стільки ж, скільки однойменна анімація
+    // в map-ui.css: кнопку гасимо лише на цілому колі, тож код мусить
+    // знати його тривалість.
+    var SPIN_MS = 900;
+
+    // Читач, який просив менше руху, оберту не бачить — тоді й доганяти
+    // ціле коло нема чого.
+    var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+
     // Телеметрію в KV кладе бот: за подіями і раз на 15 хвилин
     // (TELEMETRY_PERIODIC_SYNC_INTERVAL в alerts/main.py). TTL у ключа
     // немає, тож коли збір даних стає, час не зникає, а застигає. Поріг —
@@ -91,6 +100,49 @@
         return '<span class="map-ctl-icon map-ctl-icon--' + modifier + '" aria-hidden="true"></span>';
     }
 
+    // Коротка анімація вмикається класом, а знімає його кінець самої
+    // анімації: тривалість лишається в CSS і не дублюється таймером. Клас
+    // спершу знімається, тож повторний виклик починає рух з нуля — інакше
+    // другий натиск поспіль не відгукнувся б нічим.
+    function flash(element, name) {
+        // Під reduce анімації немає — а тоді нема й класу, який нікому було
+        // б зняти: без animationend він лишався б на елементі назавжди.
+        if (calm && calm.matches) return;
+
+        if (!element.sirensFlash) {
+            element.sirensFlash = {};
+
+            // Анімація може бути на дитині — іконці всередині кнопки. Подія
+            // спливає, тож слухати досить сам елемент із класом.
+            L.DomEvent.on(element, 'animationend', function () {
+                for (var cls in element.sirensFlash) {
+                    if (element.sirensFlash[cls]) {
+                        L.DomUtil.removeClass(element, cls);
+                        element.sirensFlash[cls] = false;
+                    }
+                }
+            });
+        }
+
+        L.DomUtil.removeClass(element, name);
+        element.sirensFlash[name] = true;
+
+        // Читання розкладки між зняттям і поверненням класу — те, що змушує
+        // браузер побачити зміну й запустити анімацію заново.
+        void element.offsetWidth;
+        L.DomUtil.addClass(element, name);
+    }
+
+    // Скільки лишилося до кінця поточного оберту. Зупиняти іконку раніше
+    // не можна: відповідь із кешу приходить за десяток мілісекунд, і
+    // стрілка застигала б боком.
+    function spinTail(since) {
+        if (calm && calm.matches) return 0;
+        var elapsed = Date.now() - since;
+        var rem = elapsed % SPIN_MS;
+        return (rem === 0 && elapsed > 0) ? 0 : SPIN_MS - rem;
+    }
+
     function markersButton() {
         var button = L.DomUtil.create('button', 'map-ctl map-ctl--markers');
         button.type = 'button';
@@ -137,17 +189,31 @@
             // Поки сервер не відповів жодного разу, часу немає — і прочерк
             // чесніший за чужий час. Кнопка при цьому працює: саме нею з
             // такого стану й виходять.
-            stamp.textContent = at || '--:--';
+            var text = at || '--:--';
             label(button, at ? 'Дані станом на ' + at + '. Оновити' : 'Оновити дані');
+
+            // Відповіді приходять щокілька секунд, а хвилина на плитці
+            // міняється рідше: проявляємо лише справжню зміну, інакше час
+            // блимав би в такт опитувань, нічого не кажучи.
+            if (stamp.textContent === text) return;
+            stamp.textContent = text;
+            flash(stamp, 'is-fresh');
         }
 
         L.DomEvent.on(button, 'click', function () {
             if (button.getAttribute('aria-busy') === 'true') return;
             button.setAttribute('aria-busy', 'true');
 
+            var since = Date.now();
+
+            // Новий час ставить onPaint — щойно прийшла відповідь, не
+            // чекаючи іконки: цифра має бути свіжою одразу, а коло лише
+            // дообертається до цілого.
             function done() {
-                button.removeAttribute('aria-busy');
-                say();
+                setTimeout(function () {
+                    button.removeAttribute('aria-busy');
+                    say();
+                }, spinTail(since));
             }
 
             // Провал не показуємо окремо: час просто не зрушить, і це вже
@@ -286,6 +352,16 @@
             });
     }
 
+    // Натиск на «+» чи «−» відгукується поштовхом іконки — рівно поки їде
+    // мапа. Вимкнена кнопка мовчить: далі нікуди, і рух казав би, що щось
+    // сталося.
+    function respondToPress(button) {
+        L.DomEvent.on(button, 'click', function () {
+            if (L.DomUtil.hasClass(button, 'leaflet-disabled')) return;
+            flash(button, 'is-pressed');
+        });
+    }
+
     var zoomControl = L.control.zoom({
         position: 'topleft',
         zoomInText: iconMarkup('zoom-in'),
@@ -297,20 +373,7 @@
     var zoomContainer = zoomControl.getContainer();
     if (zoomContainer) {
         var zoomButtons = zoomContainer.querySelectorAll('a');
-        for (var i = 0; i < zoomButtons.length; i++) {
-            (function (btn) {
-                var timer = null;
-                L.DomEvent.on(btn, 'click', function () {
-                    if (btn.classList.contains('leaflet-disabled')) return;
-                    btn.classList.add('is-zoomed');
-                    if (timer) clearTimeout(timer);
-                    timer = setTimeout(function () {
-                        btn.classList.remove('is-zoomed');
-                        timer = null;
-                    }, 1000);
-                });
-            })(zoomButtons[i]);
-        }
+        for (var i = 0; i < zoomButtons.length; i++) respondToPress(zoomButtons[i]);
     }
 
     control('topleft', markersButton).addTo(map);

@@ -386,6 +386,60 @@
     // не заводить другу з іншого боку екрана.
     if (window.SirensThreats) control('bottomleft', syncTile).addTo(map);
 
+    // Атрибуція на мобільних пристроях згортається у компактну круглу кнопку (i),
+    // щоб не закривати карту та не конфліктувати з плиткою оновлення ліворуч.
+    // Натиск розгортає плашку копірайтів, повторний натиск або клік по карті — згортає.
+    function setupAttributionCollapse() {
+        var attribution = map.attributionControl;
+        if (!attribution) return;
+
+        var origUpdate = attribution._update;
+
+        attribution._update = function () {
+            var container = this.getContainer();
+            var isOpen = container ? container.classList.contains('is-open') : false;
+
+            origUpdate.call(this);
+
+            if (!container) return;
+
+            var rawHtml = container.innerHTML;
+            container.innerHTML =
+                '<button type="button" class="map-attribution-toggle" aria-label="Інформація про мапу" aria-expanded="' + (isOpen ? 'true' : 'false') + '">' +
+                    '<svg class="map-attribution-icon--info" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>' +
+                    '<svg class="map-attribution-icon--close" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>' +
+                '</button>' +
+                '<div class="map-attribution-content">' + rawHtml + '</div>';
+
+            if (isOpen) container.classList.add('is-open');
+
+            var toggle = container.querySelector('.map-attribution-toggle');
+            if (toggle) {
+                L.DomEvent.disableClickPropagation(toggle);
+                L.DomEvent.disableScrollPropagation(toggle);
+
+                L.DomEvent.on(toggle, 'click', function (e) {
+                    L.DomEvent.stop(e);
+                    var open = container.classList.toggle('is-open');
+                    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                });
+            }
+        };
+
+        attribution._update();
+
+        map.on('click', function () {
+            var container = attribution.getContainer();
+            if (container && container.classList.contains('is-open')) {
+                container.classList.remove('is-open');
+                var toggle = container.querySelector('.map-attribution-toggle');
+                if (toggle) toggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+
+    setupAttributionCollapse();
+
     statusChip();
 
     // Поки перша відповідь не прийшла, стан невідомий — але мовчки:

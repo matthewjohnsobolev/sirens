@@ -279,11 +279,9 @@
     cursor: default;
 }
 
-/* Мапа їде своєю кривою, а не тією, що зашита в Leaflet: там різкий старт
-   і довге доїжджання, тут — той самий рух, що й у решти системи. Правило
-   спільне для всього з класом leaflet-zoom-animated — полотна MapLibre,
-   областей, маркерів, — тож підкладка й усе на ній їдуть разом,
-   а не врізнобій. */
+/* Плавна анімація масштабування для всіх шарів мапи: полотна MapLibre,
+   областей і маркерів, щоб підкладка й геометрія рухалися синхронно,
+   без різкого стартового ривка на великих екранах. */
 .leaflet-zoom-anim .leaflet-zoom-animated {
     -webkit-transition: -webkit-transform var(--motion-zoom);
     -moz-transition: -moz-transform var(--motion-zoom);
@@ -612,15 +610,15 @@
     margin-right: 4px;
     border-radius: 1px;
 }
+/* Кнопка згортання на десктопі прихована: тут атрибуція завжди розгорнута */
+.map-attribution-toggle {
+    display: none;
+}
 
-/* Векторний логотип Сирен поруч із назвою */
-.map-attribution-logo {
-    display: inline-block;
-    vertical-align: -1.5px;
-    width: 12px;
-    height: 12px;
-    margin-right: 3px;
-    border-radius: 2px;
+.map-attribution-content {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
 }
 
 /* ── Поява ──────────────────────────────────────────────────────────── */

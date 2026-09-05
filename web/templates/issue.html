@@ -86,7 +86,7 @@
       <input type="hidden" name="sub_option" id="input-sub-option" value="">
 
       <div class="seg" role="radiogroup" aria-label="Розділ">
-        <div class="seg-slider" id="seg-slider"></div>
+        <div class="seg-slider" id="seg-slider" aria-hidden="true"></div>
         {%- for category in categories %}
         <button type="button" role="radio" aria-checked="{{ 'true' if loop.first else 'false' }}"
                 data-tab="{{ category.id }}">{{ category.tab }}</button>

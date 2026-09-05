@@ -23,6 +23,10 @@ html, body {
   margin: 15px;
 }
 
+.leaflet-labels-pane {
+  pointer-events: none;
+}
+
 /* Заголовок сторінки: мапа не має видимого тексту, тож h1 лишається
    тільки для пошуковиків і скрінрідерів. */
 .sr-only {

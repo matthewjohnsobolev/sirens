@@ -111,12 +111,28 @@
             zoomLevel = 5;
         }
 
-        const map = L.map('map', {zoomControl: false})
+        const map = L.map('map', {
+            zoomControl: false,
+            wheelPxPerZoomLevel: 120,
+            wheelDebounceTime: 60
+        });
         map.setView([48.3794, 31.1656], zoomLevel);
 
         // Кнопки й плашку стану збирає map-ui.js: він виконується після
         // цього блока, тож мапа має бути доступна йому за іменем.
         window.sirensMap = map;
+
+        // Окрема панель для підписів над полігонами областей.
+        // За замовчуванням Leaflet має:
+        // tilePane: z-index 200 (підкладка мапи: земля, вода, дороги)
+        // overlayPane: z-index 400 (полігони областей GeoJSON та штрихування тривог)
+        // labelsPane: z-index 450 (підписи міст поверх полігонів)
+        // markerPane: z-index 600 (іконки каналів і загроз над підписами)
+        // popupPane: z-index 700 (картки інформації)
+        map.createPane('labelsPane');
+        const labelsPane = map.getPane('labelsPane');
+        labelsPane.style.zIndex = '450';
+        labelsPane.style.pointerEvents = 'none';
 
         // Підкладка векторна, і причина одна: підписи мають бути українськими.
         // У растровому тайлі текст запечений у картинку — «Kharkiv» там не
@@ -157,7 +173,7 @@
                 if (field && JSON.stringify(field).includes('name')) {
                     layer.layout['text-field'] = NAME_UK;
 
-                    // Покращуємо читабельність підписів міст і селищ крізь заливку:
+                    // Чіткі підписи міст і селищ над заливкою тривог:
                     // темний графітовий колір і чітке біле гало товщиною 2px
                     if (!layer.paint) layer.paint = {};
                     layer.paint['text-color'] = '#16181A';
@@ -195,7 +211,23 @@
                     return response.json();
                 })
                 .then(style => {
-                    L.maplibreGL({ style: localizeNames(style) }).addTo(map);
+                    // Розділяємо підкладку на геометрію (земля, вода, дороги) під
+                    // полігонами областей та підписи (міста, річки) поверх полігонів.
+                    // Так заливка тривоги не закриває назви міст.
+                    const baseStyle = Object.assign({}, style, {
+                        layers: style.layers.filter(layer => layer.type !== 'symbol')
+                    });
+
+                    const labelsStyle = localizeNames(Object.assign({}, style, {
+                        layers: style.layers.filter(layer => layer.type === 'symbol')
+                    }));
+
+                    L.maplibreGL({ style: baseStyle, pane: 'tilePane' }).addTo(map);
+                    L.maplibreGL({
+                        style: labelsStyle,
+                        pane: 'labelsPane',
+                        attributionControl: false
+                    }).addTo(map);
                 })
                 .catch(error => {
                     console.error('Basemap style failed, falling back to raster:', error);

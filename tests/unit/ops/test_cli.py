@@ -688,4 +688,3 @@ def test_status_with_active_maintenance_banner(mock_get_all, mock_get_mnt, runne
     assert res.exit_code == 0
     assert "MAINTENANCE ACTIVE" in res.output
     assert "Scheduled cluster maintenance" in res.output
-

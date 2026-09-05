@@ -366,24 +366,32 @@ def test_set_maintenance_invalid_component():
 
 def test_push_maintenance_to_kv():
     # When unconfigured
-    with patch("ops.state.CLOUDFLARE_ACCOUNT_ID", ""), patch(
-        "ops.state.CLOUDFLARE_TELEMETRY_NAMESPACE_ID", ""
-    ), patch("ops.state.CLOUDFLARE_API_TOKEN", ""):
+    with (
+        patch("ops.state.CLOUDFLARE_ACCOUNT_ID", ""),
+        patch("ops.state.CLOUDFLARE_TELEMETRY_NAMESPACE_ID", ""),
+        patch("ops.state.CLOUDFLARE_API_TOKEN", ""),
+    ):
         assert push_maintenance_to_kv({"active": True}) is False
 
     # When configured and succeeds
-    with patch("ops.state.CLOUDFLARE_ACCOUNT_ID", "acc123"), patch(
-        "ops.state.CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "ns123"
-    ), patch("ops.state.CLOUDFLARE_API_TOKEN", "tok123"), patch("requests.put") as mock_put:
+    with (
+        patch("ops.state.CLOUDFLARE_ACCOUNT_ID", "acc123"),
+        patch("ops.state.CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "ns123"),
+        patch("ops.state.CLOUDFLARE_API_TOKEN", "tok123"),
+        patch("requests.put") as mock_put,
+    ):
         mock_resp = MagicMock()
         mock_resp.raise_for_status.return_value = None
         mock_put.return_value = mock_resp
         assert push_maintenance_to_kv({"active": True}) is True
 
     # When configured and fails
-    with patch("ops.state.CLOUDFLARE_ACCOUNT_ID", "acc123"), patch(
-        "ops.state.CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "ns123"
-    ), patch("ops.state.CLOUDFLARE_API_TOKEN", "tok123"), patch("requests.put") as mock_put:
+    with (
+        patch("ops.state.CLOUDFLARE_ACCOUNT_ID", "acc123"),
+        patch("ops.state.CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "ns123"),
+        patch("ops.state.CLOUDFLARE_API_TOKEN", "tok123"),
+        patch("requests.put") as mock_put,
+    ):
         mock_put.side_effect = Exception("network error")
         assert push_maintenance_to_kv({"active": True}) is False
 
@@ -598,6 +606,3 @@ def test_sync_maintenance_state():
     with patch("ops.state.push_maintenance_to_kv", return_value=True):
         inactive_res = sync_maintenance_state(redis_conn=mock_redis)
     assert inactive_res.get("active") is False
-
-
-

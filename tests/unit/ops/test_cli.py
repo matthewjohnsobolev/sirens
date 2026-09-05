@@ -8,6 +8,7 @@ from ops.cli import (
     cli,
     format_elapsed,
     print_history_list,
+    print_metrics,
     print_show_detail,
     render_ls_table,
 )
@@ -28,8 +29,14 @@ def test_cli_help(runner):
     assert "ls" not in result.output.split()
     assert "show" in result.output
     assert "history" in result.output
+    assert "metrics" in result.output
     assert "maintenance" in result.output
     assert "mnt" in result.output
+
+    # Check metrics help
+    metrics_help = runner.invoke(cli, ["metrics", "--help"])
+    assert metrics_help.exit_code == 0
+    assert "USAGE" in metrics_help.output
 
     # Check mnt help has status
     mnt_help = runner.invoke(cli, ["mnt", "--help"])
@@ -466,6 +473,75 @@ def test_ls_command_removed(runner):
     res = runner.invoke(cli, ["ls"])
     assert res.exit_code != 0
     assert "No such command 'ls'" in res.output
+
+
+@patch("ops.metrics.collect_all_metrics")
+def test_metrics_command(mock_collect, runner):
+    mock_collect.return_value = {
+        "timestamp": "2026-09-05 16:30:00",
+        "messages": {
+            "broadcast_24h": 48,
+            "alert_24h": 22,
+            "alert_cancel_24h": 22,
+            "shelling_24h": 4,
+            "shelling_cancel_24h": 0,
+            "auto_24h": 42,
+            "manual_24h": 6,
+            "map_only_24h": 10,
+            "broadcast_today": 30,
+            "error": None,
+        },
+        "system": {
+            "cpu_percent": 15.5,
+            "load_avg": (0.5, 0.4, 0.3),
+            "cpu_count": 4,
+            "ram": {"total": 8000000000, "used": 4000000000, "percent": 50.0},
+            "swap": {"total": 2000000000, "used": 500000000, "percent": 25.0},
+            "error": None,
+        },
+        "containers": [
+            {"name": "sirens-alerts", "cpu": "1.5%", "mem_usage": "120MB", "mem_percent": "3.1%"},
+            {"name": "sirens-web", "cpu": "0.8%", "mem_usage": "210MB", "mem_percent": "5.5%"},
+        ],
+        "services": {
+            "redis": {
+                "used_memory_human": "15.4M",
+                "used_memory_peak_human": "22.1M",
+                "connected_clients": 4,
+                "error": None,
+            },
+            "postgres": {"database": "sirens", "size": "84 MB", "connections": 5, "error": None},
+        },
+    }
+
+    res = runner.invoke(cli, ["metrics"])
+    assert res.exit_code == 0
+    assert "MESSAGES (LAST 24H)" in res.output
+    assert "48" in res.output
+    assert "SYSTEM RESOURCES (HOST)" in res.output
+    assert "15.5" in res.output
+    assert "CONTAINERS (DOCKER)" in res.output
+    assert "sirens-alerts" in res.output
+    assert "SERVICES" in res.output
+    assert "redis" in res.output.lower()
+
+
+def test_print_metrics_with_errors():
+    err_data = {
+        "messages": {"error": "Failed to connect to PostgreSQL"},
+        "system": {
+            "error": "Error reading metrics",
+            "cpu_percent": None,
+            "ram": None,
+            "swap": None,
+        },
+        "containers": [],
+        "services": {
+            "redis": {"error": "Redis connection refused"},
+            "postgres": {"error": "Postgres connection refused"},
+        },
+    }
+    print_metrics(err_data)
 
 
 def test_entrypoints_importable():

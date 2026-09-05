@@ -176,6 +176,28 @@ def test_index_does_not_ship_libraries_it_never_calls(client):
     assert html.count("leaflet.js") == 1
 
 
+def test_index_credits_the_basemap_it_actually_uses(client):
+    """The vector basemap pulls the CARTO/OSM licence line from its own
+    tiles.json, so the page only has to carry its own credit and the OSM one
+    the raster fallback needs. Both are easy to drop in a refactor that only
+    touches the tile URL."""
+    html = client.get("/").get_data(as_text=True)
+
+    assert "basemaps.cartocdn.com" in html
+    assert "addAttribution" in html
+    assert "www.sirens.live" in html
+    assert "openstreetmap.org/copyright" in html
+
+
+def test_index_keeps_a_basemap_for_browsers_without_webgl(client):
+    """The vector basemap needs WebGL. An alerts map has to open on the phone
+    someone actually holds, so the raster path must survive."""
+    html = client.get("/").get_data(as_text=True)
+
+    assert "webglWorks" in html
+    assert "tile.openstreetmap.org" in html
+
+
 def test_static_url_fingerprint_follows_the_file_contents(app, tmp_path):
     from web.server import _static_fingerprint, static_url
 

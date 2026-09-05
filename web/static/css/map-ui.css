@@ -31,6 +31,24 @@
     margin-left: 0;
 }
 
+.leaflet-right .leaflet-control {
+    margin-right: 0;
+}
+
+/* Плитка оновлення стоїть не в стопці інструментів, а у власному куті: на
+   широкому екрані в нижньому лівому, на телефоні — в правому верхньому.
+   Кут їй вибирає map-ui.js, а відступ від краю — знову контейнер кута,
+   тож сама плитка про свій кут нічого не знає. */
+.leaflet-bottom.leaflet-left {
+    padding: 0 0 max(var(--map-inset), env(safe-area-inset-bottom))
+             max(var(--map-inset), env(safe-area-inset-left));
+}
+
+.leaflet-top.leaflet-right {
+    padding: max(var(--map-inset), env(safe-area-inset-top))
+             max(var(--map-inset), env(safe-area-inset-right)) 0 0;
+}
+
 /* Кожна кнопка — окремий контрол Leaflet, тож стопку тримає той самий
    --gap, що й решта системи. Розмір кнопки приходить токеном. */
 .leaflet-container {
@@ -154,6 +172,14 @@
     mask-image: url("../img/icons/service-status-button-icon.svg");
 }
 
+/* Стрілка кола замикається сама на себе — рівно те, що робить кнопка:
+   питає те саме джерело ще раз. Кегль загальний: малюнок такий самий
+   круглий і на тому ж полі, що око. */
+.map-ctl-icon--refresh {
+    -webkit-mask-image: url("../img/icons/refresh-button-icon.svg");
+    mask-image: url("../img/icons/refresh-button-icon.svg");
+}
+
 /* Плюс і мінус — такі самі маски, як решта іконок: уся стопка малюється
    одним способом і не залежить від того, чи приїхав Inter. Кегль менший
    за інші іконки: на 16px лінія лягає рівно в два пікселі й не мулиться
@@ -257,6 +283,44 @@
     transform: scale(1.35);
 }
 
+/* ── Плитка оновлення ───────────────────────────────────────────────── */
+
+/* Єдина плитка з текстом у полі. Ширину бере токен, а не вміст: моно-цифри
+   й так не стрибають, зате смуга чіпа аварії має від чого відступити,
+   коли плитка стоїть праворуч. */
+.map-ctl--sync {
+    width: var(--control-w-sync);
+    gap: var(--gap-tight);
+}
+
+/* Час говорить тією самою моно-капітеллю, що чіп і статус-сторінка, але
+   приглушено: іконка каже, що робити, час лише називає момент. */
+.map-sync-time {
+    font-family: var(--font-mono);
+    font-size: var(--text-secondary);
+    font-weight: var(--weight-control);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .04em;
+    line-height: 1;
+    color: var(--ink-muted);
+    transition: color var(--motion);
+}
+
+.map-ctl--sync:hover .map-sync-time {
+    color: var(--ink-muted-hover);
+}
+
+/* Поки триває запит, крутиться сама іконка: поле не смикається, а час
+   лишається старим — підмінити його на прочерк означало б на секунду
+   сказати, що даних немає. */
+.map-ctl--sync[aria-busy="true"] .map-ctl-icon--refresh {
+    animation: map-sync-spin .9s cubic-bezier(.5, 0, .5, 1) infinite;
+}
+
+@keyframes map-sync-spin {
+    to { transform: rotate(360deg); }
+}
+
 /* ── Приховані маркери ──────────────────────────────────────────────── */
 
 .markers-hidden .leaflet-marker-pane,
@@ -289,7 +353,10 @@
 }
 
 /* Крапка «дихає» тим самим циклом, що й смужка поточної години на
-   статус-сторінці: сторінка, куди веде плитка, вітає знайомим рухом. */
+   статус-сторінці: сторінка, куди веде плитка, вітає знайомим рухом.
+   Розмах подиху дрібний навмисне: крапка каже «дані живі», а не кличе
+   натиснути. На мапі й так блимають тривоги — кнопка не має з ними
+   змагатися, тож її помітно лише боковим зором. */
 .map-ctl-badge::after {
     content: "";
     position: absolute;
@@ -302,7 +369,7 @@
 
 @keyframes map-status-breath {
     0%, 100% { opacity: 0; }
-    50%      { opacity: .5; }
+    50%      { opacity: .2; }
 }
 
 .map-ctl--status[data-state="ok"] .map-ctl-badge     { background: var(--status-green-bar); }
@@ -341,6 +408,14 @@
     display: flex;
     justify-content: center;
     pointer-events: none;
+}
+
+/* Коли плитка оновлення переїжджає в правий верхній кут, смуга звужується
+   і з того боку — так само, як зліва обходить стопку. Клас вішає
+   map-ui.js: поріг «телефона» має жити в одному місці, а не ще й тут. */
+.map-sync-topright .map-chip-live {
+    right: calc(max(var(--map-inset), env(safe-area-inset-right))
+                + var(--control-w-sync) + var(--gap));
 }
 
 .map-chip {
@@ -436,6 +511,10 @@
         background: transparent;
     }
 
+    .map-ctl--sync:hover .map-sync-time {
+        color: var(--ink-muted);
+    }
+
     .map-chip:hover {
         background: var(--ink-solid);
     }
@@ -452,5 +531,12 @@
 
     .leaflet-bar a .map-ctl-icon {
         transition: none;
+    }
+
+    /* Замість оберту — притлумлена іконка: запит усе одно має бути видно,
+       просто не рухом. */
+    .map-ctl--sync[aria-busy="true"] .map-ctl-icon--refresh {
+        animation: none;
+        opacity: .45;
     }
 }

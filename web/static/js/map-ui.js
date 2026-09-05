@@ -1,8 +1,9 @@
-/* Навігаційні кнопки й стан сервісу на мапі.
+/* Навігаційні кнопки, свіжість даних і стан сервісу на мапі.
    Кожна кнопка — окремий контрол Leaflet, тож стопку тримає сам Leaflet:
    порядок задається порядком addTo, відступи — кутовим контейнером.
    Стан сервісу говорить двома голосами: крапка на плитці — завжди,
-   темний чіп — лише коли є що сказати. */
+   темний чіп — лише коли є що сказати. Плитка оновлення стоїть окремо
+   від стопки й має власний кут: вона про дані, а не про перегляд. */
 (function () {
     'use strict';
 
@@ -14,6 +15,10 @@
     var STATUS_URL = 'https://status.sirens.live/status.json';
     var STATUS_PAGE = 'https://status.sirens.live';
     var POLL_MS = 60000;
+
+    // Ширина, з якої плитка оновлення переїжджає в правий верхній кут.
+    // Той самий поріг, що в mobile.css: «телефон» у проєкті означає одне.
+    var NARROW = '(max-width: 600px)';
 
     // Телеметрію в KV кладе бот: за подіями і раз на 15 хвилин
     // (TELEMETRY_PERIODIC_SYNC_INTERVAL в alerts/main.py). TTL у ключа
@@ -48,13 +53,21 @@
     var tile = null;
     var chip = null;
 
+    // Елемент будується один раз і запам'ятовується: setPosition знімає
+    // контрол і додає знову, тож інакше плитка щоразу поверталася б з
+    // чистим полем і без обробників.
     function control(position, build) {
+        var element = null;
+
         var Control = L.Control.extend({
             options: { position: position },
             onAdd: function () {
-                var element = build();
-                L.DomEvent.disableClickPropagation(element);
-                L.DomEvent.disableScrollPropagation(element);
+                if (!element) {
+                    element = build();
+                    L.DomEvent.disableClickPropagation(element);
+                    L.DomEvent.disableScrollPropagation(element);
+                }
+
                 return element;
             }
         });
@@ -110,6 +123,51 @@
         return link;
     }
 
+    // Єдина плитка з текстом. Час у ній — момент останньої успішної
+    // відповіді /api, а не остання тривога: питання, на яке вона
+    // відповідає, — «на коли це правда», і воно не другорядне, тож
+    // ховати відповідь під наведення не можна: пальцем не наводять.
+    function syncTile() {
+        var button = L.DomUtil.create('button', 'map-ctl map-ctl--sync');
+        button.type = 'button';
+        icon(button, 'refresh');
+
+        var stamp = L.DomUtil.create('span', 'map-sync-time', button);
+
+        function say() {
+            var moment = SirensThreats.at();
+            var at = moment ? kyivTime.format(moment) : null;
+
+            // Поки сервер не відповів жодного разу, часу немає — і прочерк
+            // чесніший за чужий час. Кнопка при цьому працює: саме нею з
+            // такого стану й виходять.
+            stamp.textContent = at || '--:--';
+            label(button, at ? 'Дані станом на ' + at + '. Оновити' : 'Оновити дані');
+        }
+
+        L.DomEvent.on(button, 'click', function () {
+            if (button.getAttribute('aria-busy') === 'true') return;
+            button.setAttribute('aria-busy', 'true');
+
+            function done() {
+                button.removeAttribute('aria-busy');
+                say();
+            }
+
+            // Провал не показуємо окремо: час просто не зрушить, і це вже
+            // відповідь. Кричати про мережу на мапі тривог — не її робота.
+            SirensThreats.load(true).then(done, done);
+        });
+
+        // Час малюється не за таймером, а за відповіддю: він і має стояти
+        // на місці, поки нової немає — саме тому по ньому видно, що дані
+        // застаріли.
+        SirensThreats.onPaint(say);
+        say();
+
+        return button;
+    }
+
     function statusTile() {
         var link = L.DomUtil.create('a', 'map-ctl map-ctl--status');
         link.href = STATUS_PAGE;
@@ -145,12 +203,16 @@
         chip = { root: link, text: L.DomUtil.create('span', 'map-chip-text', link), said: null };
     }
 
-    function render(info, at, alarm) {
+    function render(info, alarm) {
         if (tile) {
             tile.dataset.state = info.state;
-            label(tile, at
-                ? 'Стан системи: ' + info.word.toLowerCase() + '. Дані оновлено о ' + at + '.'
-                : 'Стан системи: ' + info.word.toLowerCase() + '.');
+
+            // Тултип називає об'єкт, а не переказує стан: під указівником
+            // читач і так бачить крапку, а переказ щохвилини змінював би
+            // підказку тієї самої кнопки. Скрінрідеру кольору не видно,
+            // тож стан лишається в доступній назві.
+            tile.title = 'Стан системи';
+            tile.setAttribute('aria-label', 'Стан системи: ' + info.word.toLowerCase() + '.');
         }
 
         if (!chip) return;
@@ -219,12 +281,12 @@
                 var info = STATES[indicator] || UNKNOWN;
                 var iso = telemetryAt(data);
                 var at = formatTime(iso);
-                render(info, at, alarmFor(info, data, iso, at));
+                render(info, alarmFor(info, data, iso, at));
             })
             .catch(function () {
                 // Причина мовчить навмисне: читачеві важливо, що стан
                 // невідомий, а не яким кодом відповів апстрім.
-                render(UNKNOWN, null, alarmFor(UNKNOWN, null, null, null));
+                render(UNKNOWN, alarmFor(UNKNOWN, null, null, null));
             });
     }
 
@@ -259,11 +321,37 @@
     control('topleft', issueLink).addTo(map);
     control('topleft', statusTile).addTo(map);
 
+    // Плитка оновлення не стає в стопку інструментів: ті про перегляд, ця
+    // про дані. На широкому екрані вона йде в нижній лівий кут — далі від
+    // тривог і ближче до кута, куди й так дивляться за службовим; на
+    // телефоні переїжджає в правий верхній, під великий палець, бо низ
+    // екрана там забирає браузер.
+    if (window.SirensThreats) {
+        var syncControl = control('bottomleft', syncTile).addTo(map);
+        var narrow = window.matchMedia(NARROW);
+
+        var placeSync = function () {
+            syncControl.setPosition(narrow.matches ? 'topright' : 'bottomleft');
+
+            // Смуга чіпа аварії тримається центру між тим, що стоїть по
+            // краях. Праворуч тепер може стояти плитка — і клас про це
+            // каже, щоб поріг «телефона» лишався в одному місці, тут.
+            L.DomUtil[narrow.matches ? 'addClass' : 'removeClass'](
+                map.getContainer(), 'map-sync-topright'
+            );
+        };
+
+        placeSync();
+
+        if (narrow.addEventListener) narrow.addEventListener('change', placeSync);
+        else narrow.addListener(placeSync);
+    }
+
     statusChip();
 
     // Поки перша відповідь не прийшла, стан невідомий — але мовчки:
     // кричати про аварію, якої ще ніхто не бачив, не можна.
-    render(UNKNOWN, null, null);
+    render(UNKNOWN, null);
 
     poll();
     setInterval(poll, POLL_MS);

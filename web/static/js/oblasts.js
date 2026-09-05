@@ -106,61 +106,84 @@ for (const marker of DISTRICT_MARKERS) {
 
 var customOptions = {'maxWidth': '310', 'width': '310'};
 
-fetch('/api')
-    .then(response => response.json())
-    .then(apiData => {
-        fetch('https://geo.sirens.live/ukraine.geojson')
-            .then(res => res.json())
-            .then(geoData => {
-                const geoLayer = L.geoJSON(geoData, {
-                    onEachFeature: function(feature, layer) {
-                        const regionId = feature.properties.id;
-                        const data = apiData[regionId];
-                        if (!data) return;
-                        
-                        const nameMap = {
-                            'cherkasy_oblast': 'Черкаська область', 'chernihiv_oblast': 'Чернігівська область',
-                            'chernivtsi_oblast': 'Чернівецька область', 'crimea': 'Крим',
-                            'dnipropetrovsk_oblast': 'Дніпропетровська область', 'donetsk_oblast': 'Донецька область',
-                            'ivanofrankivsk_oblast': 'Івано-Франківська область', 'kharkiv_oblast': 'Харківська область',
-                            'kherson_oblast': 'Херсонська область', 'khmelnytskyi_oblast': 'Хмельницька область',
-                            'kirovohrad_oblast': 'Кіровоградська область', 'kyiv': 'Київ',
-                            'kyiv_oblast': 'Київська область', 'luhansk_oblast': 'Луганська область',
-                            'lviv_oblast': 'Львівська область', 'mykolaiv_oblast': 'Миколаївська область',
-                            'odesa_oblast': 'Одеська область', 'poltava_oblast': 'Полтавська область',
-                            'rivne_oblast': 'Рівненська область', 'sevastopol': 'Севастополь',
-                            'sumy_oblast': 'Сумська область', 'ternopil_oblast': 'Тернопільска область',
-                            'vinnytsia_oblast': 'Вінницька область', 'volyn_oblast': 'Волинська область',
-                            'zakarpattia_oblast': 'Закарпатська область', 'zaporizhzhia_oblast': 'Запорізька область',
-                            'zhytomyr_oblast': 'Житомирська область'
-                        };
-                        const name = nameMap[regionId] || regionId;
-                        const cityMarker = CITY_REGIONS[regionId];
+const OBLAST_NAMES = {
+    'cherkasy_oblast': 'Черкаська область', 'chernihiv_oblast': 'Чернігівська область',
+    'chernivtsi_oblast': 'Чернівецька область', 'crimea': 'Крим',
+    'dnipropetrovsk_oblast': 'Дніпропетровська область', 'donetsk_oblast': 'Донецька область',
+    'ivanofrankivsk_oblast': 'Івано-Франківська область', 'kharkiv_oblast': 'Харківська область',
+    'kherson_oblast': 'Херсонська область', 'khmelnytskyi_oblast': 'Хмельницька область',
+    'kirovohrad_oblast': 'Кіровоградська область', 'kyiv': 'Київ',
+    'kyiv_oblast': 'Київська область', 'luhansk_oblast': 'Луганська область',
+    'lviv_oblast': 'Львівська область', 'mykolaiv_oblast': 'Миколаївська область',
+    'odesa_oblast': 'Одеська область', 'poltava_oblast': 'Полтавська область',
+    'rivne_oblast': 'Рівненська область', 'sevastopol': 'Севастополь',
+    'sumy_oblast': 'Сумська область', 'ternopil_oblast': 'Тернопільска область',
+    'vinnytsia_oblast': 'Вінницька область', 'volyn_oblast': 'Волинська область',
+    'zakarpattia_oblast': 'Закарпатська область', 'zaporizhzhia_oblast': 'Запорізька область',
+    'zhytomyr_oblast': 'Житомирська область'
+};
 
-                        layer.bindPopup(
-                            () => cityMarker
-                                ? getMarkerPopupContent(cityMarker, getMarkerThreats(apiData, cityMarker))
-                                : '<div class="oblast-name">' + name + '</div>' + getOblastPopupContent(data),
-                            customOptions
-                        );
-                        layer.on('popupopen', () => {
-                            if (window.track) window.track('region_popup_open', {
-                                region_name: name,
-                                threat_state: oblastState(data)
-                            });
-                        });
-                    }
-                }).addTo(map);
+let oblastLayer = null;
 
-                ensureHatchDefs(map);
+// Дані області читаються з поточної відповіді, а не з тієї, що була на
+// момент побудови шару: попап і подія відкриття мають говорити про зараз.
+function oblastData(regionId) {
+    const data = SirensThreats.get();
+    return data ? data[regionId] : null;
+}
 
-                geoLayer.eachLayer(function(layer) {
-                    const data = apiData[layer.feature.properties.id];
-                    if (!data) return;
-                    setOblastStyle(layer, data);
+function buildOblasts(geoData) {
+    oblastLayer = L.geoJSON(geoData, {
+        onEachFeature: function(feature, layer) {
+            const regionId = feature.properties.id;
+            if (!oblastData(regionId)) return;
+
+            const name = OBLAST_NAMES[regionId] || regionId;
+            const cityMarker = CITY_REGIONS[regionId];
+
+            layer.bindPopup(
+                () => {
+                    const data = oblastData(regionId);
+                    if (!data) return '';
+                    return cityMarker
+                        ? getMarkerPopupContent(cityMarker, getMarkerThreats(SirensThreats.get(), cityMarker))
+                        : '<div class="oblast-name">' + name + '</div>' + getOblastPopupContent(data);
+                },
+                customOptions
+            );
+            layer.on('popupopen', () => {
+                const data = oblastData(regionId);
+                if (window.track) window.track('region_popup_open', {
+                    region_name: name,
+                    threat_state: data ? oblastState(data) : 'idle'
                 });
             });
+        }
+    }).addTo(map);
+
+    ensureHatchDefs(map);
+}
+
+// Шар будується один раз, а далі лише перефарбовується: перестворювати
+// його на кожній відповіді означало б згортати відкритий попап і на мить
+// лишати мапу без областей.
+function paintOblasts(data) {
+    if (!oblastLayer) return;
+
+    oblastLayer.eachLayer(function(layer) {
+        const regionData = data[layer.feature.properties.id];
+        if (regionData) setOblastStyle(layer, regionData);
+    });
+}
+
+// Межі приходять з окремого джерела й не змінюються, тож качаються раз.
+// Малювальник реєструється лише коли вони є: без меж фарбувати нічого.
+fetch('https://geo.sirens.live/ukraine.geojson')
+    .then(res => res.json())
+    .then(geoData => {
+        SirensThreats.onPaint(function(data) {
+            if (!oblastLayer) buildOblasts(geoData);
+            paintOblasts(data);
+        });
     })
     .catch(error => { console.error('Error fetching data:', error); });
-
-  

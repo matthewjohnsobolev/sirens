@@ -52,26 +52,46 @@ function getMarkerPopupContent(marker, threats) {
 
 var customOptions = {'maxWidth': '310', 'width': '310'};
 
-fetch('/api')
-    .then(response => response.json())
-    .then(data => {
-        DISTRICT_MARKERS.forEach(marker => {
-            const threats = getMarkerThreats(data, marker);
-            const dominant = pickDominant(threats);
-            const icon = setMarkerStyle(dominant);
-            const m = L.marker([marker.lat, marker.lng], { icon: icon });
+// Маркери будуються один раз, а далі лише міняють іконку: перестворювати
+// їх на кожній відповіді означало б згортати відкритий попап і губити
+// маркер під курсором.
+const CITY_MARKERS = [];
 
-            m.bindPopup(() => getMarkerPopupContent(marker, threats), customOptions);
-            m.on('popupopen', () => {
-                if (window.track) window.track('marker_popup_open', {
-                    marker_type: 'city',
-                    region_name: marker.name,
-                    threat_state: dominant || 'idle'
-                });
-            });
-            m.addTo(map);
+// Загрози маркера читаються з поточної відповіді, а не з тієї, що була на
+// момент побудови: попап і подія відкриття мають говорити про зараз.
+function markerThreats(marker) {
+    return getMarkerThreats(SirensThreats.get(), marker);
+}
+
+function buildCities(data) {
+    DISTRICT_MARKERS.forEach(marker => {
+        const layer = L.marker([marker.lat, marker.lng], {
+            icon: setMarkerStyle(pickDominant(getMarkerThreats(data, marker)))
         });
-    })
-    .catch(error => {
-        console.error(error);
+
+        layer.bindPopup(() => getMarkerPopupContent(marker, markerThreats(marker)), customOptions);
+        layer.on('popupopen', () => {
+            if (window.track) window.track('marker_popup_open', {
+                marker_type: 'city',
+                region_name: marker.name,
+                threat_state: pickDominant(markerThreats(marker)) || 'idle'
+            });
+        });
+
+        layer.addTo(map);
+        CITY_MARKERS.push({ marker: marker, layer: layer });
     });
+}
+
+function paintCities(data) {
+    if (!CITY_MARKERS.length) {
+        buildCities(data);
+        return;
+    }
+
+    for (const entry of CITY_MARKERS) {
+        entry.layer.setIcon(setMarkerStyle(pickDominant(getMarkerThreats(data, entry.marker))));
+    }
+}
+
+SirensThreats.onPaint(paintCities);

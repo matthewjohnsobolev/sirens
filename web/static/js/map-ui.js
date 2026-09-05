@@ -12,7 +12,9 @@
     var STATUS_URL = 'https://status.sirens.live/status.json';
     var POLL_MS = 60000;
 
-    // indicator зі status.json → стан плашки й слово підпису. Слова ті
+    // indicator зі status.json → стан плашки й слово для скрінрідера.
+    // Око читає стан кольором крапки, тож у самому підпису слова немає —
+    // але доступна назва без нього залишила б стан невідомим. Слова ті
     // самі, що в STATUS_WORDS на статус-сторінці.
     var STATES = {
         none: { state: 'ok', word: 'Все працює' },
@@ -95,13 +97,7 @@
         var dot = L.DomUtil.create('span', 'map-status-dot', link);
         dot.setAttribute('aria-hidden', 'true');
 
-        var time = L.DomUtil.create('span', 'map-status-time', link);
-        var separator = L.DomUtil.create('span', 'map-status-sep', link);
-        separator.textContent = '•';
-        separator.setAttribute('aria-hidden', 'true');
-        var word = L.DomUtil.create('span', 'map-status-word', link);
-
-        badge = { root: link, time: time, separator: separator, word: word };
+        badge = { root: link, time: L.DomUtil.create('span', 'map-status-time', link) };
         render(UNKNOWN, null);
 
         return link;
@@ -111,10 +107,8 @@
         if (!badge) return;
 
         badge.root.dataset.state = info.state;
-        badge.word.textContent = info.word;
-        badge.time.textContent = at ? 'Оновлено ' + at : '';
-        badge.time.hidden = !at;
-        badge.separator.hidden = !at;
+        // Без часу писати «оновлено» нема про що: тоді плашка так і каже.
+        badge.time.textContent = at ? 'Оновлено о ' + at : 'Немає даних';
         badge.root.setAttribute(
             'aria-label',
             at

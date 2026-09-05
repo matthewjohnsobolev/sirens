@@ -1,6 +1,11 @@
+// Підкладка монохромна, тож стани мусять відрізнятися не лише відтінком, а
+// й вагою заливки: спокій — найсвітліший, тривога помітно темніша, вибухи —
+// найтемніші. Помаранчевий і сірий однакової світлоти на сонці та в очах
+// того, хто їх не розрізняє, — це одна пляма; сходинка яскравості лишається
+// зрозумілою й тоді, коли колір не читається.
 const OBLAST_FILL_OPACITY = {
-    idle:  0.18,
-    alert: 0.2
+    idle:  0.15,
+    alert: 0.4
 };
 
 const HATCH = { minStripe: 3, maxStripe: 7 };
@@ -30,10 +35,13 @@ function ensureHatchDefs(map) {
 
     let pattern = svg.querySelector('#alert-hatch');
     if (!pattern) {
+        // Смужка тієї самої ваги, що й суцільна заливка тривоги: половина
+        // площі під смужками має читатися як половина області, а не як
+        // щось гучніше за тривогу всюди.
         const defs = L.SVG.create('defs');
         defs.innerHTML = `
       <pattern id="alert-hatch" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-        <rect x="0" fill="${ALERT_COLORS.ALERT}"/>
+        <rect x="0" fill="${ALERT_COLORS.ALERT}" fill-opacity="${OBLAST_FILL_OPACITY.alert}"/>
         <rect fill="${ALERT_COLORS.IDLE}" fill-opacity="${OBLAST_FILL_OPACITY.idle}"/>
       </pattern>`;
         svg.insertBefore(defs, svg.firstChild);
@@ -60,6 +68,13 @@ function oblastState(data) {
 
 function setOblastStyle(layer, data) {
     const state = oblastState(data);
+
+    // Відповідь приходить кожні кілька секунд, а стан області за нею
+    // змінюється рідко. Перефарбовуємо лише зміну: bringToFront пересуває
+    // <path> у SVG, і робити це щотакту означало б перебирати всю мапу
+    // заради нічого.
+    if (layer.sirensState === state) return;
+    layer.sirensState = state;
 
     layer.setStyle(OBLAST_STYLES[state] || OBLAST_STYLES.idle);
     if (layer._path) {

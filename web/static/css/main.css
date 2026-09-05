@@ -4,6 +4,13 @@ html, body {
   overflow: hidden;
 }
 
+/* Leaflet за замовчуванням підкладає під незавантажені тайли сірий #ddd.
+   На кольоровій підкладці це не впадало в око, на майже білій — блимає
+   при кожному панорамуванні. */
+.leaflet-container {
+  background: var(--map-ground);
+}
+
 #map {
   height: 100%;
   width: 100%;

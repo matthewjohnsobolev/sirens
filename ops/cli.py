@@ -17,6 +17,7 @@ from rich.text import Text
 
 from config import APP_ENV
 from ops import state
+from ops.metrics import format_bytes
 
 if sys.platform == "win32":
     try:
@@ -341,6 +342,108 @@ def print_history_list(history: list[dict[str, Any]], district: str | None = Non
     console.print(table)
 
 
+def print_metrics(data: dict[str, Any]) -> None:
+    """Render operational load metrics in unified card style."""
+    msg = data.get("messages", {})
+    console.print(Text("MESSAGES (LAST 24H)", style="bold white"))
+    if msg.get("error"):
+        console.print(f"  {'STATUS':<18}[red]error:[/] {msg['error']}")
+    else:
+        bc_24h = msg.get("broadcast_24h", 0)
+        console.print(f"  {'BROADCAST':<18}[bold cyan]{bc_24h}[/] sent to Telegram")
+        a_count = msg.get("alert_24h", 0)
+        ac_count = msg.get("alert_cancel_24h", 0)
+        console.print(
+            f"  {'  ALERTS':<18}[bold red]●[/] {a_count} alerts, [dim green]○[/] {ac_count} cancelled"
+        )
+        s_count = msg.get("shelling_24h", 0)
+        sc_count = msg.get("shelling_cancel_24h", 0)
+        if s_count or sc_count:
+            console.print(
+                f"  {'  SHELLING':<18}[bold yellow]●[/] {s_count} threats, [dim]○[/] {sc_count} cancelled"
+            )
+        auto_count = msg.get("auto_24h", 0)
+        man_count = msg.get("manual_24h", 0)
+        console.print(f"  {'BY SOURCE':<18}{auto_count} auto, {man_count} manual")
+        today_count = msg.get("broadcast_today", 0)
+        console.print(f"  {'TODAY':<18}{today_count} messages (since 00:00)")
+        map_only = msg.get("map_only_24h", 0)
+        if map_only:
+            console.print(f"  {'MAP-ONLY':<18}{map_only} events (tracked without channel)")
+
+    console.print()
+    console.print(Text("SYSTEM RESOURCES (HOST)", style="bold white"))
+    sys_res = data.get("system", {})
+    if sys_res.get("error"):
+        console.print(f"  {'STATUS':<18}[yellow]warning:[/] {sys_res['error']}")
+    cpu_pct = sys_res.get("cpu_percent")
+    cpu_str = f"{cpu_pct:.1f}%" if cpu_pct is not None else "N/A"
+    cores_str = (
+        f" [dim]({sys_res.get('cpu_count', 1)} cores)[/]" if sys_res.get("cpu_count") else ""
+    )
+    load_str = ""
+    if sys_res.get("load_avg"):
+        l1, l5, l15 = sys_res["load_avg"]
+        load_str = f" [dim](load avg: {l1:.2f}, {l5:.2f}, {l15:.2f})[/]"
+    console.print(f"  {'CPU USAGE':<18}{cpu_str}{cores_str}{load_str}")
+
+    ram = sys_res.get("ram")
+    if ram:
+        u_str = format_bytes(ram["used"])
+        t_str = format_bytes(ram["total"])
+        console.print(f"  {'RAM USAGE':<18}{u_str} / {t_str} ({ram['percent']:.1f}%)")
+    else:
+        console.print(f"  {'RAM USAGE':<18}[dim]N/A[/]")
+
+    swap = sys_res.get("swap")
+    if swap and swap.get("total", 0) > 0:
+        su_str = format_bytes(swap["used"])
+        st_str = format_bytes(swap["total"])
+        console.print(f"  {'SWAP USAGE':<18}{su_str} / {st_str} ({swap['percent']:.1f}%)")
+
+    containers = data.get("containers", [])
+    if containers:
+        console.print()
+        console.print(Text("CONTAINERS (DOCKER)", style="bold white"))
+        ct = Table(
+            box=None, show_header=True, header_style="bold dim", pad_edge=False, show_edge=False
+        )
+        ct.add_column("  CONTAINER", min_width=20)
+        ct.add_column("CPU", min_width=10)
+        ct.add_column("RAM USAGE", min_width=16)
+        ct.add_column("RAM %", style="dim")
+        for c in containers:
+            ct.add_row(f"  {c['name']}", c["cpu"], c["mem_usage"], c["mem_percent"])
+        console.print(ct)
+
+    services = data.get("services", {})
+    r_info = services.get("redis")
+    p_info = services.get("postgres")
+    if r_info or p_info:
+        console.print()
+        console.print(Text("SERVICES", style="bold white"))
+        if r_info:
+            if r_info.get("error"):
+                console.print(f"  {'REDIS':<18}[red]error:[/] {r_info['error']}")
+            else:
+                r_mem = r_info.get("used_memory_human", "N/A")
+                r_peak = r_info.get("used_memory_peak_human", "N/A")
+                r_conns = r_info.get("connected_clients", 0)
+                console.print(
+                    f"  {'REDIS':<18}{r_mem} [dim](peak: {r_peak}, clients: {r_conns})[/]"
+                )
+        if p_info:
+            if p_info.get("error"):
+                console.print(f"  {'POSTGRESQL':<18}[red]error:[/] {p_info['error']}")
+            else:
+                db_name = p_info.get("database", "sirens")
+                db_size = p_info.get("size", "N/A")
+                p_conns = p_info.get("connections", 0)
+                console.print(
+                    f"  {'POSTGRESQL':<18}{db_name} [dim](size: {db_size}, active conns: {p_conns})[/]"
+                )
+
+
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 
 
@@ -356,6 +459,7 @@ class SirensOpsGroup(click.Group):
             "  alert        Set air raid alert state (on/off) for a district or city\n"
             "  shelling     Set shelling threat state (on/off) for a district or city\n"
             "  history      Show recent threat event history log from PostgreSQL\n"
+            "  metrics      Show operational load metrics (24h messages, CPU, RAM, services)\n"
             "  mnt          Manage scheduled maintenance windows (планові роботи)\n"
             "  maintenance  Alias for mnt\n\n"
             "OPTIONS\n"
@@ -368,6 +472,7 @@ class SirensOpsGroup(click.Group):
             "  sirens-ops shelling nikopol on -b\n"
             "  sirens-ops show bucha\n"
             "  sirens-ops history\n"
+            "  sirens-ops metrics\n"
             "  sirens-ops mnt status\n"
         )
         formatter.write(help_text)
@@ -467,6 +572,19 @@ class HistoryCommand(click.Command):
             "  sirens-ops history\n"
             "  sirens-ops history bucha\n"
             "  sirens-ops history -n 25\n"
+        )
+        formatter.write(help_text)
+
+
+class MetricsCommand(click.Command):
+    def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        help_text = (
+            "USAGE\n"
+            "  sirens-ops metrics [options]\n\n"
+            "OPTIONS\n"
+            "  -h, --help       Show this help message and exit\n\n"
+            "EXAMPLES\n"
+            "  sirens-ops metrics\n"
         )
         formatter.write(help_text)
 
@@ -903,6 +1021,16 @@ def history_cmd(ctx: click.Context, district: str | None, limit: int):
         sys.exit(1)
 
     print_history_list(rows, district=district_key)
+
+
+@cli.command(name="metrics", cls=MetricsCommand, context_settings=CONTEXT_SETTINGS)
+@click.pass_context
+def metrics_cmd(ctx: click.Context):
+    """Show operational load metrics (24h messages, CPU, RAM, services)."""
+    from ops import metrics
+
+    data = metrics.collect_all_metrics()
+    print_metrics(data)
 
 
 # --- Maintenance (planned works) commands ---

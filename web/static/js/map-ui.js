@@ -64,6 +64,13 @@
         return element;
     }
 
+    // Кнопки зума Leaflet будує сам і кладе цей рядок усередину як HTML.
+    // Плюс і мінус — такі самі іконки-маски, як в інших кнопок: уся стопка
+    // малюється однаково й не залежить від того, чи приїхав шрифт.
+    function iconMarkup(modifier) {
+        return '<span class="map-ctl-icon map-ctl-icon--' + modifier + '" aria-hidden="true"></span>';
+    }
+
     function markersButton() {
         var button = L.DomUtil.create('button', 'map-ctl map-ctl--markers');
         button.type = 'button';
@@ -150,7 +157,9 @@
 
     L.control.zoom({
         position: 'topleft',
+        zoomInText: iconMarkup('zoom-in'),
         zoomInTitle: 'Наблизити',
+        zoomOutText: iconMarkup('zoom-out'),
         zoomOutTitle: 'Віддалити'
     }).addTo(map);
 

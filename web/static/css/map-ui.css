@@ -34,10 +34,9 @@
 }
 
 /* Кожна кнопка — окремий контрол Leaflet, тож стопку тримає той самий
-   --gap, що й решта системи. Кнопки на мапі трохи менші за контроли
-   сторінок: головна тут мапа, а не її обв'язка. */
+   --gap, що й решта системи. Розмір кнопки приходить токеном. */
 .leaflet-container {
-    --control-h: 36px;
+    --control-h: var(--control-h-map);
     font-family: var(--font);
 }
 
@@ -49,10 +48,34 @@
     color: var(--ink);
 }
 
+/* Тим самим селектором Leaflet вмикає посиланням блакитний спалах на тап
+   (сам контейнер він уже погасив). Решта сайту тапу не підсвічує — форма
+   натиснутого стану тут одна на всі сторінки. */
+.leaflet-container a {
+    -webkit-tap-highlight-color: transparent;
+}
+
 @media (pointer: coarse) {
     .leaflet-container {
         --control-h: var(--control-h-touch);
     }
+}
+
+/* ── Плитка ─────────────────────────────────────────────────────────── */
+
+/* Спільна основа всього UI мапи: біле поле, волосінь, радіус контрола й
+   тінь картки. Одне правило на всіх — інакше кнопка й плашка розійдуться,
+   щойно в системі зміниться радіус чи тінь. Селектор із .leaflet-touch
+   повторює вагу власних правил Leaflet, інакше вони перемагають. */
+.map-ctl,
+.leaflet-bar,
+.leaflet-touch .leaflet-bar,
+.map-status {
+    box-sizing: border-box;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-control);
+    box-shadow: var(--shadow-card);
 }
 
 /* ── Кнопка ─────────────────────────────────────────────────────────── */
@@ -60,19 +83,15 @@
 .map-ctl {
     -webkit-appearance: none;
     appearance: none;
-    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
     width: var(--control-h);
     height: var(--control-h);
     padding: 0;
-    background: var(--surface);
     color: var(--ink);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-control);
-    box-shadow: var(--shadow-card);
     cursor: pointer;
+    text-decoration: none;
     transition: background-color var(--motion),
                 border-color var(--motion),
                 color var(--motion);
@@ -105,12 +124,16 @@
     border-color: var(--ink-muted-hover);
 }
 
+/* ── Іконки ─────────────────────────────────────────────────────────── */
+
 /* Іконка малюється маскою по currentColor, тож перефарбовується разом із
-   кнопкою: <img> цього не вміє. */
+   кнопкою: <img> цього не вміє. Перехід той самий, що й у плитки, —
+   інакше на інверсії малюнок стрибає у білий раніше за поле. */
 .map-ctl-icon {
     width: var(--icon-size, 18px);
     height: var(--icon-size, 18px);
     background: currentColor;
+    transition: background-color var(--motion);
     -webkit-mask-repeat: no-repeat;
     mask-repeat: no-repeat;
     -webkit-mask-position: center;
@@ -134,6 +157,26 @@
     mask-image: url("../img/icons/bug-report-button-icon.svg");
 }
 
+/* Плюс і мінус — такі самі маски, як решта іконок: уся стопка малюється
+   одним способом і не залежить від того, чи приїхав Inter. Кегль менший
+   за інші іконки: на 16px лінія лягає рівно в два пікселі й не мулиться
+   на звичайних екранах, а два штрихи в полі й так важать більше за один
+   суцільний малюнок. */
+.map-ctl-icon--zoom-in,
+.map-ctl-icon--zoom-out {
+    --icon-size: 16px;
+}
+
+.map-ctl-icon--zoom-in {
+    -webkit-mask-image: url("../img/icons/zoom-in-button-icon.svg");
+    mask-image: url("../img/icons/zoom-in-button-icon.svg");
+}
+
+.map-ctl-icon--zoom-out {
+    -webkit-mask-image: url("../img/icons/zoom-out-button-icon.svg");
+    mask-image: url("../img/icons/zoom-out-button-icon.svg");
+}
+
 /* ── Зум ────────────────────────────────────────────────────────────── */
 
 /* «+» і «−» — одна функція, тож вони склеєні в одну групу, а інструменти
@@ -143,15 +186,13 @@
 .leaflet-touch .leaflet-bar {
     display: flex;
     flex-direction: column;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-control);
-    box-shadow: var(--shadow-card);
-    box-sizing: border-box;
     width: var(--control-h);
     overflow: hidden;
 }
 
+/* Клітинка квадратна, і бік їй дає ширина групи, а не --control-h: та
+   рахується з рамкою, тож кнопка зуму вийшла б на два пікселі вищою за
+   сусідні плитки. */
 .leaflet-bar a,
 .leaflet-touch .leaflet-bar a {
     box-sizing: border-box;
@@ -159,17 +200,13 @@
     align-items: center;
     justify-content: center;
     width: 100%;
-    height: var(--control-h);
+    height: auto;
+    aspect-ratio: 1;
     border: 0;
     border-radius: 0;
     background: transparent;
     color: var(--ink);
     position: relative;
-    font-family: var(--font);
-    font-size: 17px;
-    font-weight: 600;
-    line-height: 1;
-    text-align: center;
     text-decoration: none;
     transition: background-color var(--motion), color var(--motion);
 }
@@ -178,10 +215,17 @@
     content: "";
     position: absolute;
     top: 0;
-    left: 6px;
-    right: 6px;
+    left: var(--gap-tight);
+    right: var(--gap-tight);
     height: 1px;
     background: var(--hairline-hover);
+}
+
+/* Leaflet підсвічує кнопку зуму ще й на :focus, тож після кліку мишею
+   вона лишалася б «наведеною». Фокус показує тільки :focus-visible. */
+.leaflet-bar a:focus,
+.leaflet-touch .leaflet-bar a:focus {
+    background: transparent;
 }
 
 .leaflet-bar a:hover,
@@ -198,6 +242,8 @@
     outline-offset: -2px;
 }
 
+/* Далі нікуди. Приглушувати саму іконку не треба: вона малюється тим
+   самим currentColor і гасне разом із кнопкою. */
 .leaflet-bar a.leaflet-disabled,
 .leaflet-touch .leaflet-bar a.leaflet-disabled {
     background: transparent;
@@ -217,16 +263,11 @@
 /* Типографіка тултипа зі статус-сторінки: моно, капітель, .04em. Той
    самий підпис, що там підписує смужку години, тут підписує мапу. */
 .map-status {
-    box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     gap: var(--gap);
     height: var(--control-h-sm);
     padding: 0 12px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-control);
-    box-shadow: var(--shadow-card);
     color: var(--ink);
     font-family: var(--font-mono);
     font-size: var(--text-secondary);
@@ -251,7 +292,7 @@
 
 @media (pointer: coarse) {
     .map-status {
-        height: 36px;
+        height: var(--control-h-map);
     }
 }
 
@@ -303,6 +344,38 @@
 .map-status[data-state="down"]:hover {
     background: var(--status-red-hover);
     border-color: transparent;
+}
+
+/* ── Дотик ──────────────────────────────────────────────────────────── */
+
+/* Пальцем не «наводять»: без цього скидання кнопка лишалася б підсвіченою
+   після тапу, доки не тапнеш деінде. Натиснутий стан лишається — він
+   триває рівно поки триває дотик. Те саме роблять /issue і статус. */
+@media (hover: none) {
+    .map-ctl:hover {
+        background: var(--surface);
+        border-color: var(--hairline);
+    }
+
+    .map-ctl[aria-pressed="true"]:hover {
+        background: var(--ink);
+        border-color: var(--ink);
+    }
+
+    .leaflet-bar a:hover,
+    .leaflet-touch .leaflet-bar a:hover {
+        background: transparent;
+    }
+
+    .map-status:hover {
+        background: var(--surface);
+        border-color: var(--hairline);
+    }
+
+    .map-status[data-state="down"]:hover {
+        background: var(--status-red);
+        border-color: transparent;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -13,6 +13,22 @@
         font-size: 10px;
         right: 10px;
     }
+
+    /* На вузьких екранах обмежуємо ширину атрибуції, щоб вона не перекривала
+       ліву плитку оновлення часу */
+    .leaflet-bottom.leaflet-right {
+        max-width: calc(100vw - var(--control-w-sync) - var(--map-inset) * 3);
+    }
+
+    .leaflet-container .leaflet-control-attribution {
+        padding: 2px 6px;
+        font-size: 10px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+        display: block;
+    }
 }
 
 @media (orientation: landscape) {

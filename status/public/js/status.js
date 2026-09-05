@@ -1,7 +1,25 @@
 (function() {
   'use strict';
 
+  // Сторінка оновлюється сама, але не перезавантажується: з відповіді
+  // беремо саму картку й міняємо її на місці. Тож прокрутка, фокус і
+  // масштаб лишаються там, де їх лишив читач, — рівно як на мапі, де те
+  // саме робить SirensThreats.
   const REFRESH_MS = 60000;
+
+  // Такт частий навмисне: він лише дивиться на годинник, а справжній
+  // запит іде раз на REFRESH_MS. Дрібний крок потрібен, щоб оновлення не
+  // спізнювалось на пів такту після повернення на вкладку.
+  const TICK_MS = 5000;
+
+  // Поки читач тримає тултип, підмінити під ним смужки не можна: він
+  // показує годину, якої в новому DOM уже не буде. Чекаємо, поки відпустить.
+  const BUSY_MS = 10000;
+
+  // Запит, що завис, не має гасити оновлення назавжди: без цієї межі одна
+  // відповідь, яка так і не прийшла, лишила б сторінку застиглою до
+  // перезавантаження — рівно те, від чого ми й пішли.
+  const TIMEOUT_MS = 15000;
 
   let tip = null;
   let hideTimer = null;
@@ -347,22 +365,83 @@
   window.addEventListener('resize', hideTip);
 
   let due = Date.now() + REFRESH_MS;
+  let loading = false;
+
+  // Стан читається з класу плашки — того самого, яким сервер його й
+  // намалював. Окремого поля для аналітики заводити нема потреби: якщо
+  // плашка змінилась, змінився і стан.
+  function systemState() {
+    const notice = document.querySelector('.notice');
+    const found = notice && /notice--([a-z]+)/.exec(notice.className);
+    return found ? found[1] : 'unknown';
+  }
+
+  // Міняємо вміст картки, а не всю сторінку: <head>, шапка й підвал на
+  // статус-сторінці не змінюються ніколи, а перемальовувати їх означало б
+  // на кадр згасити логотип і збити прокрутку.
+  function swap(html) {
+    const fresh = new DOMParser().parseFromString(html, 'text/html');
+    const card = fresh.getElementById('card');
+    const current = document.getElementById('card');
+    if (!card || !current) return false;
+
+    // Смужки, на які показує тултип, зараз зникнуть з DOM — інакше він
+    // лишиться висіти над порожнім місцем.
+    hideTip();
+    current.innerHTML = card.innerHTML;
+    initBars();
+    return true;
+  }
+
+  function refresh() {
+    if (loading) return;
+    loading = true;
+
+    const controller = window.AbortController ? new AbortController() : null;
+    const cutoff = controller
+      ? window.setTimeout(function() { controller.abort(); }, TIMEOUT_MS)
+      : null;
+
+    // no-store: питати сервер і отримати у відповідь власну хвилинну копію
+    // — те саме, що не питати.
+    fetch(window.location.href, {
+      cache: 'no-store',
+      signal: controller ? controller.signal : undefined
+    })
+      .then(function(response) {
+        if (!response.ok) throw new Error('status ' + response.status);
+        return response.text();
+      })
+      .then(function(html) {
+        if (swap(html) && window.track) {
+          window.track('status_auto_refresh', { system_state: systemState() });
+        }
+      })
+      .catch(function() {
+        // Провал не показуємо: сторінка лишається тією, що була, а
+        // наступний такт спробує ще раз. Кричати про мережу на сторінці
+        // про збої — сказати про збій, якого може й не бути.
+      })
+      .finally(function() {
+        window.clearTimeout(cutoff);
+        loading = false;
+        due = Date.now() + REFRESH_MS;
+      });
+  }
 
   const tick = function() {
     if (document.visibilityState !== 'visible') return;
     if (Date.now() < due) return;
     if (currentBar || activeTouchBars) {
-      due = Date.now() + 10000;
+      due = Date.now() + BUSY_MS;
       return;
     }
-    // Прапорець переживає перезавантаження і гасить page_view на тому боці:
-    // хвилинне оновлення — це не новий перегляд сторінки.
-    try {
-      sessionStorage.setItem('sirens:auto-refresh', '1');
-    } catch (error) {}
-    window.location.reload();
+    refresh();
   };
 
-  window.setInterval(tick, 5000);
+  window.setInterval(tick, TICK_MS);
+
+  // Вкладку могли лишити відкритою на ніч: щойно на неї повернулись,
+  // сторінка питає стан, не чекаючи наступного такту.
   document.addEventListener('visibilitychange', tick);
 })();

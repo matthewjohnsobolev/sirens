@@ -45,8 +45,9 @@
         <link rel="manifest" href="{{ static_url('manifest.webmanifest') }}">
         <link rel="stylesheet" href="{{ static_url('css/reset.css') }}">
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+        <link rel="stylesheet" href="{{ static_url('css/tokens.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/main.css') }}">
-        <link rel="stylesheet" href="{{ static_url('css/buttons.css') }}">
+        <link rel="stylesheet" href="{{ static_url('css/map-ui.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/mobile.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/oblasts.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/channels.css') }}">
@@ -56,6 +57,7 @@
         <script src="{{ static_url('js/districts.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/cities.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/oblasts.js') }}" type="text/javascript"></script>
+        <script src="{{ static_url('js/map-ui.js') }}" defer></script>
         <script src="{{ static_url('js/analytics.js') }}" defer></script>
 
         <script type="application/ld+json">
@@ -99,71 +101,22 @@
 
         <script>
 
-        const mapSize = document.querySelector("#map");
-        
-        const hideMarkersButton = document.createElement("div");
-        hideMarkersButton.classList.add("layer-control");
-        mapSize.appendChild(hideMarkersButton);
-        hideMarkersButton.setAttribute("title", "Прибрати маркери");
-
-        const hideMarkersIcon = document.createElement("img");
-        hideMarkersIcon.src = "{{ url_for('static', filename='img/icons/markers-off-button-icon.svg') }}";
-        hideMarkersIcon.classList.add("layer-control-icon");
-        hideMarkersButton.appendChild(hideMarkersIcon);
-
-        hideMarkersButton.addEventListener('click', function() {
-            if (hideMarkersIcon.getAttribute('src') === "{{ url_for('static', filename='img/icons/markers-off-button-icon.svg') }}") {
-                hideMarkersIcon.setAttribute('src', "{{ url_for('static', filename='img/icons/markers-on-button-icon.svg') }}");
-                hideMarkersButton.setAttribute("title", "Показати маркери");
-
-                map.getPane('markerPane').style.display = 'none';
-                map.getPane('shadowPane').style.display = 'none';
-                map.closePopup();
-            } else {
-                hideMarkersIcon.setAttribute('src', "{{ url_for('static', filename='img/icons/markers-off-button-icon.svg') }}");
-                hideMarkersButton.setAttribute("title", "Прибрати маркери");
-                
-                map.getPane('markerPane').style.display = '';
-                map.getPane('shadowPane').style.display = '';
-            }
-        });
-
-        const reportErrorButton = document.createElement("a");
-        reportErrorButton.classList.add("contact-button");
-        reportErrorButton.href = "/issue";
-        reportErrorButton.setAttribute("title", "Повідомити про збій");
-        mapSize.appendChild(reportErrorButton);
-
-        const reportErrorIcon = document.createElement("img");
-        reportErrorIcon.src = "{{ url_for('static', filename='img/icons/bug-report-button-icon.svg') }}";
-        reportErrorIcon.classList.add("contact-icon");
-        reportErrorButton.appendChild(reportErrorIcon);
-
-        function closeBanner() {
-            document.getElementById('banner').classList.add('closed');
-            document.getElementById('map').classList.add('full-height');
-            setTimeout(function() {
-                window.dispatchEvent(new Event('resize'));
-            }, 300);
-        }
-
-        var zoomLevel = 6; 
+        var zoomLevel = 6;
         if( /Android|iPhone/i.test(navigator.userAgent) ) {
             zoomLevel = 5;
         }
 
-        const map = L.map('map', {zoomControl: false}) 
+        const map = L.map('map', {zoomControl: false})
         map.setView([48.3794, 31.1656], zoomLevel);
+
+        // Кнопки й плашку стану збирає map-ui.js: він виконується після
+        // цього блока, тож мапа має бути доступна йому за іменем.
+        window.sirensMap = map;
+
         const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: "<img src='{{  url_for('static', filename='img/favicon.ico')  }}' alt='Sirens' style='vertical-align: middle; height: 13px;'/> <a href='http://www.sirens.live/'>Sirens</a> | &copy; <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a>",
             maxZoom: 20,
             minZoom: 0,
-        }).addTo(map);
-
-        new L.control.zoom({
-            position: 'topleft',
-            zoomInTitle: "Наблизити",
-            zoomOutTitle: "Віддалити"
         }).addTo(map);
 
         var greenChannelIcon = L.icon({
@@ -248,7 +201,7 @@
             const marker = L.marker([lat, lng], {icon: icon})
                 .bindPopup(popupContent)
                 .addTo(map);
-            
+
             return marker;
         }
 

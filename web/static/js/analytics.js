@@ -66,19 +66,27 @@
             return;
         }
 
-        if (target.closest('.contact-button')) {
+        if (target.closest('.map-ctl--issue')) {
             send('report_cta_click', { link_location: 'map' });
             return;
         }
 
-        var control = target.closest('.layer-control');
+        var control = target.closest('.map-ctl--markers');
         if (control) {
             // Свій обробник кнопки вже відпрацював на етапі спливання,
-            // тож іконка показує новий стан.
-            var icon = control.querySelector('.layer-control-icon');
-            var src = icon ? icon.getAttribute('src') || '' : '';
+            // тож aria-pressed показує новий стан: натиснута кнопка —
+            // маркери приховані.
             send('markers_toggle', {
-                markers_visible: src.indexOf('markers-on-button-icon') === -1 ? 'true' : 'false'
+                markers_visible: control.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'
+            });
+            return;
+        }
+
+        var status = target.closest('.map-status');
+        if (status) {
+            send('status_page_open', {
+                system_state: status.getAttribute('data-state') || 'unknown',
+                link_location: 'map'
             });
         }
     });

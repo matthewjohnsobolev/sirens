@@ -421,7 +421,8 @@ function select(i){
     x.tabIndex = j === i ? 0 : -1;
   });
   if (segSlider) {
-    segSlider.style.transform = `translateX(${i * 100}%)`;
+    segSlider.style.webkitTransform = `translate3d(${i * 100}%, 0, 0)`;
+    segSlider.style.transform = `translate3d(${i * 100}%, 0, 0)`;
   }
   tab = tabs[i].dataset.tab;
   restoreTabState(tab);

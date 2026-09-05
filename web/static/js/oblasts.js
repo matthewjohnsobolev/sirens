@@ -36,13 +36,13 @@ function ensureHatchDefs(map) {
 
     let pattern = svg.querySelector('#alert-hatch');
     if (!pattern) {
-        // Смужка тієї самої ваги, що й суцільна заливка тривоги.
-        // Проміжок робимо прозорим, щоб не створювати стробоскопічний шум під текстом.
+        // Помаранчева смужка має колір і прозорість тривожного регіону,
+        // а проміжна смужка — колір і прозорість спокійного регіону (відбою).
         const defs = L.SVG.create('defs');
         defs.innerHTML = `
       <pattern id="alert-hatch" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
         <rect x="0" fill="${ALERT_COLORS.ALERT}" fill-opacity="${OBLAST_FILL_OPACITY.alert}"/>
-        <rect fill="none"/>
+        <rect fill="${ALERT_COLORS.IDLE}" fill-opacity="${OBLAST_FILL_OPACITY.idle}"/>
       </pattern>`;
         svg.insertBefore(defs, svg.firstChild);
         pattern = svg.querySelector('#alert-hatch');

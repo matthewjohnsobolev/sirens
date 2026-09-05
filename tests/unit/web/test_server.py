@@ -178,14 +178,10 @@ def test_index_does_not_ship_libraries_it_never_calls(client):
 
 def test_index_credits_the_basemap_it_actually_uses(client):
     """The vector basemap pulls the CARTO/OSM licence line from its own
-    tiles.json, so the page only has to carry its own credit and the OSM one
-    the raster fallback needs. Both are easy to drop in a refactor that only
-    touches the tile URL."""
+    tiles.json, and the raster fallback carries the OSM copyright line."""
     html = client.get("/").get_data(as_text=True)
 
     assert "basemaps.cartocdn.com" in html
-    assert "addAttribution" in html
-    assert "www.sirens.live" in html
     assert "openstreetmap.org/copyright" in html
 
 

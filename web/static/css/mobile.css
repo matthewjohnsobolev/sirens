@@ -14,20 +14,101 @@
         right: 10px;
     }
 
-    /* На вузьких екранах обмежуємо ширину атрибуції, щоб вона не перекривала
-       ліву плитку оновлення часу */
-    .leaflet-bottom.leaflet-right {
-        max-width: calc(100vw - var(--control-w-sync) - var(--map-inset) * 3);
+    /* На мобільних екранах атрибуція перетворюється на мініатюрну круглу
+       кнопку (i), яка за потреби розгортає плашку копірайтів */
+    .leaflet-container .leaflet-control-attribution {
+        padding: 0;
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
     }
 
-    .leaflet-container .leaflet-control-attribution {
-        padding: 2px 6px;
-        font-size: 10px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 100%;
+    .leaflet-container .leaflet-control-attribution:hover {
+        background: transparent;
+        border: none;
+        box-shadow: none;
+    }
+
+    .map-attribution-toggle {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        margin: 0;
+        background: rgba(255, 255, 255, 0.9);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        border: 1px solid var(--hairline);
+        border-radius: 50%;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        color: var(--ink-muted);
+        cursor: pointer;
+        flex-shrink: 0;
+        -webkit-tap-highlight-color: transparent;
+        transition: background-color var(--motion),
+                    border-color var(--motion),
+                    color var(--motion),
+                    transform var(--motion);
+    }
+
+    .map-attribution-toggle:active {
+        transform: scale(0.92);
+    }
+
+    .map-attribution-icon--info {
         display: block;
+    }
+
+    .map-attribution-icon--close {
+        display: none;
+    }
+
+    /* У згорнутому стані текст атрибуції прихований */
+    .map-attribution-content {
+        display: none;
+        box-sizing: border-box;
+        align-items: center;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+        padding: 4px 10px;
+        margin-right: 6px;
+        background: rgba(255, 255, 255, 0.94);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        border: 1px solid var(--hairline);
+        border-radius: var(--radius-nested);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        font-family: var(--font);
+        font-size: 11px;
+        font-weight: var(--weight-control);
+        color: var(--ink-muted);
+        max-width: calc(100vw - var(--map-inset) * 2 - 44px);
+        overflow-x: auto;
+    }
+
+    /* У розгорнутому стані (.is-open) показуємо плашку та перемикаємо іконку */
+    .leaflet-control-attribution.is-open .map-attribution-content {
+        display: inline-flex;
+        animation: map-ctl-in 0.2s ease-out;
+    }
+
+    .leaflet-control-attribution.is-open .map-attribution-icon--info {
+        display: none;
+    }
+
+    .leaflet-control-attribution.is-open .map-attribution-icon--close {
+        display: block;
+    }
+
+    .leaflet-control-attribution.is-open .map-attribution-toggle {
+        background: var(--ink-solid);
+        color: var(--surface);
+        border-color: var(--ink-solid);
     }
 }
 

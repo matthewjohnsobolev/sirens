@@ -618,9 +618,7 @@ def parse_duration(for_str: str) -> int:
         total_seconds += int(m_match.group(1)) * 60
 
     if total_seconds <= 0:
-        raise ValueError(
-            f"Invalid duration format: '{for_str}'. Examples: '90m', '2h', '1h30m'."
-        )
+        raise ValueError(f"Invalid duration format: '{for_str}'. Examples: '90m', '2h', '1h30m'.")
 
     return total_seconds
 
@@ -1078,5 +1076,3 @@ def get_maintenance(redis_conn=None) -> dict[str, Any]:
         "updated_at": updated_epoch,
         "operator": raw.get("operator", ""),
     }
-
-

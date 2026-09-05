@@ -241,12 +241,24 @@ def print_show_detail(data: dict[str, Any]) -> None:
     if alert.get("status"):
         a_time = alert.get("time", "-")
         a_elapsed = format_elapsed(alert.get("updated_at"), a_time)
-        since_str = f"(since {a_time}, {a_elapsed})" if a_time != "-" else f"({a_elapsed})" if a_elapsed else ""
+        since_str = (
+            f"(since {a_time}, {a_elapsed})"
+            if a_time != "-"
+            else f"({a_elapsed})"
+            if a_elapsed
+            else ""
+        )
         status_lines.append(f"[bold red]● air raid alert[/] {since_str}".strip())
     if shelling.get("status"):
         s_time = shelling.get("time", "-")
         s_elapsed = format_elapsed(shelling.get("updated_at"), s_time)
-        since_str = f"(since {s_time}, {s_elapsed})" if s_time != "-" else f"({s_elapsed})" if s_elapsed else ""
+        since_str = (
+            f"(since {s_time}, {s_elapsed})"
+            if s_time != "-"
+            else f"({s_elapsed})"
+            if s_elapsed
+            else ""
+        )
         status_lines.append(f"[bold yellow]● threat of shelling[/] {since_str}".strip())
     if not status_lines:
         status_lines.append("[dim green]○ all clear[/]")
@@ -474,9 +486,9 @@ class MntGroup(click.Group):
             "  -h, --help   Show this help message and exit\n\n"
             "EXAMPLES\n"
             "  sirens-ops mnt status\n"
-            "  sirens-ops mnt on --for 2h -m \"Планові роботи\"\n"
+            '  sirens-ops mnt on --for 2h -m "Планові роботи"\n'
             "  sirens-ops mnt off\n"
-            "  sirens-ops mnt add --from \"23:00\" --for 2h -c map,api -n \"Оновлення\"\n"
+            '  sirens-ops mnt add --from "23:00" --for 2h -c map,api -n "Оновлення"\n'
             "  sirens-ops mnt done\n"
         )
         formatter.write(help_text)
@@ -505,12 +517,12 @@ class MntAddCommand(click.Command):
             "ARGUMENTS\n"
             "  COMPONENTS       Target components (e.g. map, api, alerts, or all)\n\n"
             "OPTIONS\n"
-            "      --from       Start time in Kyiv timezone (e.g. \"02:00\", \"now\", default: now)\n"
+            '      --from       Start time in Kyiv timezone (e.g. "02:00", "now", default: now)\n'
             "      --for        Duration (e.g. 60m, 2h, default: 60m)\n"
             "  -n, -m, --note   Notice description (планові роботи)\n"
             "  -h, --help       Show this help message and exit\n\n"
             "EXAMPLES\n"
-            "  sirens-ops mnt add map,api --from \"02:00\" --for 90m -n \"Оновлення БД\"\n"
+            '  sirens-ops mnt add map,api --from "02:00" --for 90m -n "Оновлення БД"\n'
             "  sirens-ops mnt add all --for 2h\n"
         )
         formatter.write(help_text)
@@ -545,7 +557,7 @@ class MntOnCommand(click.Command):
             "  -h, --help       Show this help message and exit\n\n"
             "EXAMPLES\n"
             "  sirens-ops mnt on\n"
-            "  sirens-ops mnt on map,api --for 2h -m \"Термінові роботи\"\n"
+            '  sirens-ops mnt on map,api --for 2h -m "Термінові роботи"\n'
         )
         formatter.write(help_text)
 
@@ -686,7 +698,9 @@ def _apply_and_print(
 @cli.command(name="alert", cls=AlertCommand, context_settings=CONTEXT_SETTINGS)
 @click.argument("district")
 @click.argument("state_val", type=click.Choice(["on", "off"], case_sensitive=False))
-@click.option("-s", "--source", default=None, help="Source link, operator, or label (default: manual)")
+@click.option(
+    "-s", "--source", default=None, help="Source link, operator, or label (default: manual)"
+)
 @click.option(
     "-d",
     "--date",
@@ -695,7 +709,11 @@ def _apply_and_print(
     help="Event date in Kyiv timezone (DD.MM or YYYY-MM-DD; default: today)",
 )
 @click.option(
-    "-t", "--time", "time_str", default=None, help="Event time in Kyiv timezone (HH:MM; default: now)"
+    "-t",
+    "--time",
+    "time_str",
+    default=None,
+    help="Event time in Kyiv timezone (HH:MM; default: now)",
 )
 @click.option(
     "-b", "--broadcast", is_flag=True, default=False, help="Broadcast alert to Telegram channel"
@@ -736,7 +754,9 @@ def alert_cmd(
 @cli.command(name="shelling", cls=ShellingCommand, context_settings=CONTEXT_SETTINGS)
 @click.argument("district")
 @click.argument("state_val", type=click.Choice(["on", "off"], case_sensitive=False))
-@click.option("-s", "--source", default=None, help="Source link, operator, or label (default: manual)")
+@click.option(
+    "-s", "--source", default=None, help="Source link, operator, or label (default: manual)"
+)
 @click.option(
     "-d",
     "--date",
@@ -745,7 +765,11 @@ def alert_cmd(
     help="Event date in Kyiv timezone (DD.MM or YYYY-MM-DD; default: today)",
 )
 @click.option(
-    "-t", "--time", "time_str", default=None, help="Event time in Kyiv timezone (HH:MM; default: now)"
+    "-t",
+    "--time",
+    "time_str",
+    default=None,
+    help="Event time in Kyiv timezone (HH:MM; default: now)",
 )
 @click.option(
     "-b",
@@ -890,7 +914,9 @@ def print_mnt_schedule(windows: list[dict[str, Any]]) -> None:
         console.print("  [dim green]○ Немає запланованих робіт.[/]")
         return
 
-    table = Table(box=None, show_header=True, header_style="bold dim", pad_edge=False, show_edge=False)
+    table = Table(
+        box=None, show_header=True, header_style="bold dim", pad_edge=False, show_edge=False
+    )
     table.add_column("  STATUS", min_width=14)
     table.add_column("TIME", min_width=14)
     table.add_column("COMPONENTS", min_width=14)
@@ -939,7 +965,9 @@ def mnt_group(ctx: click.Context):
     default="now",
     help='Start time in Kyiv timezone (e.g. "05.09 02:00", "02:00", or "now")',
 )
-@click.option("--for", "for_str", default="60m", help='Duration (e.g. "90m", "2h", "1h30m"; default: 60m)')
+@click.option(
+    "--for", "for_str", default="60m", help='Duration (e.g. "90m", "2h", "1h30m"; default: 60m)'
+)
 @click.option(
     "-n",
     "--note",
@@ -1055,5 +1083,3 @@ def mnt_off_cmd(ctx: click.Context, window_id: str | None):
 
 # Register maintenance alias for mnt
 cli.add_command(mnt_group, name="maintenance")
-
-

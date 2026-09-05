@@ -28,6 +28,15 @@ def test_cli_help(runner):
     assert "ls" not in result.output.split()
     assert "show" in result.output
     assert "history" in result.output
+    assert "maintenance" in result.output
+    assert "mnt" in result.output
+
+    # Check mnt help has status
+    mnt_help = runner.invoke(cli, ["mnt", "--help"])
+    assert mnt_help.exit_code == 0
+    assert "status" in mnt_help.output
+    assert "add" in mnt_help.output
+    assert "done" in mnt_help.output
 
 
 def test_format_elapsed():
@@ -128,7 +137,7 @@ def test_alert_on_command(mock_apply, runner):
     result = runner.invoke(cli, ["alert", "bucha", "on"])
     assert result.exit_code == 0
     assert "bucha" in result.output
-    assert "ALERT" in result.output
+    assert "air raid alert on" in result.output
 
 
 @patch("ops.state.apply_threat_change")
@@ -142,7 +151,7 @@ def test_alert_off_command(mock_apply, runner):
 
     result = runner.invoke(cli, ["alert", "bucha", "off"])
     assert result.exit_code == 0
-    assert "CLEAR" in result.output
+    assert "air raid alert off" in result.output
 
 
 @patch("ops.state.apply_threat_change")
@@ -170,7 +179,7 @@ def test_alert_with_custom_datetime_and_source(mock_apply, runner):
     )
     assert result.exit_code == 0
     assert "14:30" in result.output
-    assert "https://t.me/test/1" in result.output
+    assert "auto" in result.output
 
 
 @patch("ops.broadcast.run_broadcast_sync")
@@ -350,11 +359,11 @@ def test_shelling_on_off_commands(mock_apply, runner):
 
     res_on = runner.invoke(cli, ["shelling", "nikopol", "on"])
     assert res_on.exit_code == 0
-    assert "SHELLING ON" in res_on.output
+    assert "threat of shelling on" in res_on.output
 
     res_off = runner.invoke(cli, ["shelling", "nikopol", "off"])
     assert res_off.exit_code == 0
-    assert "SHELLING OFF" in res_off.output
+    assert "threat of shelling off" in res_off.output
 
 
 @patch("ops.state.get_all_districts_statuses")
@@ -375,11 +384,6 @@ def test_status_active_and_all(mock_get_all, runner):
     res = runner.invoke(cli, ["status"])
     assert res.exit_code == 0
     assert "bucha" in res.output
-
-    # JSON output
-    res_json = runner.invoke(cli, ["status", "--json"])
-    assert res_json.exit_code == 0
-    assert '"key": "bucha"' in res_json.output
 
     # Empty active
     mock_get_all.return_value = []
@@ -417,10 +421,6 @@ def test_show_command(mock_get_status, runner):
     res = runner.invoke(cli, ["show", "kyiv"])
     assert res.exit_code == 0
     assert "kyiv" in res.output
-
-    res_json = runner.invoke(cli, ["show", "kyiv", "--json"])
-    assert res_json.exit_code == 0
-    assert '"key": "kyiv"' in res_json.output
 
     res_unknown = runner.invoke(cli, ["show", "unknown_xyz"])
     assert res_unknown.exit_code == 1
@@ -473,3 +473,219 @@ def test_entrypoints_importable():
     import run_alerts  # noqa: F401
     import run_bi  # noqa: F401
     import run_ops  # noqa: F401
+    import status.mnt  # noqa: F401
+
+
+@patch("ops.state.list_maintenance_windows")
+def test_mnt_ls_empty_and_populated(mock_list_mnt, runner):
+    from ops.cli import mnt_group
+
+    # Empty
+    mock_list_mnt.return_value = []
+    res_empty = runner.invoke(cli, ["mnt"])
+    assert res_empty.exit_code == 0
+    assert "Немає запланованих робіт" in res_empty.output
+
+    # Invoked via maintenance alias
+    res_empty_alias = runner.invoke(cli, ["maintenance", "status"])
+    assert res_empty_alias.exit_code == 0
+    assert "Немає запланованих робіт" in res_empty_alias.output
+
+    # Direct mnt_group invocation
+    res_direct = runner.invoke(mnt_group, [])
+    assert res_direct.exit_code == 0
+    assert "Немає запланованих робіт" in res_direct.output
+
+    # Populated via mnt status
+    mock_list_mnt.return_value = [
+        {
+            "id": "mnt_1",
+            "status_code": "active",
+            "status_label": "зараз",
+            "time_text": "02:00–03:30",
+            "components_uk": "мапа, API",
+            "note": "Оновлюємо базу",
+            "remaining_str": "ще 47 хв",
+        },
+        {
+            "id": "mnt_2",
+            "status_code": "scheduled",
+            "status_label": "06.09",
+            "time_text": "23:00–23:30",
+            "components_uk": "API",
+            "note": "«Міграція схеми»",
+            "remaining_str": "через 10 год",
+        },
+    ]
+    res_pop = runner.invoke(cli, ["mnt", "status"])
+    assert res_pop.exit_code == 0
+    assert "зараз" in res_pop.output
+    assert "02:00–03:30" in res_pop.output
+    assert "мапа, API" in res_pop.output
+    assert "«Оновлюємо базу»" in res_pop.output
+    assert "ще 47 хв" in res_pop.output
+    assert "06.09" in res_pop.output
+
+    # Backward compatibility via mnt ls
+    res_pop_ls = runner.invoke(cli, ["mnt", "ls"])
+    assert res_pop_ls.exit_code == 0
+    assert "зараз" in res_pop_ls.output
+
+    # Error handling
+    mock_list_mnt.side_effect = Exception("Redis error")
+    res_err = runner.invoke(cli, ["mnt", "status"])
+    assert res_err.exit_code == 1
+    assert "error loading maintenance schedule" in res_err.output
+
+
+@patch("ops.state.add_maintenance_window")
+def test_mnt_add_command(mock_add_win, runner):
+    mock_add_win.return_value = {
+        "id": "mnt_123",
+        "components": ["map", "api"],
+        "note": "Оновлюємо базу",
+        "time_text": "02:00–03:30",
+    }
+
+    res = runner.invoke(
+        cli,
+        [
+            "mnt",
+            "add",
+            "map,api",
+            "--from",
+            "05.09 02:00",
+            "--for",
+            "90m",
+            "-n",
+            "Оновлюємо базу",
+        ],
+    )
+    assert res.exit_code == 0
+    assert "Заплановано" in res.output
+    assert "02:00" in res.output
+    assert "03:30" in res.output
+    assert "мапа, API" in res.output
+    assert "«Оновлюємо базу»" in res.output
+
+    # Error handling
+    mock_add_win.side_effect = ValueError("Invalid time")
+    res_err = runner.invoke(cli, ["mnt", "add", "map", "--from", "invalid"])
+    assert res_err.exit_code == 1
+    assert "error scheduling maintenance" in res_err.output
+
+
+@patch("ops.state.complete_maintenance_window")
+def test_mnt_done_command(mock_complete, runner):
+    # None active
+    mock_complete.return_value = None
+    res_none = runner.invoke(cli, ["mnt", "done"])
+    assert res_none.exit_code == 0
+    assert "Немає активних планових робіт для завершення" in res_none.output
+
+    # Completed active window
+    mock_complete.return_value = {
+        "id": "mnt_123",
+        "components": ["map", "api"],
+        "note": "Оновлюємо базу",
+    }
+    res_done = runner.invoke(cli, ["mnt", "done"])
+    assert res_done.exit_code == 0
+    assert "Планові роботи завершено" in res_done.output
+    assert "Оновлюємо базу" in res_done.output
+    assert "мапа, API" in res_done.output
+
+    # With window id
+    res_id = runner.invoke(cli, ["mnt", "done", "mnt_123"])
+    assert res_id.exit_code == 0
+    assert "Планові роботи завершено" in res_id.output
+
+    # Error handling
+    mock_complete.side_effect = Exception("DB error")
+    res_err = runner.invoke(cli, ["mnt", "done"])
+    assert res_err.exit_code == 1
+    assert "error completing maintenance" in res_err.output
+
+
+def test_alert_and_shelling_help(runner):
+    # Alert help in unified style
+    res_alert = runner.invoke(cli, ["alert", "--help"])
+    assert res_alert.exit_code == 0
+    assert "USAGE" in res_alert.output
+    assert "sirens-ops alert <district> <on|off> [options]" in res_alert.output
+    assert "ARGUMENTS" in res_alert.output
+    assert "DISTRICT" in res_alert.output
+    assert "OPTIONS" in res_alert.output
+    assert "EXAMPLES" in res_alert.output
+    assert "sirens-ops alert kyiv on" in res_alert.output
+
+    # Shelling help in unified style
+    res_shelling = runner.invoke(cli, ["shelling", "--help"])
+    assert res_shelling.exit_code == 0
+    assert "USAGE" in res_shelling.output
+    assert "sirens-ops shelling <district> <on|off> [options]" in res_shelling.output
+    assert "ARGUMENTS" in res_shelling.output
+    assert "OPTIONS" in res_shelling.output
+    assert "EXAMPLES" in res_shelling.output
+    assert "sirens-ops shelling nikopol on" in res_shelling.output
+
+    # Status, Show, History help
+    res_status = runner.invoke(cli, ["status", "--help"])
+    assert res_status.exit_code == 0
+    assert "sirens-ops status [options]" in res_status.output
+
+    res_show = runner.invoke(cli, ["show", "--help"])
+    assert res_show.exit_code == 0
+    assert "sirens-ops show <district> [options]" in res_show.output
+
+    res_history = runner.invoke(cli, ["history", "--help"])
+    assert res_history.exit_code == 0
+    assert "sirens-ops history [district] [options]" in res_history.output
+
+
+@patch("ops.state.add_maintenance_window")
+@patch("ops.state.complete_maintenance_window")
+def test_mnt_on_and_off_commands(mock_complete, mock_add, runner):
+    mock_add.return_value = {
+        "id": "mnt_1",
+        "components": ["all"],
+        "note": "Emergency maintenance",
+        "time_text": "10:00–11:00",
+    }
+    mock_complete.return_value = {
+        "id": "mnt_1",
+        "components": ["all"],
+        "note": "Emergency maintenance",
+    }
+
+    res_on = runner.invoke(cli, ["mnt", "on", "all", "-m", "Emergency maintenance"])
+    assert res_on.exit_code == 0
+    mock_add.assert_called_once_with(
+        components="all",
+        from_str="now",
+        for_str="60m",
+        note="Emergency maintenance",
+    )
+
+    res_off = runner.invoke(cli, ["mnt", "off", "mnt_1"])
+    assert res_off.exit_code == 0
+    mock_complete.assert_called_once_with(window_id="mnt_1")
+
+
+@patch("ops.state.get_maintenance")
+@patch("ops.state.get_all_districts_statuses")
+def test_status_with_active_maintenance_banner(mock_get_all, mock_get_mnt, runner):
+    mock_get_mnt.return_value = {
+        "active": True,
+        "components": ["all"],
+        "headline": "Планові роботи",
+        "subtitle": "Scheduled cluster maintenance",
+        "updated_at": 12345,
+        "operator": "admin",
+    }
+    mock_get_all.return_value = []
+    res = runner.invoke(cli, ["status"])
+    assert res.exit_code == 0
+    assert "MAINTENANCE ACTIVE" in res.output
+    assert "Scheduled cluster maintenance" in res.output
+

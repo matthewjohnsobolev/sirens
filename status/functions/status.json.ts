@@ -75,9 +75,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const isUnknown = data.headline === "Немає даних";
 
     let indicator = "none";
-    if (isServiceDown) indicator = "major";
+    if (isMnt) indicator = "maintenance";
+    else if (isServiceDown) indicator = "major";
     else if (isDegraded) indicator = "minor";
-    else if (isMnt) indicator = "maintenance";
     else if (isUnknown) indicator = "unknown";
 
     const responsePayload = {

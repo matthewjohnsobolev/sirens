@@ -82,11 +82,11 @@
             return;
         }
 
-        var status = target.closest('.map-status');
+        var status = target.closest('.map-ctl--status, .map-chip');
         if (status) {
             send('status_page_open', {
                 system_state: status.getAttribute('data-state') || 'unknown',
-                link_location: 'map'
+                link_location: status.classList.contains('map-chip') ? 'map_chip' : 'map'
             });
         }
     });

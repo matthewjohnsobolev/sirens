@@ -142,7 +142,7 @@
         L.DomEvent.disableClickPropagation(link);
         L.DomEvent.disableScrollPropagation(link);
 
-        chip = { root: link, text: L.DomUtil.create('span', '', link), said: null };
+        chip = { root: link, text: L.DomUtil.create('span', 'map-chip-text', link), said: null };
     }
 
     function render(info, at, alarm) {
@@ -257,7 +257,7 @@
 
     control('topleft', markersButton).addTo(map);
     control('topleft', issueLink).addTo(map);
-    control('bottomleft', statusTile).addTo(map);
+    control('topleft', statusTile).addTo(map);
 
     statusChip();
 

@@ -12,14 +12,10 @@
 }
 
 /* Відступ від краю задає контейнер кута, а не кожен контрол: нова кнопка
-   просто стає в стопку й нічого не зсуває. */
+   просто стає в стопку й нічого не зсуває. Внизу лишається сама атрибуція
+   Leaflet — їй власні відступи не потрібні. */
 .leaflet-top.leaflet-left {
     padding: max(var(--map-inset), env(safe-area-inset-top)) 0 0
-             max(var(--map-inset), env(safe-area-inset-left));
-}
-
-.leaflet-bottom.leaflet-left {
-    padding: 0 0 max(var(--map-inset), env(safe-area-inset-bottom))
              max(var(--map-inset), env(safe-area-inset-left));
 }
 
@@ -270,16 +266,17 @@
 
 /* ── Крапка стану ───────────────────────────────────────────────────── */
 
-/* Стан сервісу — така сама плитка, як решта контролів: іконка називає
-   об'єкт, крапка в кутку каже стан. Окремої плашки зі своїм кеглем і
-   своєю висотою більше немає — менше компонентів, менше місць розійтися.
-   Час останнього оновлення пішов у title і aria-label: за тим, чи він не
-   застиг, стежить код, а не читач. */
+/* Стан сервісу — така сама плитка й у тій самій стопці, що решта: іконка
+   називає об'єкт, крапка в кутку каже стан. Окремої плашки зі своїм
+   кеглем і своєю висотою більше немає — менше компонентів, менше місць
+   розійтися. Час останнього оновлення пішов у title і aria-label: за тим,
+   чи він не застиг, стежить код, а не читач. */
 .map-ctl--status {
     position: relative;
 }
 
-/* Кільця крапці не треба: навколо неї і так порожнє поле плитки. */
+/* Кільця крапці не треба: навколо неї і так порожнє поле плитки. Колір
+   змінюється тим самим переходом, що й у іконки, — стан не стрибає. */
 .map-ctl-badge {
     position: absolute;
     top: 5px;
@@ -288,6 +285,7 @@
     height: 8px;
     border-radius: 50%;
     background: var(--status-gray-bar);
+    transition: background-color var(--motion);
 }
 
 /* Крапка «дихає» тим самим циклом, що й смужка поточної години на
@@ -328,14 +326,20 @@
    Чіп не контрол Leaflet — він не стоїть у кутовій стопці, а тримається
    центру, тож живе прямо в контейнері мапи. Обгортка лишається в DOM
    завжди: порожній aria-live має існувати заздалегідь, інакше поява
-   тексту не озвучиться. */
+   тексту не озвучиться.
+
+   Центр вона рахує не від мапи, а від вільного місця: ліворуч стоїть
+   стопка кнопок, і довгий заголовок зі статус-сторінки наїхав би на зум.
+   Тож смуга починається за стопкою — чіп у ній і центрується. */
 .map-chip-live {
     position: absolute;
     top: max(var(--map-inset), env(safe-area-inset-top));
-    left: 50%;
-    transform: translateX(-50%);
+    left: calc(max(var(--map-inset), env(safe-area-inset-left))
+               + var(--control-h-map) + var(--gap));
+    right: max(var(--map-inset), env(safe-area-inset-right));
     z-index: var(--z-map-ui);
-    max-width: calc(100% - 2 * var(--map-inset));
+    display: flex;
+    justify-content: center;
     pointer-events: none;
 }
 
@@ -345,10 +349,16 @@
     gap: var(--gap);
     padding: 7px 12px;
     border-radius: var(--radius-nested);
+    /* Флекс-елемент за замовчуванням не вужчий за свій nowrap-текст, а
+       min-width сильніший за max-width — без нуля чіп не стискався б і
+       їхав за край. */
+    min-width: 0;
+    max-width: 100%;
     background: var(--ink-solid);
     color: var(--surface);
-    cursor: pointer;
     pointer-events: auto;
+    user-select: none;
+    -webkit-user-select: none;
     font-family: var(--font-mono);
     font-size: var(--text-secondary);
     font-weight: var(--weight-control);
@@ -360,6 +370,25 @@
     box-shadow: 0 2px 6px rgba(0, 0, 0, .16),
                 0 5px 14px rgba(0, 0, 0, .10);
     transition: background-color var(--motion);
+    animation: map-chip-in var(--motion);
+}
+
+/* Чіп з'являється, а не вмикається: те саме коротке проявлення, що й у
+   тултипа на статус-сторінці. Довше було б схоже на анімацію заради
+   анімації, коротше — на артефакт перемальовування. */
+@keyframes map-chip-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+}
+
+/* Текст чіпа приходить зі статус-сторінки, тож його довжина не в нашій
+   владі: на вузькому екрані він радше вкоротиться, ніж поїде за край. */
+.map-chip-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* display у чіпа свій, тож браузерне [hidden] { display: none } він
@@ -414,6 +443,10 @@
 
 @media (prefers-reduced-motion: reduce) {
     .map-ctl-badge::after {
+        animation: none;
+    }
+
+    .map-chip {
         animation: none;
     }
 

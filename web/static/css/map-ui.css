@@ -55,12 +55,6 @@
     -webkit-tap-highlight-color: transparent;
 }
 
-@media (pointer: coarse) {
-    .leaflet-container {
-        --control-h: var(--control-h-touch);
-    }
-}
-
 /* ── Плитка ─────────────────────────────────────────────────────────── */
 
 /* Спільна основа всього UI мапи: біле поле, волосінь, радіус контрола й
@@ -111,11 +105,11 @@
     outline-offset: 2px;
 }
 
-/* Натиснутий стан — інверсія заливки, як у .submit на /issue. Стан кнопки
-   видно, не вдивляючись в іконку, і не треба тримати другий малюнок. */
+/* Натиснутий стан — залита плашка. Сіра, не чорна: стан каже сама іконка,
+   а чорний квадрат на мапі важить більше за все, що під ним. */
 .map-ctl[aria-pressed="true"] {
-    background: var(--ink);
-    border-color: var(--ink);
+    background: var(--ink-muted);
+    border-color: var(--ink-muted);
     color: var(--surface);
 }
 
@@ -143,10 +137,18 @@
 }
 
 /* Кожна іконка — одне правило з маскою: сама маска більше ніде не
-   потрібна, тож заводити для неї змінну нема сенсу. */
-.map-ctl-icon--markers {
+   потрібна, тож заводити для неї змінну нема сенсу.
+
+   Око називає дію, а не стан: поки маркери видно, кнопка пропонує їх
+   прибрати — і показує перекреслене око. Файли названі так само. */
+.map-ctl-icon--markers-off {
     -webkit-mask-image: url("../img/icons/markers-off-button-icon.svg");
     mask-image: url("../img/icons/markers-off-button-icon.svg");
+}
+
+.map-ctl-icon--markers-on {
+    -webkit-mask-image: url("../img/icons/markers-on-button-icon.svg");
+    mask-image: url("../img/icons/markers-on-button-icon.svg");
 }
 
 /* Жук нижчий за око і має більше ліній на тому ж полі, тож на однакових
@@ -290,12 +292,6 @@
     outline-offset: 2px;
 }
 
-@media (pointer: coarse) {
-    .map-status {
-        height: var(--control-h-map);
-    }
-}
-
 .map-status-dot {
     position: relative;
     flex: none;
@@ -358,8 +354,8 @@
     }
 
     .map-ctl[aria-pressed="true"]:hover {
-        background: var(--ink);
-        border-color: var(--ink);
+        background: var(--ink-muted);
+        border-color: var(--ink-muted);
     }
 
     .leaflet-bar a:hover,

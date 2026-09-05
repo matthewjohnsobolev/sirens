@@ -76,12 +76,16 @@
         button.type = 'button';
         button.setAttribute('aria-pressed', 'false');
         label(button, 'Прибрати маркери');
-        icon(button, 'markers');
+
+        // Око показує дію, а не стан, — те саме, що каже підпис: поки
+        // маркери видно, кнопка пропонує їх прибрати.
+        var glyph = icon(button, 'markers-off');
 
         L.DomEvent.on(button, 'click', function () {
             var hidden = map.getContainer().classList.toggle('markers-hidden');
             button.setAttribute('aria-pressed', String(hidden));
             label(button, hidden ? 'Показати маркери' : 'Прибрати маркери');
+            glyph.className = 'map-ctl-icon map-ctl-icon--markers-' + (hidden ? 'on' : 'off');
             if (hidden) map.closePopup();
         });
 

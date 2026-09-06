@@ -93,3 +93,25 @@ def test_domain_messages_completeness():
     assert "air_raid_alert_cancelled" in domain.MESSAGES
     assert "threat_of_shelling" in domain.MESSAGES
     assert "threat_of_shelling_cancelled" in domain.MESSAGES
+    assert domain.MESSAGES["threat_of_shelling"] == "🟤 Загроза артобстрілу!"
+    assert domain.MESSAGES["threat_of_shelling_cancelled"] == "🟢 Відбій загрози артобстрілу !"
+    assert domain.MESSAGES["air_raid_alert_cancelled"] == "🟢 Відбій тривоги!"
+    assert domain.MESSAGES["air_raid_alert:yellow"] == "🟡 Жовтий рівень тривоги!"
+    assert domain.MESSAGES["air_raid_alert:red"] == "🔴 Червоний рівень тривоги!"
+
+
+def test_domain_alert_message_key():
+    assert domain.alert_message_key("air_raid_alert", "red") == "air_raid_alert:red"
+    assert domain.alert_message_key("air_raid_alert", "yellow") == "air_raid_alert:yellow"
+    assert domain.alert_message_key("air_raid_alert", None) == "air_raid_alert"
+    assert domain.alert_message_key("air_raid_alert_cancelled", "red") == "air_raid_alert_cancelled"
+    assert (
+        domain.alert_message_key("air_raid_alert_cancelled", "yellow") == "air_raid_alert_cancelled"
+    )
+    assert domain.alert_message_key("air_raid_alert_cancelled", None) == "air_raid_alert_cancelled"
+    assert domain.alert_message_key("threat_of_shelling", None) == "threat_of_shelling"
+    assert domain.alert_message_key("threat_of_shelling", "red") == "threat_of_shelling"
+    assert (
+        domain.alert_message_key("threat_of_shelling_cancelled", None)
+        == "threat_of_shelling_cancelled"
+    )

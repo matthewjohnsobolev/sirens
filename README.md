@@ -42,6 +42,12 @@ TELEGRAM_API_HASH=your_api_hash
 # docker-compose also passes it to the workers as their -m run mode.
 APP_ENV=prod
 
+# Broadcast sources: defaults to "fallback" for the two-level alert system.
+# Primary channel messages still update telemetry and healthcheck.
+# Set to "primary,fallback" to broadcast from both.
+ALERT_BROADCAST_SOURCES=fallback
+
+
 # PostgreSQL Credentials (Required for Docker)
 # docker-compose initializes the volume with these and builds DATABASE_URL
 # from them, so changing them after the first start means recreating the

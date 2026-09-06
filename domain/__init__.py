@@ -21,7 +21,7 @@ from domain.geo import (
     OBLAST_TRIGGERS,
     apostrophe_variants,
 )
-from domain.messages import MESSAGES
+from domain.messages import MESSAGES, alert_message_key
 
 __all__ = [
     "APOSTROPHES",
@@ -35,6 +35,7 @@ __all__ = [
     "OBLAST_TRIGGERS",
     "REGION_CONFIG",
     "SOURCE_KEYS",
+    "alert_message_key",
     "apostrophe_variants",
     "real_channels",
     "real_source_channels",

@@ -26,6 +26,7 @@ from alerts.cli import get_mode_config
 from alerts.main import (
     CHANNEL_PHOTO_PATHS,
     PHOTO_UPDATE_MAX_ATTEMPTS,
+    AlertEvent,
     broadcast_reference,
     build_message_handler,
     build_message_link,
@@ -57,6 +58,7 @@ from domain import (
 )
 from tests.samples.source_messages import (
     ALL_SAMPLES,
+    FALLBACK_SAMPLES,
     MAP_ONLY_SAMPLES,
     MESSAGES_SAMPLES,
     PARTIAL_CANCELLATION_SAMPLES,
@@ -1676,17 +1678,20 @@ async def test_record_map_only_alert_does_not_update_telemetry_payload_or_redis(
     [
         pytest.param(
             "Повітряна тривога в Бучанський район",
-            {"bucha": "air_raid_alert"},
+            {"bucha": AlertEvent("air_raid_alert", None)},
             id="single-district",
         ),
         pytest.param(
             "Відбій тривоги в Бучанський район",
-            {"bucha": "air_raid_alert_cancelled"},
+            {"bucha": AlertEvent("air_raid_alert_cancelled", None)},
             id="cancellation",
         ),
         pytest.param(
             "Повітряна тривога в\n• Бучанський район\n• Вишгородський район",
-            {"bucha": "air_raid_alert", "vyshhorod": "air_raid_alert"},
+            {
+                "bucha": AlertEvent("air_raid_alert", None),
+                "vyshhorod": AlertEvent("air_raid_alert", None),
+            },
             id="two-districts",
         ),
         pytest.param("Бучанський район", {}, id="no-alert-keyword"),
@@ -1716,7 +1721,9 @@ def test_match_districts(message_text, expected):
     ],
 )
 def test_match_districts_accepts_every_spelling(name, expected_key):
-    assert match_districts(f"Повітряна тривога в {name}") == {expected_key: "air_raid_alert"}
+    assert match_districts(f"Повітряна тривога в {name}") == {
+        expected_key: AlertEvent("air_raid_alert", None)
+    }
 
 
 @pytest.mark.parametrize(
@@ -1735,12 +1742,14 @@ def test_match_districts_accepts_every_spelling(name, expected_key):
 )
 def test_match_districts_does_not_match_inside_a_longer_name(name, expected_key):
     """District matching respects word boundaries to avoid substring false positives."""
-    assert match_districts(f"Повітряна тривога в {name}") == {expected_key: "air_raid_alert"}
+    assert match_districts(f"Повітряна тривога в {name}") == {
+        expected_key: AlertEvent("air_raid_alert", None)
+    }
 
 
 def test_match_districts_from_the_oblast_name():
     assert match_districts(oblast_message("Полтавська область")) == {
-        key: "air_raid_alert" for key in DISTRICTS_BY_OBLAST["poltava_oblast"]
+        key: AlertEvent("air_raid_alert", None) for key in DISTRICTS_BY_OBLAST["poltava_oblast"]
     }
 
 
@@ -1778,10 +1787,10 @@ def test_match_districts_keeps_stacked_sections_apart():
     header must not let 'Повітряна тривога' (found first in the whole text)
     leak its alert type onto the districts listed under 'Відбій тривоги'."""
     assert match_districts(STACKED_HEADERS_MESSAGE) == {
-        "bucha": "air_raid_alert",
-        "okhtyrka": "air_raid_alert_cancelled",
-        "kamianske": "air_raid_alert_cancelled",
-        "samar": "air_raid_alert_cancelled",
+        "bucha": AlertEvent("air_raid_alert", None),
+        "okhtyrka": AlertEvent("air_raid_alert_cancelled", None),
+        "kamianske": AlertEvent("air_raid_alert_cancelled", None),
+        "samar": AlertEvent("air_raid_alert_cancelled", None),
     }
 
 
@@ -2358,3 +2367,372 @@ async def test_push_telemetry_to_kv_includes_fallback_data(monkeypatch):
     assert body["fallback_source_connected"] is True
     assert "last_primary_message_at" in body
     assert "last_fallback_message_at" in body
+
+
+@pytest.mark.parametrize("sample", FALLBACK_SAMPLES, ids=lambda s: s.id)
+def test_match_districts_fallback_samples(sample):
+    matched = match_districts(sample.message)
+    expected = {k: AlertEvent(v[0], v[1]) for k, v in sample.expected.items()}
+    assert matched == expected
+
+
+def test_oblast_parenthesis_does_not_raise_whole_oblast():
+    message = "🔴 Подільський район (Одеська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!"
+    matched = match_districts(message)
+    assert matched == {"podilsk": AlertEvent("air_raid_alert", "red")}
+    for other in ("odesa", "izmail", "bilhoroddnistrovskyi", "rozdilna", "berezivka"):
+        assert other not in matched
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "level, expected_message, expected_photo",
+    [
+        ("red", MESSAGES["air_raid_alert:red"], CHANNEL_PHOTO_PATHS["air_raid_alert:red"]),
+        ("yellow", MESSAGES["air_raid_alert:yellow"], CHANNEL_PHOTO_PATHS["air_raid_alert:yellow"]),
+    ],
+)
+async def test_send_alert_for_levels(
+    mock_redis, mock_pg_pool, mock_telegram_client, level, expected_message, expected_photo
+):
+    with patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock) as mock_photo:
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert", level=level)
+        await _drain_background_tasks()
+
+    mock_telegram_client.send_message.assert_awaited_once_with(CHANNEL_ID, expected_message)
+    mock_photo.assert_awaited_once_with(CHANNEL_ID, "kyiv", "air_raid_alert", level=level)
+    mock_redis.set.assert_any_await(f"channel_state:{CHANNEL_ID}", f"air_raid_alert:{level}")
+
+
+@pytest.mark.asyncio
+async def test_dedup_allows_yellow_to_red_escalation(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    state_store = {}
+
+    async def fake_set(key, val, get=False):
+        prev = state_store.get(key)
+        state_store[key] = val
+        return prev if get else "OK"
+
+    async def fake_get(key):
+        return state_store.get(key)
+
+    mock_redis.set.side_effect = fake_set
+    mock_redis.get.side_effect = fake_get
+
+    with patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock):
+        # 1. Yellow alert
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert", level="yellow")
+        await _drain_background_tasks()
+        assert mock_telegram_client.send_message.await_count == 1
+        assert (
+            mock_telegram_client.send_message.await_args.args[1]
+            == MESSAGES["air_raid_alert:yellow"]
+        )
+
+        # 2. Red escalation in the same channel
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert", level="red")
+        await _drain_background_tasks()
+        assert mock_telegram_client.send_message.await_count == 2
+        assert (
+            mock_telegram_client.send_message.await_args.args[1] == MESSAGES["air_raid_alert:red"]
+        )
+
+        # 3. Duplicate red should be suppressed
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert", level="red")
+        await _drain_background_tasks()
+        assert mock_telegram_client.send_message.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "displaced_state",
+    [
+        "air_raid_alert:red",
+        "air_raid_alert:yellow",
+        "air_raid_alert",
+        None,
+    ],
+)
+async def test_cancellation_text_derived_from_displaced_state(
+    mock_redis, mock_pg_pool, mock_telegram_client, displaced_state
+):
+    mock_redis.set.return_value = displaced_state
+
+    with patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock):
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert_cancelled")
+        await _drain_background_tasks()
+
+    mock_telegram_client.send_message.assert_awaited_once_with(
+        CHANNEL_ID, MESSAGES["air_raid_alert_cancelled"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_repeated_cancellation_suppressed_by_dedup(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    state_store = {"channel_state:123456": "air_raid_alert:red"}
+
+    async def fake_set(key, val, get=False):
+        prev = state_store.get(key)
+        state_store[key] = val
+        return prev if get else "OK"
+
+    mock_redis.set.side_effect = fake_set
+
+    with patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock):
+        # First cancellation (displaces air_raid_alert:red)
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert_cancelled")
+        await _drain_background_tasks()
+        assert mock_telegram_client.send_message.await_count == 1
+        assert (
+            mock_telegram_client.send_message.await_args.args[1]
+            == MESSAGES["air_raid_alert_cancelled"]
+        )
+
+        # Repeated cancellation (state is already air_raid_alert_cancelled)
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert_cancelled")
+        await _drain_background_tasks()
+        assert mock_telegram_client.send_message.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("level", ["red", "yellow"])
+async def test_alert_history_and_threat_hash_record_base_type(
+    mock_redis, mock_pg_pool, mock_telegram_client, level
+):
+    _, mock_conn = mock_pg_pool
+
+    with patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock):
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert", level=level)
+        await _drain_background_tasks()
+
+    # DB record has base type
+    mock_conn.execute.assert_awaited_once()
+    sql, *params = mock_conn.execute.call_args.args
+    assert params[5] == "air_raid_alert"
+
+    # Redis threat hash has base type
+    city_call = [
+        c
+        for c in mock_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:city:kyiv"
+    ][0]
+    assert city_call.kwargs["mapping"]["type"] == "air_raid_alert"
+
+    # Deduplication state has composite key
+    mock_redis.set.assert_any_await(f"channel_state:{CHANNEL_ID}", f"air_raid_alert:{level}")
+
+    # last_alert_payload has both type and level
+    assert alerts_main.last_alert_payload["type"] == "air_raid_alert"
+    assert alerts_main.last_alert_payload["level"] == level
+
+
+@pytest.mark.asyncio
+async def test_primary_source_ignored_when_broadcasting_limited_to_fallback(
+    mock_redis, mock_telegram_client
+):
+    primary_id = 111111
+    fallback_id = 222222
+    handler = build_message_handler(
+        {"kyiv": 9001}, primary_source=primary_id, fallback_source=fallback_id
+    )
+
+    event_primary = MagicMock()
+    event_primary.chat_id = primary_id
+    event_primary.message.message = "м. Київ Повітряна тривога"
+    event_primary.message.id = 100
+    event_primary.message.date = datetime.datetime(2026, 9, 6, 12, 0, tzinfo=datetime.timezone.utc)
+
+    with (
+        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send,
+        patch("alerts.main.record_map_only_alert", new_callable=AsyncMock) as mock_record,
+    ):
+        await handler(event_primary)
+        await _drain_background_tasks()
+
+    # Primary post updates last_source_message_at and last_primary_message_at
+    assert alerts_main.last_primary_message_at == event_primary.message.date.timestamp()
+    # But does NOT dispatch
+    mock_send.assert_not_awaited()
+    mock_record.assert_not_awaited()
+
+    # Now fallback post goes through
+    event_fallback = MagicMock()
+    event_fallback.chat_id = fallback_id
+    event_fallback.message.message = "🔴 Червоний рівень тривоги\nм. Київ"
+    event_fallback.message.id = 101
+    event_fallback.message.date = datetime.datetime(2026, 9, 6, 12, 1, tzinfo=datetime.timezone.utc)
+
+    with (
+        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send,
+        patch("alerts.main.record_map_only_alert", new_callable=AsyncMock) as mock_record,
+    ):
+        await handler(event_fallback)
+        await _drain_background_tasks()
+
+    mock_send.assert_awaited_once_with(
+        9001, "kyiv", "air_raid_alert", source_type="fallback", level="red"
+    )
+    mock_record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_primary_broadcasts_when_fallback_source_is_none():
+    primary_id = 111111
+    handler = build_message_handler({"kyiv": 9001}, primary_source=primary_id, fallback_source=None)
+
+    event = MagicMock()
+    event.chat_id = primary_id
+    event.message.message = "м. Київ Повітряна тривога"
+    event.message.id = 200
+    event.message.date = datetime.datetime(2026, 9, 6, 12, 0, tzinfo=datetime.timezone.utc)
+
+    with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
+        await handler(event)
+        await _drain_background_tasks()
+
+    mock_send.assert_awaited_once_with(9001, "kyiv", "air_raid_alert", source_type="primary")
+
+
+@pytest.mark.asyncio
+async def test_both_sources_broadcast_when_configured(monkeypatch):
+    monkeypatch.setattr(alerts_main, "ALERT_BROADCAST_SOURCES", frozenset({"primary", "fallback"}))
+
+    primary_id = 111111
+    fallback_id = 222222
+    handler = build_message_handler(
+        {"kyiv": 9001}, primary_source=primary_id, fallback_source=fallback_id
+    )
+
+    event_primary = MagicMock()
+    event_primary.chat_id = primary_id
+    event_primary.message.message = "м. Київ Повітряна тривога"
+    event_primary.message.id = 301
+    event_primary.message.date = datetime.datetime(2026, 9, 6, 12, 0, tzinfo=datetime.timezone.utc)
+
+    event_fallback = MagicMock()
+    event_fallback.chat_id = fallback_id
+    event_fallback.message.message = "🔴 Червоний рівень тривоги\nм. Київ"
+    event_fallback.message.id = 302
+    event_fallback.message.date = datetime.datetime(2026, 9, 6, 12, 5, tzinfo=datetime.timezone.utc)
+
+    with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
+        await handler(event_primary)
+        await _drain_background_tasks()
+        mock_send.assert_awaited_once_with(9001, "kyiv", "air_raid_alert", source_type="primary")
+
+        mock_send.reset_mock()
+        await handler(event_fallback)
+        await _drain_background_tasks()
+        mock_send.assert_awaited_once_with(
+            9001, "kyiv", "air_raid_alert", source_type="fallback", level="red"
+        )
+
+
+@pytest.mark.asyncio
+async def test_nikopol_shelling_from_primary_channel_and_air_raid_from_fallback():
+    primary_id = 111111
+    fallback_id = 222222
+    channels = {"nikopol": 8001, "kyiv": 9001}
+    handler = build_message_handler(
+        channels, primary_source=primary_id, fallback_source=fallback_id
+    )
+
+    # 1. Primary sends Nikopol shelling threat -> MUST broadcast
+    ev_primary_shelling = MagicMock()
+    ev_primary_shelling.chat_id = primary_id
+    ev_primary_shelling.message.message = "м. Нікополь артилерійський обстріл"
+    ev_primary_shelling.message.id = 401
+    ev_primary_shelling.message.date = datetime.datetime(
+        2026, 9, 6, 12, 0, tzinfo=datetime.timezone.utc
+    )
+
+    with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
+        await handler(ev_primary_shelling)
+        await _drain_background_tasks()
+        mock_send.assert_awaited_once_with(
+            8001, "nikopol", "threat_of_shelling", source_type="primary"
+        )
+
+    # 2. Primary sends Nikopol shelling cancellation -> MUST broadcast
+    ev_primary_cancel = MagicMock()
+    ev_primary_cancel.chat_id = primary_id
+    ev_primary_cancel.message.message = "м. Нікополь Відбій загрози артобстрілу"
+    ev_primary_cancel.message.id = 402
+    ev_primary_cancel.message.date = datetime.datetime(
+        2026, 9, 6, 12, 10, tzinfo=datetime.timezone.utc
+    )
+
+    with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
+        await handler(ev_primary_cancel)
+        await _drain_background_tasks()
+        mock_send.assert_awaited_once_with(
+            8001, "nikopol", "threat_of_shelling_cancelled", source_type="primary"
+        )
+
+    # 3. Primary sends air raid alert -> IGNORED because air raid comes from fallback
+    ev_primary_air = MagicMock()
+    ev_primary_air.chat_id = primary_id
+    ev_primary_air.message.message = "м. Київ Повітряна тривога"
+    ev_primary_air.message.id = 403
+    ev_primary_air.message.date = datetime.datetime(
+        2026, 9, 6, 12, 15, tzinfo=datetime.timezone.utc
+    )
+
+    with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
+        await handler(ev_primary_air)
+        await _drain_background_tasks()
+        mock_send.assert_not_awaited()
+
+    # 4. Fallback sends Nikopol two-level air raid alert -> MUST broadcast with level
+    ev_fallback_air = MagicMock()
+    ev_fallback_air.chat_id = fallback_id
+    ev_fallback_air.message.message = "🔴 Нікопольський район (Дніпропетровська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!"
+    ev_fallback_air.message.id = 404
+    ev_fallback_air.message.date = datetime.datetime(
+        2026, 9, 6, 12, 20, tzinfo=datetime.timezone.utc
+    )
+
+    with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
+        await handler(ev_fallback_air)
+        await _drain_background_tasks()
+        mock_send.assert_awaited_once_with(
+            8001, "nikopol", "air_raid_alert", source_type="fallback", level="red"
+        )
+
+
+def test_shelling_only_applies_to_nikopol():
+    # Shelling threat mentioned for Kharkiv or Odesa district must NOT match shelling
+    msg_non_nikopol = "🟤 Загроза артобстрілу!\nХарківський район (Харківська обл.)"
+    matched_non = match_districts(msg_non_nikopol)
+    assert "kharkiv" not in matched_non
+    assert not any(ev.type == "threat_of_shelling" for ev in matched_non.values())
+
+    # Shelling threat for Nikopol MUST match
+    msg_nikopol = "🟤 Загроза артобстрілу!\nНікопольський район (Дніпропетровська обл.)"
+    matched_nik = match_districts(msg_nikopol)
+    assert matched_nik == {"nikopol": AlertEvent("threat_of_shelling", None)}
+
+    # Shelling cancel for Nikopol MUST match
+    msg_nikopol_cancel = (
+        "🟢 Відбій загрози артобстрілу!\nНікопольський район (Дніпропетровська обл.)"
+    )
+    matched_nik_cancel = match_districts(msg_nikopol_cancel)
+    assert matched_nik_cancel == {"nikopol": AlertEvent("threat_of_shelling_cancelled", None)}
+
+
+def test_nikopol_two_level_alerts():
+    # Red level alert for Nikopol
+    red_msg = "🔴 Нікопольський район (Дніпропетровська обл.)\nЧервоний рівень тривоги."
+    assert match_districts(red_msg) == {"nikopol": AlertEvent("air_raid_alert", "red")}
+
+    # Yellow level alert for Nikopol
+    yellow_msg = "🟡 Нікопольський район (Дніпропетровська обл.)\nЖовтий рівень тривоги."
+    assert match_districts(yellow_msg) == {"nikopol": AlertEvent("air_raid_alert", "yellow")}
+
+    # Air raid cancel for Nikopol
+    cancel_msg = "🟢 Нікопольський район (Дніпропетровська обл.)\nВідбій тривоги."
+    assert match_districts(cancel_msg) == {"nikopol": AlertEvent("air_raid_alert_cancelled", None)}

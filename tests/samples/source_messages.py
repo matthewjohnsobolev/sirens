@@ -311,3 +311,85 @@ MAP_ONLY_SAMPLES = (
         cancellation_time="20:59",
     ),
 )
+
+
+@dataclass(frozen=True)
+class FallbackSample:
+    id: str
+    message: str
+    expected: dict[str, tuple[str, str | None]]
+
+
+FALLBACK_SAMPLES = (
+    FallbackSample(
+        id="podilsk-red-phrase-below",
+        message=(
+            "🔴 Подільський район (Одеська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!"
+        ),
+        expected={"podilsk": ("air_raid_alert", "red")},
+    ),
+    FallbackSample(
+        id="rozdilna-red-phrase-below",
+        message=(
+            "🔴 Роздільнянський район (Одеська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!"
+        ),
+        expected={"rozdilna": ("air_raid_alert", "red")},
+    ),
+    FallbackSample(
+        id="odesa-yellow-phrase-below",
+        message=("🟡 Одеський район (Одеська обл.)\nЖовтий рівень тривоги. Прямуйте в укриття!"),
+        expected={"odesa": ("air_raid_alert", "yellow")},
+    ),
+    FallbackSample(
+        id="shostka-konotop-red-header",
+        message=(
+            "🔴 Червоний рівень тривоги\n"
+            "Шосткинський район (Сумська обл.)\n"
+            "Конотопський район (Сумська обл.)"
+        ),
+        expected={
+            "shostka": ("air_raid_alert", "red"),
+            "konotop": ("air_raid_alert", "red"),
+        },
+    ),
+    FallbackSample(
+        id="kherson-cancellation",
+        message=("🟢 Херсонський район (Херсонська обл.)\nВідбій тривоги. Будьте обережні!"),
+        expected={"kherson": ("air_raid_alert_cancelled", None)},
+    ),
+    FallbackSample(
+        id="poltava-districts-cancellation-header",
+        message=(
+            "🟢 Відбій тривоги\n"
+            "Кременчуцький район (Полтавська обл.)\n"
+            "Полтавський район (Полтавська обл.)\n"
+            "Миргородський район (Полтавська обл.)"
+        ),
+        expected={
+            "kremenchuk": ("air_raid_alert_cancelled", None),
+            "poltava": ("air_raid_alert_cancelled", None),
+            "myrhorod": ("air_raid_alert_cancelled", None),
+        },
+    ),
+    FallbackSample(
+        id="mixed-red-yellow-post",
+        message=(
+            "🔴 Червоний рівень тривоги\n"
+            "Охтирський район (Сумська обл.)\n"
+            "Богодухівський район (Харківська обл.)\n"
+            "\n"
+            "🟡 Жовтий рівень тривоги\n"
+            "Берестинський район (Харківська обл.)"
+        ),
+        expected={
+            "okhtyrka": ("air_raid_alert", "red"),
+            "bohodukhiv": ("air_raid_alert", "red"),
+            "berestyn": ("air_raid_alert", "yellow"),
+        },
+    ),
+    FallbackSample(
+        id="shelling-threat",
+        message=("🟤 Загроза артобстрілу!\nНікопольський район (Дніпропетровська обл.)"),
+        expected={"nikopol": ("threat_of_shelling", None)},
+    ),
+)

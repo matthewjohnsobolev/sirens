@@ -12,6 +12,7 @@ from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sentry_sdk.integrations.logging import LoggingIntegration
 from telethon.errors import AuthKeyDuplicatedError, FloodWaitError
 from telethon.tl.functions.channels import EditPhotoRequest
 from telethon.tl.types import (
@@ -839,6 +840,10 @@ async def test_main_initializes_sentry_with_mode_as_environment(monkeypatch):
     assert kwargs["environment"] == "prod"
     assert kwargs["release"] == VERSION
     assert kwargs["send_default_pii"] is False
+    logging_integration = next(
+        i for i in kwargs["integrations"] if isinstance(i, LoggingIntegration)
+    )
+    assert logging_integration._handler.level == logging.ERROR
 
 
 @pytest.mark.asyncio
@@ -1753,6 +1758,46 @@ def test_match_districts_from_the_oblast_name():
     }
 
 
+def test_match_districts_ignores_kharkiv_and_zaporizhzhia_district_mentions():
+    """Alerts for Kharkiv and Zaporizhzhia districts must NOT trigger alerts for the cities."""
+    assert match_districts("Повітряна тривога в Харківський район") == {}
+    assert match_districts("Відбій тривоги в Харківський район") == {}
+    assert match_districts("🚨 Повітряна тривога\nХарківський район (Харківська обл.)") == {}
+
+    assert match_districts("Повітряна тривога в Запорізький район") == {}
+    assert match_districts("Відбій тривоги в Запорізький район") == {}
+    assert match_districts("🚨 Повітряна тривога\nЗапорізький район (Запорізька обл.)") == {}
+
+    # City mentions must still match across all variants
+    for variant in (
+        "м. Харків",
+        "Харків",
+        "Харкові",
+        "місто Харків",
+        "місті Харків",
+        "місті Харкові",
+        "м.Харків",
+        "м Харків",
+    ):
+        assert match_districts(f"Повітряна тривога в {variant}") == {
+            "kharkiv": AlertEvent("air_raid_alert", None)
+        }
+
+    for variant in (
+        "м. Запоріжжя",
+        "Запоріжжя",
+        "Запоріжжі",
+        "місто Запоріжжя",
+        "місті Запоріжжя",
+        "місті Запоріжжі",
+        "м.Запоріжжя",
+        "м Запоріжжя",
+    ):
+        assert match_districts(f"Повітряна тривога в {variant}") == {
+            "zaporizhzhia": AlertEvent("air_raid_alert", None)
+        }
+
+
 STACKED_HEADERS_MESSAGE = (
     "🚨 Повітряна тривога\n"
     "Бучанський район (Київська обл.)\n"
@@ -1840,6 +1885,8 @@ def test_log_unrecognised_districts_stays_quiet_on_a_known_post(caplog):
     caplog.set_level(logging.WARNING)
 
     log_unrecognised_districts("Повітряна тривога в Кам'янець-Подільський район")
+    log_unrecognised_districts("Повітряна тривога в Харківський район")
+    log_unrecognised_districts("Повітряна тривога в Запорізький район")
 
     assert caplog.text == ""
 

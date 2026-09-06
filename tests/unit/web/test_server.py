@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from flask import request
 from sentry_sdk.integrations.flask import FlaskIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 from config import VERSION
 from domain import BROADCAST_CITIES, BROADCAST_DISTRICTS
@@ -259,6 +260,10 @@ def test_create_app_initializes_sentry_with_flask_integration(monkeypatch):
     assert kwargs["send_default_pii"] is False
     assert kwargs["release"] == VERSION
     assert any(isinstance(i, FlaskIntegration) for i in kwargs["integrations"])
+    logging_integration = next(
+        i for i in kwargs["integrations"] if isinstance(i, LoggingIntegration)
+    )
+    assert logging_integration._handler.level == logging.ERROR
 
 
 def test_create_app_tags_events_with_its_service_name(monkeypatch):

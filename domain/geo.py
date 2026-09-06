@@ -109,6 +109,16 @@ DISTRICT_CONFIG = {
         "oblast": "zaporizhzhia_oblast",
         "aliases": ["м. Запоріжжя", "Запоріжжя"],
         "display_name": "Zaporizhzhia",
+        "triggers": [
+            "м. Запоріжжя",
+            "Запоріжжя",
+            "Запоріжжі",
+            "місто Запоріжжя",
+            "місті Запоріжжя",
+            "місті Запоріжжі",
+            "м.Запоріжжя",
+            "м Запоріжжя",
+        ],
     },
     "berdiansk": {"name": "Бердянський район", "oblast": "zaporizhzhia_oblast"},
     "vasylivka": {"name": "Василівський район", "oblast": "zaporizhzhia_oblast"},
@@ -187,6 +197,17 @@ DISTRICT_CONFIG = {
         "oblast": "kharkiv_oblast",
         "aliases": ["м. Харків", "Харків"],
         "display_name": "Kharkiv",
+        "triggers": [
+            "м. Харків",
+            "Харків",
+            "Харкові",
+            "Харкова",
+            "місто Харків",
+            "місті Харків",
+            "місті Харкові",
+            "м.Харків",
+            "м Харків",
+        ],
     },
     "berestyn": {
         "name": "Берестинський район",
@@ -245,7 +266,10 @@ DISTRICT_CONFIG = {
 }
 
 for _key, _conf in DISTRICT_CONFIG.items():
-    _forms = [_conf["name"], *_conf.get("aliases", ())]
+    if "triggers" in _conf:
+        _forms = _conf["triggers"]
+    else:
+        _forms = [_conf["name"], *_conf.get("aliases", ())]
     _conf["triggers"] = [form for raw in _forms for form in apostrophe_variants(raw)]
 
 OBLAST_TRIGGERS = {

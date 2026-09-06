@@ -398,7 +398,7 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
         dsn=SENTRY_DSN,
         integrations=[
             FlaskIntegration(),
-            LoggingIntegration(level=logging.INFO, event_level=logging.WARNING),
+            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
         ],
         environment=APP_ENV,
         release=VERSION,

@@ -7,6 +7,7 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sentry_sdk.integrations.logging import LoggingIntegration
 from telethon.errors import FloodWaitError
 from telethon.tl.functions.channels import GetFullChannelRequest
 
@@ -307,7 +308,7 @@ async def test_main_runs_the_snapshot_and_closes_the_pool(bi_pool):
 
     with (
         patch("bi.main.cli.get_args", return_value=MagicMock(mode="dev")),
-        patch("bi.main.sentry_sdk.init"),
+        patch("bi.main.sentry_sdk.init") as mock_sentry_init,
         patch("bi.main.sentry_sdk.set_tag") as mock_set_tag,
         patch("bi.main.ensure_pg_tables") as mock_ensure,
         patch("bi.main.asyncpg.create_pool", AsyncMock(return_value=pool)),
@@ -320,6 +321,12 @@ async def test_main_runs_the_snapshot_and_closes_the_pool(bi_pool):
     mock_run.assert_awaited_once()
     pool.close.assert_awaited_once()
     mock_set_tag.assert_called_once_with("service", "bi")
+    mock_sentry_init.assert_called_once()
+    _, kwargs = mock_sentry_init.call_args
+    logging_integration = next(
+        i for i in kwargs["integrations"] if isinstance(i, LoggingIntegration)
+    )
+    assert logging_integration._handler.level == logging.ERROR
 
 
 @pytest.mark.asyncio

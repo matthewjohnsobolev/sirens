@@ -50,6 +50,42 @@ def test_domain_broadcast_triggers_keep_the_oblast_name():
     assert domain.DISTRICT_CONFIG["bucha"]["triggers"] == ["Бучанський район"]
 
 
+def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
+    """Kharkiv and Zaporizhzhia must only trigger on city names, not district names."""
+    expected_kharkiv = [
+        "м. Харків",
+        "Харків",
+        "Харкові",
+        "Харкова",
+        "місто Харків",
+        "місті Харків",
+        "місті Харкові",
+        "м.Харків",
+        "м Харків",
+    ]
+    assert domain.DISTRICT_CONFIG["kharkiv"]["triggers"] == expected_kharkiv
+    assert "Харківський район" not in domain.DISTRICT_CONFIG["kharkiv"]["triggers"]
+
+    expected_zaporizhzhia = [
+        "м. Запоріжжя",
+        "Запоріжжя",
+        "Запоріжжі",
+        "місто Запоріжжя",
+        "місті Запоріжжя",
+        "місті Запоріжжі",
+        "м.Запоріжжя",
+        "м Запоріжжя",
+    ]
+    assert domain.DISTRICT_CONFIG["zaporizhzhia"]["triggers"] == expected_zaporizhzhia
+    assert "Запорізький район" not in domain.DISTRICT_CONFIG["zaporizhzhia"]["triggers"]
+
+    # In REGION_CONFIG, oblast is appended but district names remain excluded
+    assert "Харківський район" not in domain.REGION_CONFIG["kharkiv"]["triggers"]
+    assert "Запорізький район" not in domain.REGION_CONFIG["zaporizhzhia"]["triggers"]
+    assert "Харківська область" in domain.REGION_CONFIG["kharkiv"]["triggers"]
+    assert "Запорізька область" in domain.REGION_CONFIG["zaporizhzhia"]["triggers"]
+
+
 def test_domain_triggers_cover_both_apostrophes():
     assert domain.DISTRICT_CONFIG["kamianske"]["triggers"] == [
         "Кам'янський район",

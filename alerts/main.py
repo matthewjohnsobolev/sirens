@@ -849,7 +849,7 @@ def match_districts(message_text: str) -> dict[str, AlertEvent]:
 
 
 KNOWN_DISTRICT_TRIGGERS = frozenset(
-    trigger for conf in DISTRICT_CONFIG.values() for trigger in conf["triggers"]
+    name for conf in DISTRICT_CONFIG.values() for name in [conf["name"], *conf["triggers"]]
 )
 
 
@@ -1521,7 +1521,7 @@ async def main():
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.WARNING)],
+        integrations=[LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)],
         environment=args.mode,
         release=VERSION,
         traces_sample_rate=0.0,

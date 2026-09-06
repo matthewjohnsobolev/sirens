@@ -69,7 +69,7 @@ DISTRICT_CONFIG = {
         "oblast": "dnipropetrovsk_oblast",
         "display_name": "Nikopol",
         "alert_triggers": {
-            "threat_of_shelling": ["артилерійський обстріл"],
+            "threat_of_shelling": ["артилерійський обстріл", "Загроза артобстрілу"],
             "threat_of_shelling_cancelled": ["Відбій загрози артобстрілу"],
             "air_raid_alert": ["Повітряна тривога"],
             "air_raid_alert_cancelled": ["Відбій тривоги"],

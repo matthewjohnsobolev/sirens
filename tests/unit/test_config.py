@@ -134,6 +134,16 @@ def test_config_telegram_settings(monkeypatch):
     assert config.TELEGRAM_API_HASH == "hashabc"
 
 
+def test_config_broadcast_sources(monkeypatch):
+    monkeypatch.delenv("ALERT_BROADCAST_SOURCES", raising=False)
+    importlib.reload(config)
+    assert config.ALERT_BROADCAST_SOURCES == frozenset({"fallback"})
+
+    monkeypatch.setenv("ALERT_BROADCAST_SOURCES", "primary, fallback ")
+    importlib.reload(config)
+    assert config.ALERT_BROADCAST_SOURCES == frozenset({"primary", "fallback"})
+
+
 def test_config_github_repo_normalization(monkeypatch):
     monkeypatch.setenv("GITHUB_REPO", "https://github.com/matthewjohnsobolev/sirens/")
     importlib.reload(config)

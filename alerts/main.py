@@ -15,6 +15,7 @@ import sys
 import time
 from itertools import pairwise
 from logging.handlers import RotatingFileHandler
+from typing import NamedTuple
 
 import asyncpg
 import redis.asyncio as redis
@@ -38,6 +39,7 @@ from telethon.tl.types import (
 
 from alerts import cli
 from config import (
+    ALERT_BROADCAST_SOURCES,
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_API_TOKEN,
     CLOUDFLARE_TELEMETRY_NAMESPACE_ID,
@@ -61,6 +63,7 @@ from domain import (
     LOCATION_LOCATIVE,
     MESSAGES,
     OBLAST_TRIGGERS,
+    alert_message_key,
 )
 from web.db import DEFAULT_SOURCE, ensure_pg_tables, rehydrate_state_from_db
 
@@ -96,12 +99,48 @@ primary_silence_reported: bool = False
 fallback_silence_reported: bool = False
 broadcast_silence_reported: bool = False
 
+
+class AlertEvent(NamedTuple):
+    type: str
+    level: str | None = None
+
+
 CHANNEL_PHOTO_PATHS = {
     "air_raid_alert": f"{IMAGES_PATH}/air-raid-alert.png",
+    "air_raid_alert:red": f"{IMAGES_PATH}/explosions.png",
+    "air_raid_alert:yellow": f"{IMAGES_PATH}/threat-of-shelling.png",
     "air_raid_alert_cancelled": f"{IMAGES_PATH}/air-raid-alert-cancelled.png",
     "threat_of_shelling": f"{IMAGES_PATH}/threat-of-shelling.png",
     "threat_of_shelling_cancelled": f"{IMAGES_PATH}/air-raid-alert-cancelled.png",
 }
+
+
+def alert_state_value(alert_type: str, level: str | None) -> str:
+    """State value for deduplication.
+
+    Air raid alert escalations/levels use compound keys ('air_raid_alert:red', 'air_raid_alert:yellow').
+    Cancellations and shelling remain bare alert_type ('air_raid_alert_cancelled', 'threat_of_shelling', etc.).
+    """
+    if alert_type == "air_raid_alert" and level:
+        return f"{alert_type}:{level}"
+    return alert_type
+
+
+def alert_photo_key(alert_type: str, level: str | None) -> str:
+    """Key for looking up avatar in CHANNEL_PHOTO_PATHS."""
+    if level:
+        composite = f"{alert_type}:{level}"
+        if composite in CHANNEL_PHOTO_PATHS:
+            return composite
+    return alert_type
+
+
+def level_of(state: str | None) -> str | None:
+    """Extracts level from composite state like 'air_raid_alert:red'."""
+    if state and ":" in state:
+        return state.split(":", 1)[1]
+    return None
+
 
 channel_usernames: dict[int, str] = {}
 
@@ -202,13 +241,23 @@ def location_locative(district_key: str) -> str:
     return f"{prep} {city}"
 
 
-def log_alert_received(region: str, alert_type: str):
+def log_alert_received(region: str, alert_type: str, level: str | None = None):
     display_name = district_label(region)
 
     if alert_type == "air_raid_alert":
-        log.info("Air raid alert received for %s", display_name)
+        if level:
+            log.info("%s air raid alert received for %s", level.capitalize(), display_name)
+        else:
+            log.info("Air raid alert received for %s", display_name)
     elif alert_type == "air_raid_alert_cancelled":
-        log.info("Air raid alert cancellation received for %s", display_name)
+        if level:
+            log.info(
+                "%s air raid alert cancellation received for %s",
+                level.capitalize(),
+                display_name,
+            )
+        else:
+            log.info("Air raid alert cancellation received for %s", display_name)
     else:
         log.info("%s received for %s", alert_type.replace("_", " ").capitalize(), display_name)
 
@@ -242,22 +291,24 @@ PHOTO_UPDATE_MAX_ATTEMPTS = 3
 PHOTO_UPDATE_DELAY = 5
 
 
-async def process_channel_photo_update(channel_id, region, alert_type):
-    file_path = CHANNEL_PHOTO_PATHS.get(alert_type)
+async def process_channel_photo_update(channel_id, region, alert_type, level: str | None = None):
+    photo_key = alert_photo_key(alert_type, level)
+    file_path = CHANNEL_PHOTO_PATHS.get(photo_key)
     if not file_path:
         return
 
     display_name = district_label(region)
+    expected_state = alert_state_value(alert_type, level)
 
     for attempt in range(1, PHOTO_UPDATE_MAX_ATTEMPTS + 1):
         current_state = (
             await redis_client.get(f"channel_state:{channel_id}") if redis_client else None
         )
-        if current_state != alert_type:
+        if current_state != expected_state:
             log.warning(
                 "Photo update skipped for %s: state changed from %s to %s",
                 display_name,
-                alert_type,
+                expected_state,
                 current_state,
             )
             return
@@ -297,6 +348,8 @@ async def _record_alert_state(
     message_id: int | None = None,
     message_link: str | None = None,
     source_type: str = "primary",
+    state_value: str | None = None,
+    level: str | None = None,
 ):
     global last_alert_payload
 
@@ -313,6 +366,7 @@ async def _record_alert_state(
         loc_title = location_locative(district_key)
         last_alert_payload = {
             "type": alert_type,
+            "level": level,
             "region": oblast_key,
             "district": district_key,
             "district_name": loc_name,
@@ -337,7 +391,8 @@ async def _record_alert_state(
                 if channel_id is not None
                 else f"district_state:{district_key}"
             )
-            await redis_client.set(state_key, alert_type)
+            target_state_value = state_value or alert_state_value(alert_type, level)
+            await redis_client.set(state_key, target_state_value)
 
             if "shelling" in alert_type:
                 is_shelling_active = alert_type == "threat_of_shelling"
@@ -473,17 +528,33 @@ async def _release_alert_state(state_key: str, alert_type: str, previous: str | 
         log.exception("Failed to restore the state of %s after a failed send", state_key)
 
 
-async def send_alert(channel_id: int, region: str, alert_type: str, source_type: str = "primary"):
-    message_text = MESSAGES.get(alert_type)
-    if not message_text:
+async def send_alert(
+    channel_id: int,
+    region: str,
+    alert_type: str,
+    source_type: str = "primary",
+    level: str | None = None,
+):
+    if alert_type not in MESSAGES:
         log.error("Unknown alert type: %s", alert_type)
         return
 
     display_name = district_label(region)
     state_key = f"channel_state:{channel_id}"
+    state_value = alert_state_value(alert_type, level)
 
-    may_broadcast, displaced_state = await _claim_alert_state(state_key, alert_type, display_name)
+    may_broadcast, displaced = await _claim_alert_state(state_key, state_value, display_name)
     if not may_broadcast:
+        return
+
+    text_level = level or (
+        level_of(displaced) if alert_type == "air_raid_alert_cancelled" else None
+    )
+    message_key = alert_message_key(alert_type, text_level)
+    message_text = MESSAGES.get(message_key)
+    if not message_text:
+        log.error("Unknown alert message for: %s", message_key)
+        await _release_alert_state(state_key, state_value, displaced)
         return
 
     send_succeeded = False
@@ -492,9 +563,19 @@ async def send_alert(channel_id: int, region: str, alert_type: str, source_type:
         sent_message = await client.send_message(channel_id, message_text)
         send_succeeded = True
         if alert_type == "air_raid_alert":
-            log.info("Air raid alert sent to %s", display_name)
+            if level:
+                log.info("%s air raid alert sent to %s", level.capitalize(), display_name)
+            else:
+                log.info("Air raid alert sent to %s", display_name)
         elif alert_type == "air_raid_alert_cancelled":
-            log.info("Air raid alert cancellation sent to %s", display_name)
+            if text_level:
+                log.info(
+                    "%s air raid alert cancellation sent to %s",
+                    text_level.capitalize(),
+                    display_name,
+                )
+            else:
+                log.info("Air raid alert cancellation sent to %s", display_name)
         else:
             log.info("%s sent to %s", alert_type.replace("_", " ").capitalize(), display_name)
     except Exception:
@@ -506,7 +587,7 @@ async def send_alert(channel_id: int, region: str, alert_type: str, source_type:
             log.exception("Failed to send %s to %s", alert_type.replace("_", " "), display_name)
 
     if not send_succeeded:
-        await _release_alert_state(state_key, alert_type, displaced_state)
+        await _release_alert_state(state_key, state_value, displaced)
 
     await record_broadcast(send_succeeded)
 
@@ -519,15 +600,23 @@ async def send_alert(channel_id: int, region: str, alert_type: str, source_type:
             message_id=message_id,
             message_link=message_link,
             source_type=source_type,
+            state_value=state_value,
+            level=level,
         )
 
-        if CHANNEL_PHOTO_PATHS.get(alert_type):
+        photo_key = alert_photo_key(alert_type, level)
+        if CHANNEL_PHOTO_PATHS.get(photo_key):
+            photo_coro = (
+                process_channel_photo_update(channel_id, region, alert_type, level=level)
+                if level is not None
+                else process_channel_photo_update(channel_id, region, alert_type)
+            )
             spawn_tracked_task(
-                process_channel_photo_update(channel_id, region, alert_type),
+                photo_coro,
                 f"Photo update for {display_name}",
             )
         else:
-            log.debug("No photo mapping for '%s', skipping photo update", alert_type)
+            log.debug("No photo mapping for '%s', skipping photo update", photo_key)
 
 
 async def record_map_only_alert(
@@ -536,6 +625,7 @@ async def record_map_only_alert(
     message_id: int | None = None,
     message_link: str | None = None,
     source_type: str = "primary",
+    level: str | None = None,
 ):
     """Records state for a non-broadcast district on the map."""
     if alert_type not in MESSAGES:
@@ -543,8 +633,10 @@ async def record_map_only_alert(
         return
 
     label = district_label(district_key)
+    state_key = f"district_state:{district_key}"
+    state_value = alert_state_value(alert_type, level)
 
-    may_record, _ = await _claim_alert_state(f"district_state:{district_key}", alert_type, label)
+    may_record, _ = await _claim_alert_state(state_key, state_value, label)
     if not may_record:
         return
 
@@ -555,8 +647,18 @@ async def record_map_only_alert(
         message_id=message_id,
         message_link=message_link,
         source_type=source_type,
+        state_value=state_value,
+        level=level,
     )
-    log.info("%s recorded for %s (map only)", alert_type.replace("_", " ").capitalize(), label)
+    if level:
+        log.info(
+            "%s %s recorded for %s (map only)",
+            level.capitalize(),
+            alert_type.replace("_", " "),
+            label,
+        )
+    else:
+        log.info("%s recorded for %s (map only)", alert_type.replace("_", " ").capitalize(), label)
 
 
 ONGOING_NOTICE_RE = re.compile(r"^[^\n]*ще трива[^\n]*$", re.MULTILINE)
@@ -587,22 +689,60 @@ OBLAST_PATTERNS = {
 DISTRICT_MENTION_RE = re.compile(r"[А-ЯІЇЄҐ][\w'\u2019-]*\s+район")
 
 
-def _alert_type_for(district_key: str, message_text: str) -> str | None:
+LEVEL_TRIGGERS = {"red": "Червоний рівень тривоги", "yellow": "Жовтий рівень тривоги"}
+SHELLING_TRIGGERS = ("Загроза артобстрілу", "артилерійський обстріл")
+SHELLING_CANCEL_TRIGGERS = ("Відбій загрози артобстрілу",)
+
+
+def _alert_type_for(district_key: str, message_text: str) -> AlertEvent | None:
+    level = None
+    for lvl, trigger in LEVEL_TRIGGERS.items():
+        if trigger in message_text:
+            level = lvl
+            break
+
     conf = DISTRICT_CONFIG.get(district_key, {})
 
-    for alert_type, keywords in conf.get("alert_triggers", {}).items():
+    # Per-district cancellations first
+    for alert_type, keywords in sorted(
+        conf.get("alert_triggers", {}).items(),
+        key=lambda item: 0 if item[0].endswith("_cancelled") else 1,
+    ):
         if any(keyword in message_text for keyword in keywords):
-            return alert_type
+            return AlertEvent(alert_type, level if alert_type == "air_raid_alert" else None)
 
-    if "Повітряна тривога" in message_text:
-        return "air_raid_alert"
+    # Shelling cancellation (Nikopol only)
+    if (not district_key or district_key == "nikopol") and any(
+        keyword in message_text for keyword in SHELLING_CANCEL_TRIGGERS
+    ):
+        return AlertEvent("threat_of_shelling_cancelled", None)
+
+    # Air raid alert cancellation
     if "Відбій тривоги" in message_text:
-        return "air_raid_alert_cancelled"
+        return AlertEvent("air_raid_alert_cancelled", None)
+
+    # Shelling alert (Nikopol only)
+    if (not district_key or district_key == "nikopol") and any(
+        keyword in message_text for keyword in SHELLING_TRIGGERS
+    ):
+        return AlertEvent("threat_of_shelling", None)
+
+    # Two-level alert triggers
+    if level:
+        return AlertEvent("air_raid_alert", level)
+
+    # Legacy air raid alert
+    if "Повітряна тривога" in message_text:
+        return AlertEvent("air_raid_alert", None)
+
     return None
 
 
 _HEADER_TRIGGER_PHRASES = sorted(
     {"Повітряна тривога", "Відбій тривоги"}
+    | set(LEVEL_TRIGGERS.values())
+    | set(SHELLING_TRIGGERS)
+    | set(SHELLING_CANCEL_TRIGGERS)
     | {
         keyword
         for conf in DISTRICT_CONFIG.values()
@@ -620,48 +760,91 @@ SECTION_HEADER_RE = re.compile(
     re.MULTILINE,
 )
 
+STATUS_EMOJI_LINE_RE = re.compile(r"^[^\S\n]*[🔴🟡🟢🟤]", re.MULTILINE)
+
+
+def _split_block(block: str) -> list[str]:
+    boundaries = [0]
+    in_emoji_bullet = bool(STATUS_EMOJI_LINE_RE.match(block))
+    for m in re.finditer(r"^.", block, re.MULTILINE):
+        pos = m.start()
+        if pos == 0:
+            continue
+        line_rest = block[pos:]
+        line = line_rest.split("\n", 1)[0]
+        if STATUS_EMOJI_LINE_RE.match(line):
+            boundaries.append(pos)
+            in_emoji_bullet = True
+        elif SECTION_HEADER_RE.match(line) and not in_emoji_bullet:
+            boundaries.append(pos)
+    boundaries.append(len(block))
+    return [block[start:end] for start, end in pairwise(boundaries) if block[start:end].strip()]
+
 
 def split_alert_sections(message_text: str) -> list[str]:
     """Splits a post into per-event sections.
 
-    A single post can stack several standalone header lines (e.g. "🚨 Повітряна
-    тривога" followed by "🟢 Відбій тривоги"), each followed by its own list of
-    districts. Splitting keeps each district's alert type tied to the header
-    above it instead of whichever keyword happens to appear first in the post.
+    A single post can stack several standalone header lines, paragraphs separated
+    by blank lines, or lines beginning with status emojis (🔴🟡🟢🟤). Splitting keeps
+    each district's alert type and level tied to its own section.
     """
-    headers = list(SECTION_HEADER_RE.finditer(message_text))
-    if len(headers) < 2:
+    if not message_text:
         return [message_text]
 
-    boundaries = [0, *(h.start() for h in headers[1:]), len(message_text)]
-    return [message_text[start:end] for start, end in pairwise(boundaries)]
+    raw_blocks = [b for b in re.split(r"\n\s*\n", message_text) if b.strip()]
+    if not raw_blocks:
+        return [message_text]
+
+    sections: list[str] = []
+    for raw_block in raw_blocks:
+        sections.extend(_split_block(raw_block))
+
+    return sections if sections else [message_text]
 
 
-def match_districts(message_text: str) -> dict[str, str]:
-    """Maps mentioned districts to their alert event type."""
-    matched: dict[str, str] = {}
-    for section in split_alert_sections(message_text):
-        matched.update(_match_districts_in_section(section))
-    return matched
+OBLAST_PARENTHESIS_RE = re.compile(r"\((?:[^()]*\bобл(?:\.|асть)[^()]*)\)")
 
 
-def _match_districts_in_section(message_text: str) -> dict[str, str]:
+def _match_districts_in_section(
+    message_text: str, inherited_event: AlertEvent | None = None
+) -> tuple[dict[str, AlertEvent], AlertEvent | None]:
+    cleaned_for_oblast = OBLAST_PARENTHESIS_RE.sub("", message_text)
     oblast_hit = {
-        oblast: any(pattern.search(message_text) for pattern in patterns)
+        oblast: any(pattern.search(cleaned_for_oblast) for pattern in patterns)
         for oblast, patterns in OBLAST_PATTERNS.items()
     }
 
-    matched: dict[str, str] = {}
+    section_event = _alert_type_for("", message_text)
+    current_event = section_event if section_event is not None else inherited_event
+
+    matched: dict[str, AlertEvent] = {}
     for district_key, conf in DISTRICT_CONFIG.items():
         if not oblast_hit.get(conf["oblast"]) and not any(
             pattern.search(message_text) for pattern in DISTRICT_PATTERNS[district_key]
         ):
             continue
 
-        alert_type = _alert_type_for(district_key, message_text)
-        if alert_type:
-            matched[district_key] = alert_type
+        event = _alert_type_for(district_key, message_text) or current_event
+        if event:
+            if (
+                event.type in ("threat_of_shelling", "threat_of_shelling_cancelled")
+                and district_key != "nikopol"
+            ):
+                continue
+            matched[district_key] = event
+            current_event = event
 
+    resulting_event = section_event or current_event or inherited_event
+    return matched, resulting_event
+
+
+def match_districts(message_text: str) -> dict[str, AlertEvent]:
+    """Maps mentioned districts to their alert event type and level."""
+    matched: dict[str, AlertEvent] = {}
+    last_event: AlertEvent | None = None
+    for section in split_alert_sections(message_text):
+        section_matched, last_event = _match_districts_in_section(section, last_event)
+        matched.update(section_matched)
     return matched
 
 
@@ -1037,6 +1220,10 @@ def build_message_handler(
     primary_source: int | None = None,
     fallback_source: int | None = None,
 ):
+    active_broadcast_sources = ALERT_BROADCAST_SOURCES
+    if fallback_source is None and "fallback" in active_broadcast_sources:
+        active_broadcast_sources = frozenset({"primary"})
+
     async def handle_incoming_message(event):
         chat_id = getattr(event, "chat_id", None)
         is_fallback = fallback_source is not None and chat_id == fallback_source
@@ -1054,24 +1241,82 @@ def build_message_handler(
         if not matched:
             return
 
+        if source_type == "primary" and "primary" not in active_broadcast_sources:
+            # Primary channel only broadcasts Nikopol shelling when fallback is active
+            matched = {
+                d: ev
+                for d, ev in matched.items()
+                if d == "nikopol"
+                and ev.type in ("threat_of_shelling", "threat_of_shelling_cancelled")
+            }
+            if not matched:
+                log.debug("Post from primary source ignored: air raid alerts come from fallback")
+                return
+
+        if source_type == "fallback":
+            if "fallback" not in active_broadcast_sources:
+                log.debug("Post from fallback ignored: fallback broadcasting is disabled")
+                return
+            # Fallback channel broadcasts air raid alerts; shelling comes from primary
+            matched = {
+                d: ev
+                for d, ev in matched.items()
+                if ev.type not in ("threat_of_shelling", "threat_of_shelling_cancelled")
+            }
+            if not matched:
+                log.debug("Post from fallback ignored: shelling alerts come from primary")
+                return
+
         source_ref: tuple[int | None, str | None] = (None, None)
         if any(not region_channels.get(district_key) for district_key in matched):
             source_ref = await source_reference(event)
 
-        for district_key, alert_type in matched.items():
-            log_alert_received(district_key, alert_type)
+        for district_key, event_info in matched.items():
+            alert_type = event_info.type
+            level = event_info.level
+            log_alert_received(district_key, alert_type, level=level)
             channel_id = region_channels.get(district_key)
 
             if channel_id:
+                alert_coro = (
+                    send_alert(
+                        channel_id,
+                        district_key,
+                        alert_type,
+                        source_type=source_type,
+                        level=level,
+                    )
+                    if level is not None
+                    else send_alert(
+                        channel_id,
+                        district_key,
+                        alert_type,
+                        source_type=source_type,
+                    )
+                )
                 spawn_tracked_task(
-                    send_alert(channel_id, district_key, alert_type, source_type=source_type),
+                    alert_coro,
                     f"Alert broadcast of {alert_type} to {district_key} via {source_type}",
                 )
             else:
-                spawn_tracked_task(
+                record_coro = (
                     record_map_only_alert(
-                        district_key, alert_type, *source_ref, source_type=source_type
-                    ),
+                        district_key,
+                        alert_type,
+                        *source_ref,
+                        source_type=source_type,
+                        level=level,
+                    )
+                    if level is not None
+                    else record_map_only_alert(
+                        district_key,
+                        alert_type,
+                        *source_ref,
+                        source_type=source_type,
+                    )
+                )
+                spawn_tracked_task(
+                    record_coro,
                     f"Map-only record of {alert_type} for {district_key} via {source_type}",
                 )
 

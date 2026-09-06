@@ -40,6 +40,12 @@ TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID = (
     if os.getenv("TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID")
     else None
 )
+ALERT_BROADCAST_SOURCES = frozenset(
+    part.strip()
+    for part in os.getenv("ALERT_BROADCAST_SOURCES", "fallback").split(",")
+    if part.strip()
+)
+
 
 CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
 CLOUDFLARE_R2_ACCESS_KEY_ID = os.getenv("CLOUDFLARE_R2_ACCESS_KEY_ID", "")

@@ -30,16 +30,10 @@ function pinState(threats) {
     return dominant ? threatVariant(dominant, threats[dominant]) : 'idle';
 }
 
-// Тіло крапки збирається тут, а не в шаблоні рядка: тим самим зразком
-// малює себе легенда демо, і розійтися їм нема як.
-function pinBody() {
-    return '<span class="map-pin__dot"></span>';
-}
-
 function pinIcon(marker, state) {
     return L.divIcon({
         className: 'map-pin map-pin--' + state + ' map-pin--label-' + labelSide(marker),
-        html: pinBody() + '<span class="map-pin__name">' + marker.name + '</span>',
+        html: '<span class="map-pin__dot"></span><span class="map-pin__name">' + marker.name + '</span>',
         iconSize: [PIN_SIZE, PIN_SIZE],
         iconAnchor: [PIN_SIZE / 2, PIN_SIZE / 2],
 

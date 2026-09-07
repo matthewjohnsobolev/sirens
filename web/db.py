@@ -499,8 +499,17 @@ def rehydrate_state_from_db() -> None:
                     },
                 )
         else:
-            is_active = str(alert_type).lower() in ("air_raid_alert", "start", "1", "true")
+            alert_str = str(alert_type).lower()
+            is_active = (
+                alert_str.startswith("air_raid_alert") and not alert_str.endswith("_cancelled")
+            ) or alert_str in ("start", "1", "true")
             st_str = "true" if is_active else "false"
+
+            level = None
+            if ":" in str(alert_type):
+                level = str(alert_type).split(":", 1)[1]
+            elif is_active:
+                level = "red"
 
             if d_key:
                 dt_epoch = (
@@ -508,16 +517,19 @@ def rehydrate_state_from_db() -> None:
                     if (dt and hasattr(dt, "timestamp"))
                     else str(int(time.time()))
                 )
+                city_mapping = {
+                    "status": st_str,
+                    "time": alert_time or (dt.strftime("%H:%M") if dt else "None"),
+                    "source": source,
+                    "type": alert_type
+                    or ("air_raid_alert" if is_active else "air_raid_alert_cancelled"),
+                    "updated_at": dt_epoch,
+                }
+                if is_active and level:
+                    city_mapping["level"] = level
                 pipeline.hset(
                     f"threat:alerts:city:{d_key}",
-                    mapping={
-                        "status": st_str,
-                        "time": alert_time or (dt.strftime("%H:%M") if dt else "None"),
-                        "source": source,
-                        "type": alert_type
-                        or ("air_raid_alert" if is_active else "air_raid_alert_cancelled"),
-                        "updated_at": dt_epoch,
-                    },
+                    mapping=city_mapping,
                 )
                 if is_active and o_key:
                     pipeline.sadd(f"threat:alerts:active:{o_key}", d_key)
@@ -647,13 +659,21 @@ def get_all_threats_data() -> dict[str, Any]:
             }
             if category == "city_alerts":
                 alert_type = data.get("type", "")
+                level_val = data.get("level")
                 if alert_type in ("threat_of_shelling", "threat_of_shelling_cancelled"):
                     entry["status"] = False
                     entry["type"] = alert_type
                 else:
-                    entry["type"] = alert_type or (
-                        "air_raid_alert" if entry["status"] else "air_raid_alert_cancelled"
-                    )
+                    if entry["status"]:
+                        lvl = (
+                            level_val
+                            if (level_val and level_val != "")
+                            else (alert_type.split(":")[1] if ":" in str(alert_type) else "red")
+                        )
+                        entry["level"] = lvl
+                        entry["type"] = f"air_raid_alert:{lvl}"
+                    else:
+                        entry["type"] = alert_type or "air_raid_alert_cancelled"
             raw_data[category][target] = entry
 
     result: dict[str, Any] = {}
@@ -668,8 +688,30 @@ def get_all_threats_data() -> dict[str, Any]:
         if active:
             oblast_alert["status"] = True
             oblast_alert["coverage"] = "full" if len(active) >= len(tracked) else "partial"
+
+            active_levels = set()
+            for d in active:
+                d_alert = raw_data["city_alerts"].get(d, {})
+                if d_alert.get("status"):
+                    lvl = d_alert.get("level")
+                    if not lvl and ":" in str(d_alert.get("type", "")):
+                        lvl = str(d_alert.get("type", "")).split(":")[1]
+                    if lvl:
+                        active_levels.add(lvl)
+
+            if "red" in active_levels:
+                obl_lvl = "red"
+            elif "yellow" in active_levels:
+                obl_lvl = "yellow"
+            else:
+                raw_lvl = raw_data["alerts"].get(oblast, {}).get("level")
+                obl_lvl = raw_lvl if (raw_lvl and raw_lvl != "") else "red"
+
+            oblast_alert["level"] = obl_lvl
+            oblast_alert["type"] = f"air_raid_alert:{obl_lvl}"
         else:
             oblast_alert["coverage"] = "none"
+            oblast_alert["type"] = "air_raid_alert_cancelled"
 
         districts_map = {
             d: {

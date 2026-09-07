@@ -409,16 +409,21 @@ async def _record_alert_state(
             else:
                 is_alert_active = alert_type == "air_raid_alert"
                 status_str = "true" if is_alert_active else "false"
+                city_mapping = {
+                    "status": status_str,
+                    "time": current_time,
+                    "source": source,
+                    "type": alert_type,
+                    "updated_at": now_epoch,
+                }
+                if is_alert_active and level:
+                    city_mapping["level"] = level
                 await redis_client.hset(
                     f"threat:alerts:city:{district_key}",
-                    mapping={
-                        "status": status_str,
-                        "time": current_time,
-                        "source": source,
-                        "type": alert_type,
-                        "updated_at": now_epoch,
-                    },
+                    mapping=city_mapping,
                 )
+                if not is_alert_active:
+                    await redis_client.hdel(f"threat:alerts:city:{district_key}", "level")
 
                 active_key = f"threat:alerts:active:{oblast_key}"
                 if is_alert_active:
@@ -432,14 +437,31 @@ async def _record_alert_state(
                 except (ValueError, TypeError):
                     is_oblast_active = bool(active_count)
 
+                oblast_mapping = {
+                    "status": "true" if is_oblast_active else "false",
+                    "time": current_time,
+                    "source": source,
+                    "updated_at": now_epoch,
+                }
+                if is_oblast_active:
+                    active_districts = await redis_client.smembers(active_key)
+                    active_levels = set()
+                    for act_d in active_districts:
+                        if act_d == district_key and is_alert_active and level:
+                            active_levels.add(level)
+                        else:
+                            act_lvl = await redis_client.hget(f"threat:alerts:city:{act_d}", "level")
+                            if act_lvl:
+                                active_levels.add(act_lvl)
+                    if active_levels:
+                        obl_level = "red" if "red" in active_levels else "yellow"
+                        oblast_mapping["level"] = obl_level
+                else:
+                    await redis_client.hdel(f"threat:alerts:{oblast_key}", "level")
+
                 await redis_client.hset(
                     f"threat:alerts:{oblast_key}",
-                    mapping={
-                        "status": "true" if is_oblast_active else "false",
-                        "time": current_time,
-                        "source": source,
-                        "updated_at": now_epoch,
-                    },
+                    mapping=oblast_mapping,
                 )
         except Exception:
             log.exception("Failed to update Redis state for %s", district_key)

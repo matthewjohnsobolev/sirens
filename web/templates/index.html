@@ -143,16 +143,13 @@
            це вставка в JS, а не в розмітку, і рядок має приїхати рівно
            таким, яким його написали, з лапками й екрануванням від
            браузера, а не від Jinja. */
+        map.attributionControl.setPrefix(false);
         L.tileLayer({{ map_tiles_url | tojson }}, {
             attribution: {{ map_tiles_attribution | tojson }},
             maxZoom: 19,
             minZoom: 0,
             subdomains: 'abcd'
         }).addTo(map);
-
-        // Кредит самого сервісу ставимо поруч із кредитом підкладки:
-        // перший про те, хто зібрав тривоги, другий — хто намалював землю.
-        map.attributionControl.addAttribution("<img src='{{  url_for('static', filename='img/favicon.svg')  }}' alt='' class='map-attribution-logo' width='12' height='12'/> <a href='https://www.sirens.live/'>Sirens</a>");
 
         </script>
     </body>

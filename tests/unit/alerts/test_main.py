@@ -2568,6 +2568,7 @@ async def test_alert_history_and_threat_hash_record_base_type(
         if c.args and c.args[0] == "threat:alerts:city:kyiv"
     ][0]
     assert city_call.kwargs["mapping"]["type"] == "air_raid_alert"
+    assert city_call.kwargs["mapping"]["level"] == level
 
     # Deduplication state has composite key
     mock_redis.set.assert_any_await(f"channel_state:{CHANNEL_ID}", f"air_raid_alert:{level}")

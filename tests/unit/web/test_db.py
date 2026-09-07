@@ -705,3 +705,105 @@ def test_aggregate_shelling_selects_latest():
     assert agg["time"] == "11:00"
     assert agg["source"] == "s2"
     assert agg["updated_at"] == 200
+
+
+def test_get_all_threats_data_two_level_alerts(mock_web_redis):
+    store = {
+        "threat:alerts:city:bucha": {
+            "status": "true",
+            "time": "12:00",
+            "level": "yellow",
+            "type": "air_raid_alert",
+            "updated_at": "100",
+        },
+        "threat:alerts:city:boryspil": {
+            "status": "true",
+            "time": "12:05",
+            "type": "air_raid_alert:red",
+            "updated_at": "110",
+        },
+        "threat:alerts:city:fastiv": {
+            "status": "false",
+            "time": "11:30",
+            "type": "air_raid_alert_cancelled",
+            "updated_at": "90",
+        },
+    }
+    sets = {
+        "threat:alerts:active:kyiv_oblast": {"bucha", "boryspil"},
+    }
+    mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
+    result = get_all_threats_data()
+
+    kyiv_obl = result["kyiv_oblast"]
+    assert kyiv_obl["alert"]["status"] is True
+    assert kyiv_obl["alert"]["level"] == "red"
+    assert kyiv_obl["alert"]["type"] == "air_raid_alert:red"
+    assert kyiv_obl["alert"]["coverage"] == "partial"
+
+    districts = kyiv_obl["districts"]
+    assert districts["bucha"]["alert"]["status"] is True
+    assert districts["bucha"]["alert"]["level"] == "yellow"
+    assert districts["bucha"]["alert"]["type"] == "air_raid_alert:yellow"
+
+    assert districts["boryspil"]["alert"]["status"] is True
+    assert districts["boryspil"]["alert"]["level"] == "red"
+    assert districts["boryspil"]["alert"]["type"] == "air_raid_alert:red"
+
+    assert districts["fastiv"]["alert"]["status"] is False
+    assert districts["fastiv"]["alert"]["type"] == "air_raid_alert_cancelled"
+
+
+def test_get_all_threats_data_yellow_only_oblast(mock_web_redis):
+    store = {
+        "threat:alerts:city:bucha": {
+            "status": "true",
+            "time": "12:00",
+            "level": "yellow",
+            "type": "air_raid_alert",
+            "updated_at": "100",
+        },
+    }
+    sets = {
+        "threat:alerts:active:kyiv_oblast": {"bucha"},
+    }
+    mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
+    result = get_all_threats_data()
+
+    kyiv_obl = result["kyiv_oblast"]
+    assert kyiv_obl["alert"]["status"] is True
+    assert kyiv_obl["alert"]["level"] == "yellow"
+    assert kyiv_obl["alert"]["type"] == "air_raid_alert:yellow"
+
+
+def test_rehydrate_state_from_db_with_two_level_alerts(mock_web_pg, mock_web_redis):
+    _, mock_cursor = mock_web_pg
+    now = datetime.datetime.now()
+    mock_cursor.fetchall.return_value = [
+        ("bucha", "kyiv_oblast", "air_raid_alert:yellow", "14:00", now, None),
+        ("boryspil", "kyiv_oblast", "air_raid_alert:red", "14:05", now, None),
+    ]
+
+    pipeline = MagicMock()
+    mock_web_redis.pipeline.return_value = pipeline
+
+    rehydrate_state_from_db()
+
+    bucha_calls = [
+        c for c in pipeline.hset.call_args_list if c.args and c.args[0] == "threat:alerts:city:bucha"
+    ]
+    assert len(bucha_calls) == 1
+    mapping_bucha = bucha_calls[0].kwargs["mapping"]
+    assert mapping_bucha["status"] == "true"
+    assert mapping_bucha["level"] == "yellow"
+
+    boryspil_calls = [
+        c
+        for c in pipeline.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:city:boryspil"
+    ]
+    assert len(boryspil_calls) == 1
+    mapping_boryspil = boryspil_calls[0].kwargs["mapping"]
+    assert mapping_boryspil["status"] == "true"
+    assert mapping_boryspil["level"] == "red"
+

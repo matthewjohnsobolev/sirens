@@ -89,10 +89,10 @@ function threatVariant(kind, threat) {
    після такого переїзду брехав би про те, що показує. */
 const PILL_VARIANTS = {
     idle:      { cls: 'pill--idle',      icon: 'air-raid-alert-cancelled-icon.svg', label: 'Відбій тривоги' },
-    yellow:    { cls: 'pill--yellow',    icon: 'air-raid-alert-icon.svg',           label: 'Жовтий рівень тривоги' },
-    red:       { cls: 'pill--red',       icon: 'air-raid-alert-icon.svg',           label: 'Червоний рівень тривоги' },
-    shelling:  { cls: 'pill--shelling',  icon: 'yellow-logo.svg',                   label: 'Загроза артобстрілу' },
-    explosion: { cls: 'pill--explosion', icon: 'channel-red.svg',                   label: 'Чутно вибухи' },
+    yellow:    { cls: 'pill--yellow',    icon: 'air-raid-alert-yellow-icon.svg',    label: 'Жовтий рівень тривоги' },
+    red:       { cls: 'pill--red',       icon: 'air-raid-alert-red-icon.svg',       label: 'Червоний рівень тривоги' },
+    shelling:  { cls: 'pill--shelling',  icon: 'shelling-icon.svg',                 label: 'Загроза артобстрілу' },
+    explosion: { cls: 'pill--explosion', icon: 'explosion-icon.svg',               label: 'Чутно вибухи' },
     unknown:   { cls: 'pill--unknown',   icon: 'no-data-icon.svg',                  label: 'Немає даних' }
 };
 

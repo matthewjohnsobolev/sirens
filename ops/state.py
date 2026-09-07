@@ -138,6 +138,11 @@ def get_district_status(
             "type": alert_raw.get(
                 "type", "air_raid_alert" if alert_status else "air_raid_alert_cancelled"
             ),
+            "level": alert_raw.get("level") or (
+                alert_raw.get("type", "").split(":")[1]
+                if ":" in alert_raw.get("type", "")
+                else ("red" if alert_status else None)
+            ),
             "time": alert_raw.get("time", "None"),
             "source": alert_raw.get("source", "None"),
             "updated_at": int(alert_raw.get("updated_at", 0) or 0),
@@ -309,6 +314,7 @@ def apply_threat_change(
     pg_conn=None,
     env: str | None = None,
     operator: str | None = None,
+    alert_level: str | None = None,
 ) -> dict[str, Any]:
     """Apply manual status change to Redis and PostgreSQL."""
     if district_key not in DISTRICT_CONFIG:
@@ -377,15 +383,21 @@ def apply_threat_change(
     for change in changes_plan:
         if change["component"] == "alert":
             st_str = "true" if alert_active else "false"
+            city_mapping = {
+                "status": st_str,
+                "time": current_time,
+                "source": source_tag,
+                "type": change["event_type"],
+                "updated_at": now_epoch,
+            }
+            if alert_active:
+                city_mapping["level"] = alert_level or "red"
+            else:
+                city_mapping["level"] = ""
+
             client.hset(
                 f"threat:alerts:city:{district_key}",
-                mapping={
-                    "status": st_str,
-                    "time": current_time,
-                    "source": source_tag,
-                    "type": change["event_type"],
-                    "updated_at": now_epoch,
-                },
+                mapping=city_mapping,
             )
 
             active_key = f"threat:alerts:active:{oblast_key}"
@@ -400,14 +412,30 @@ def apply_threat_change(
             except (ValueError, TypeError):
                 is_oblast_active = bool(active_count)
 
+            oblast_mapping = {
+                "status": "true" if is_oblast_active else "false",
+                "time": current_time,
+                "source": source_tag,
+                "updated_at": now_epoch,
+            }
+            if is_oblast_active:
+                active_districts = client.smembers(active_key)
+                active_levels = set()
+                for act_d in active_districts:
+                    if act_d == district_key and alert_active:
+                        active_levels.add(alert_level or "red")
+                    else:
+                        act_lvl = client.hget(f"threat:alerts:city:{act_d}", "level")
+                        if act_lvl:
+                            active_levels.add(act_lvl)
+                obl_level = "red" if "red" in active_levels else ("yellow" if "yellow" in active_levels else (alert_level or "red"))
+                oblast_mapping["level"] = obl_level
+            else:
+                oblast_mapping["level"] = ""
+
             client.hset(
                 f"threat:alerts:{oblast_key}",
-                mapping={
-                    "status": "true" if is_oblast_active else "false",
-                    "time": current_time,
-                    "source": source_tag,
-                    "updated_at": now_epoch,
-                },
+                mapping=oblast_mapping,
             )
 
             # Update channel state key

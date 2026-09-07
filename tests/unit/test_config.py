@@ -26,8 +26,9 @@ def test_map_tile_key_is_appended_without_breaking_an_existing_query():
     string the operator wrote themselves."""
     plain = "https://tiles/{z}/{x}/{y}.png"
 
-    assert config._with_api_key(plain, "k") == plain + "?api_key=k"
-    assert config._with_api_key(plain + "?r=2", "k") == plain + "?r=2&api_key=k"
+    assert config._with_api_key(plain, "k") == plain + "?key=k"
+    assert config._with_api_key(plain + "?r=2", "k") == plain + "?r=2&key=k"
+    assert config._with_api_key(plain + "?key=own", "k") == plain + "?key=own"
     assert config._with_api_key(plain + "?api_key=own", "k") == plain + "?api_key=own"
     assert config._with_api_key(plain, "") == plain
 

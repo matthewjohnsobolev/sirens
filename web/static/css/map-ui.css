@@ -550,20 +550,20 @@
 
 /* Плашка атрибуції зібрана з токенів системи: напівпрозоре біле поле
    із розмиттям підкладки (backdrop-filter), тонка волосінь, радіус
-   пігулки (--radius-pill) та шрифт Inter замість сирого дефолту Leaflet.
+   вкладеного елемента (--radius-nested) та шрифт Inter замість сирого дефолту Leaflet.
    Розмір компактний, щоб не перевантажувати кут мапи. */
 .leaflet-container .leaflet-control-attribution {
     box-sizing: border-box;
-    display: inline-flex;
-    align-items: center;
+    display: inline-block;
+    vertical-align: middle;
     white-space: nowrap;
     margin: 0;
-    padding: 2.5px 10px;
+    padding: 2.5px 8px;
     background: rgba(255, 255, 255, 0.85);
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
     border: 1px solid var(--hairline);
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-nested);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
     font-family: var(--font);
     font-size: var(--text-secondary);
@@ -595,8 +595,15 @@
     text-decoration: underline;
 }
 
+/* Розділювач між провайдерами */
+.map-attribution-divider {
+    display: inline-block;
+    margin: 0 5px;
+    color: var(--ink-muted);
+}
+
 /* Вертикальний розділювач Leaflet (|) */
-.leaflet-container .leaflet-control-attribution span[aria-hidden="true"] {
+.leaflet-container .leaflet-control-attribution span[aria-hidden="true"]:not(.map-attribution-divider) {
     margin: 0 4px;
     color: var(--hairline-hover);
     font-weight: 300;
@@ -610,16 +617,6 @@
     height: 8px;
     margin-right: 4px;
     border-radius: 1px;
-}
-/* Кнопка згортання на десктопі прихована: тут атрибуція завжди розгорнута */
-.map-attribution-toggle {
-    display: none;
-}
-
-.map-attribution-content {
-    display: inline-flex;
-    align-items: center;
-    white-space: nowrap;
 }
 
 /* ── Поява ──────────────────────────────────────────────────────────── */

@@ -179,6 +179,13 @@ def test_index_does_not_ship_libraries_it_never_calls(client):
     # basemap no longer draws. The bundles are what must not ship -- the
     # comment explaining why they went is meant to stay.
     assert "maplibre-gl" not in html.lower()
+    assert "demo.js" not in html.lower()
+
+
+def test_index_does_not_ship_demo_mode_on_query_param(client):
+    """The demo mode was removed: requesting ?demo must not load demo assets."""
+    html = client.get("/?demo").get_data(as_text=True)
+    assert "demo.js" not in html.lower()
 
 
 def test_index_credits_the_basemap_it_actually_uses(client):

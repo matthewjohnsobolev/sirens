@@ -88,15 +88,15 @@ UPTIMEROBOT_WEB_MONITOR_KEY = os.getenv("UPTIMEROBOT_WEB_MONITOR_KEY", "")
 # CARTO віддає ці тайли за ключем, і без нього кожна плитка приїжджає з
 # написом «API KEY REQUIRED» упоперек. Ключ кладуть у MAP_TILES_API_KEY —
 # він допишеться до адреси сам. Якщо провайдер інший і параметр у нього
-# зветься не api_key, простіше задати всю адресу через MAP_TILES_URL.
+# зветься не key, простіше задати всю адресу через MAP_TILES_URL.
 #
 # Кредит іде поруч і теж налаштовується: змінити джерело тайлів, не
 # змінивши підпису під ними, означає порушити чужу ліцензію.
 def _with_api_key(url: str, key: str) -> str:
     """Adds the key to the tile URL, unless the URL already carries one."""
-    if not key or "api_key=" in url:
+    if not key or "key=" in url or "api_key=" in url:
         return url
-    return f"{url}{'&' if '?' in url else '?'}api_key={key}"
+    return f"{url}{'&' if '?' in url else '?'}key={key}"
 
 
 MAP_TILES_API_KEY = os.getenv("MAP_TILES_API_KEY", "").strip()

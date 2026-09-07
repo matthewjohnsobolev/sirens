@@ -109,8 +109,9 @@ MAP_TILES_URL = _with_api_key(
 )
 MAP_TILES_ATTRIBUTION = os.getenv(
     "MAP_TILES_ATTRIBUTION",
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
-    '&middot; &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    '&copy;&nbsp;<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    '<span class="map-attribution-divider" aria-hidden="true">&middot;</span>'
+    '&copy;&nbsp;<a href="https://carto.com/attributions">CARTO</a>',
 ).strip()
 
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")

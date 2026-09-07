@@ -18,6 +18,8 @@ from config import (
     GA_MEASUREMENT_ID,
     HEALTHCHECKS_WEB_PING_URL,
     LOGS_PATH,
+    MAP_TILES_ATTRIBUTION,
+    MAP_TILES_URL,
     SENTRY_DSN,
     SITE_URL,
     VERSION,
@@ -416,6 +418,8 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
             "version": VERSION,
             "site_url": SITE_URL,
             "ga_measurement_id": GA_MEASUREMENT_ID,
+            "map_tiles_url": MAP_TILES_URL,
+            "map_tiles_attribution": MAP_TILES_ATTRIBUTION,
         }
 
     app.after_request(add_caching_headers)

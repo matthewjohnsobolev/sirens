@@ -1,8 +1,14 @@
 :root {
-    --pill-orange: #FFCA9A;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
                  Consolas, 'Liberation Mono', monospace;
     --pill-time-color: rgba(0, 0, 0, 0.6);
+
+    /* Вибухи мапа поки не малює (RENDER_EXPLOSIONS у districts.js), але
+       стан нікуди не подівся — і колір йому потрібен свій. Червоний уже
+       забрав червоний рівень тривоги, тож вибухи говорять глибшим
+       відтінком: якщо стан повернуть, два червоних мають розрізнятися. */
+    --status-crimson: #FF9E9E;
+    --status-crimson-hover: #FFACAC;
 }
 
 .oblast-caption-container {
@@ -28,89 +34,11 @@
     margin-bottom: 10px;
 }
 
-.green-oblast-button {
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    border: none; 
-    width: 100%;
-    height: 40px;
-    display: flex;
-    padding: 0;
-    border-radius: 10px;
-    align-items: center; 
-    color: #000;
-    background-color: #B9FFA8;
-}
-  
-.orange-oblast-button {
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    border: none; 
-    width: 100%;
-    height: 40px;
-    display: flex;
-    padding: 0;
-    border-radius: 10px;
-    align-items: center; 
-    color: #000;
-    background-color: var(--pill-orange);
-}
-  
-.red-oblast-button {
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    border: none;
-    width: 100%;
-    height: 40px;
-    display: flex;
-    padding: 0;
-    border-radius: 10px;
-    align-items: center; 
-    color: #000;
-    background-color: #FFB7B7;
-}
-  
-.gray-oblast-button {
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    border: none; 
-    width: 100%;
-    height: 40px;
-    display: flex;
-    padding: 0;
-    border-radius: 10px;
-    align-items: center; 
-    color: #000;
-    background-color: #BFF0FF;
-    text-align: left;
-    line-height: 14px;
-    background-color: #E8E8E8;
-}
-
-#indent {
-    margin-top: 10px;
-}
-  
-.yellow-oblast-button {
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    border: none;
-    width: 100%;
-    height: 40px;
-    display: flex;
-    padding: 0;
-    border-radius: 10px;
-    align-items: center; 
-    color: #000;
-    background-color: #FFF496;
-}
-  
-.hatched-oblast-button {
+/* Плашка одна на всі стани, а стан міняє тільки колір поля. Раніше кожен
+   стан мав власне правило з повним набором метрик — і коли кольори
+   переїхали між станами, шість однакових копій довелося б правити шість
+   разів. */
+.oblast-pill {
     font-family: 'Inter', sans-serif;
     font-size: 12px;
     font-weight: 500;
@@ -121,14 +49,49 @@
     padding: 0;
     border-radius: 10px;
     align-items: center;
+    text-align: left;
+    line-height: 14px;
     color: #000;
-    background-color: var(--pill-orange);
-    /* Fallback for browsers without color-mix support */
-    background-image: repeating-linear-gradient(115deg,
-        #FFCA9A 0 8px, #F0BE91 8px 16px);
-    background-image: repeating-linear-gradient(115deg,
-        var(--pill-orange) 0 8px,
-        color-mix(in srgb, var(--pill-orange) 94%, #000) 8px 16px);
+    background-color: var(--pill-bg, var(--status-gray));
+    transition: background-color var(--motion);
+}
+
+.oblast-pill:hover {
+    background-color: var(--pill-bg-hover, var(--status-gray-hover));
+}
+
+.pill--idle {
+    --pill-bg: var(--status-green);
+    --pill-bg-hover: var(--status-green-hover);
+}
+
+.pill--yellow {
+    --pill-bg: var(--status-yellow);
+    --pill-bg-hover: #FFF6AB;
+}
+
+.pill--shelling {
+    --pill-bg: var(--status-orange);
+    --pill-bg-hover: var(--status-orange-hover);
+}
+
+.pill--red {
+    --pill-bg: var(--status-red);
+    --pill-bg-hover: var(--status-red-hover);
+}
+
+.pill--explosion {
+    --pill-bg: var(--status-crimson);
+    --pill-bg-hover: var(--status-crimson-hover);
+}
+
+.pill--unknown {
+    --pill-bg: var(--status-gray);
+    --pill-bg-hover: var(--status-gray-hover);
+}
+
+#indent {
+    margin-top: 10px;
 }
 
 .icon-container {
@@ -181,34 +144,6 @@
     color: initial;
 }
   
-.green-oblast-button:hover {
-    background-color: #C8FFBB; 
-}
-  
-.orange-oblast-button:hover {
-    background-color: #FFD5AE; 
-}
-  
-.red-oblast-button:hover {
-    background-color: #FFC3C3; 
-}
-
-.yellow-oblast-button:hover {
-    background-color: #FFF6AB; 
-}
-
-.gray-oblast-button:hover {
-    background-color: #EEEEEE;
-}
-
-.hatched-oblast-button:hover {
-    background-image: repeating-linear-gradient(115deg,
-        #FFD5AF 0 8px, #F0C8A5 8px 16px);
-    background-image: repeating-linear-gradient(115deg,
-        color-mix(in srgb, var(--pill-orange) 79%, #FFF) 0 8px,
-        color-mix(in srgb, color-mix(in srgb, var(--pill-orange) 79%, #FFF) 94%, #000) 8px 16px);
-}
-
 .leaflet-popup-content > .info-block {
     width: 310px;
 }
@@ -303,10 +238,4 @@
         scrollbar-width: thin;
         scrollbar-color: rgba(0, 0, 0, 0.25) rgba(0, 0, 0, 0.05);
     }
-}
-
-.oblast-partial {
-    fill: url(#alert-hatch);
-    fill-opacity: 1;
-    stroke: #FF831A;
 }

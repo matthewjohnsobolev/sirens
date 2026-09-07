@@ -36,8 +36,7 @@
         <link rel="preconnect" href="https://unpkg.com" crossorigin>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="preconnect" href="https://basemaps.cartocdn.com">
-        <link rel="preconnect" href="https://tiles.basemaps.cartocdn.com">
+        <link rel="preconnect" href="https://a.basemaps.cartocdn.com">
         <link rel="preconnect" href="https://geo.sirens.live" crossorigin>
 
         <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
@@ -46,20 +45,29 @@
         <link rel="manifest" href="{{ static_url('manifest.webmanifest') }}">
         <link rel="stylesheet" href="{{ static_url('css/reset.css') }}">
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-        <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" integrity="sha256-Q8HYhrX98KrE5xNb1vhLgj2fSCg6ZIASZl+b5SwBOJ8=" crossorigin=""/>
         <link rel="stylesheet" href="{{ static_url('css/tokens.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/main.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/map-ui.css') }}">
+        <link rel="stylesheet" href="{{ static_url('css/map-layers.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/mobile.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/oblasts.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/channels.css') }}">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-        <script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js" integrity="sha256-InYlnHvY7GMswFURXv2tU3g7fabnEE+tTEg36kZ9kI0=" crossorigin=""></script>
-        <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js" integrity="sha256-Hmz4yz61/ZCYeaob82o4P7UGyaWy27+rq85lopTdH8s=" crossorigin=""></script>
-        <script src="{{ static_url('js/threats.js') }}" type="text/javascript"></script>
+        <!-- Порядок тут не випадковий. districts.js — це словник станів і
+             перелік міст, з нього починається все інше. demo.js читає той
+             перелік і мусить встигнути підмінити /api до того, як його
+             спитають, — а питає threats.js одразу, щойно виконається.
+
+             Демо їде на сторінку лише коли по нього прийшли: той, хто
+             відкрив мапу подивитися на справжню тривогу, не має качати
+             кілобайти вигаданої. -->
         <script src="{{ static_url('js/districts.js') }}" type="text/javascript"></script>
+        {% if request.args.get('demo') is not none %}
+        <script src="{{ static_url('js/demo.js') }}" type="text/javascript"></script>
+        {% endif %}
+        <script src="{{ static_url('js/threats.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/cities.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/oblasts.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/map-ui.js') }}" defer></script>
@@ -122,212 +130,29 @@
         // цього блока, тож мапа має бути доступна йому за іменем.
         window.sirensMap = map;
 
-        // Окрема панель для підписів над полігонами областей.
-        // За замовчуванням Leaflet має:
-        // tilePane: z-index 200 (підкладка мапи: земля, вода, дороги)
-        // overlayPane: z-index 400 (полігони областей GeoJSON та штрихування тривог)
-        // labelsPane: z-index 450 (підписи міст поверх полігонів)
-        // markerPane: z-index 600 (іконки каналів і загроз над підписами)
-        // popupPane: z-index 700 (картки інформації)
-        map.createPane('labelsPane');
-        const labelsPane = map.getPane('labelsPane');
-        labelsPane.style.zIndex = '450';
-        labelsPane.style.pointerEvents = 'none';
+        /* Підкладка — растрові тайли. Векторну тут тримали заради
+           українських підписів: у растровому тайлі текст запечений у
+           картинку, і «Kharkiv» там не перекласти нічим. Тепер підписів у
+           підкладки немає взагалі — їх малює сама мапа своїм шрифтом, — і
+           разом із ними відпала єдина причина везти на сторінку MapLibre
+           GL (близько 250 КБ стисненого JS) і вимагати WebGL. Растр
+           віддає ту саму Positron готовими картинками.
 
-        // Підкладка векторна, і причина одна: підписи мають бути українськими.
-        // У растровому тайлі текст запечений у картинку — «Kharkiv» там не
-        // перекласти нічим. У векторному підпис малює браузер, тож мова стає
-        // властивістю стилю: беремо name:uk, якщо він є в даних OSM.
-        //
-        // Ціна рішення — MapLibre GL (близько 250 КБ стисненого JS) і WebGL.
-        // Тому нижче лишається растровий запасний шлях: мапа тривог мусить
-        // відкриватися й на телефоні, який WebGL не вміє.
-        const CARTO_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
-        // Кредит самої мапи ставимо руками й одразу: він потрібен обом
-        // підкладкам. Ліцензійний рядок джерела дописує сама підкладка —
-        // векторна бере його з tiles.json, растрова має його в опції нижче.
-        // Так кредит завжди відповідає тому, що реально намальовано.
+           Джерело й кредит приходять з конфігурації: провайдера міняють у
+           .env, не чіпаючи шаблон. Обидва значення йдуть через tojson —
+           це вставка в JS, а не в розмітку, і рядок має приїхати рівно
+           таким, яким його написали, з лапками й екрануванням від
+           браузера, а не від Jinja. */
+        L.tileLayer({{ map_tiles_url | tojson }}, {
+            attribution: {{ map_tiles_attribution | tojson }},
+            maxZoom: 19,
+            minZoom: 0,
+            subdomains: 'abcd'
+        }).addTo(map);
+
+        // Кредит самого сервісу ставимо поруч із кредитом підкладки:
+        // перший про те, хто зібрав тривоги, другий — хто намалював землю.
         map.attributionControl.addAttribution("<img src='{{  url_for('static', filename='img/favicon.svg')  }}' alt='' class='map-attribution-logo' width='12' height='12'/> <a href='https://www.sirens.live/'>Sirens</a>");
-
-        // Порядок джерел назви: українська → місцева → англійська. Перше дає
-        // Харків замість Kharkiv, друге рятує дрібні села, яким ніхто не
-        // проставив name:uk, третє — латиницю там, де немає й місцевої.
-        const NAME_UK = ['coalesce', ['get', 'name:uk'], ['get', 'name'], ['get', 'name_en']];
-
-        // Шари з підписами країн, континентів та адміністративних областей/штатів.
-        // На мапі тривог вони створюють візуальний шум і перекривають міста.
-        const HIDDEN_PLACE_LAYERS = new Set([
-            'place_country_1',
-            'place_country_2',
-            'place_continent',
-            'place_state'
-        ]);
-
-        // Стиль CARTO нижче z13 підписує все англійською (name_en), і саме це
-        // ми й перебиваємо. Чіпаємо тільки ті шари, що підписують назви:
-        // номери будинків і номери доріг перекладати нема чого.
-        function localizeNames(style) {
-            style.layers = style.layers.filter(layer => !HIDDEN_PLACE_LAYERS.has(layer.id));
-            for (const layer of style.layers) {
-                const field = layer.layout && layer.layout['text-field'];
-                if (field && JSON.stringify(field).includes('name')) {
-                    layer.layout['text-field'] = NAME_UK;
-
-                    // Чіткі підписи міст і селищ над заливкою тривог:
-                    // темний графітовий колір і чітке біле гало товщиною 2px
-                    if (!layer.paint) layer.paint = {};
-                    layer.paint['text-color'] = '#16181A';
-                    layer.paint['text-halo-color'] = '#FFFFFF';
-                    layer.paint['text-halo-width'] = 2.0;
-                }
-            }
-            return style;
-        }
-
-        function webglWorks() {
-            try {
-                const probe = document.createElement('canvas');
-                return !!(window.WebGLRenderingContext &&
-                          (probe.getContext('webgl') || probe.getContext('experimental-webgl')));
-            } catch (error) {
-                return false;
-            }
-        }
-
-        // Запасна підкладка: растровий OSM, як було до вектора. Гірші підписи —
-        // краще, ніж порожній екран там, де тривога.
-        function addRasterFallback() {
-            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>",
-                maxZoom: 19,
-                minZoom: 0,
-            }).addTo(map);
-        }
-
-        if (webglWorks()) {
-            fetch(CARTO_STYLE)
-                .then(response => {
-                    if (!response.ok) throw new Error('style ' + response.status);
-                    return response.json();
-                })
-                .then(style => {
-                    // Розділяємо підкладку на геометрію (земля, вода, дороги) під
-                    // полігонами областей та підписи (міста, річки) поверх полігонів.
-                    // Так заливка тривоги не закриває назви міст.
-                    const baseStyle = Object.assign({}, style, {
-                        layers: style.layers.filter(layer => layer.type !== 'symbol')
-                    });
-
-                    const labelsStyle = localizeNames(Object.assign({}, style, {
-                        layers: style.layers.filter(layer => layer.type === 'symbol')
-                    }));
-
-                    L.maplibreGL({ style: baseStyle, pane: 'tilePane' }).addTo(map);
-                    L.maplibreGL({
-                        style: labelsStyle,
-                        pane: 'labelsPane',
-                        attributionControl: false
-                    }).addTo(map);
-                })
-                .catch(error => {
-                    console.error('Basemap style failed, falling back to raster:', error);
-                    addRasterFallback();
-                });
-        } else {
-            addRasterFallback();
-        }
-
-        var greenChannelIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/air-raid-alert-cancelled-marker.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14],
-        });
-
-        var orangeChannelIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/air-raid-alert-marker.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var redChannelIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/channel-red.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var yellowChannelIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/channel-yellow.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var purpleChannelIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/channel-purple.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var missileIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/missile-marker.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var reconDroneIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/recon-drone-marker.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var kamikazeDroneIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/kamikaze-drone-marker.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var guidedBombIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/guided-bomb-marker.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var cityIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/city-marker.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var airfieldIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/airfield-marker.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var portIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/port-marker.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        var waterIcon = L.icon({
-            iconUrl: "{{ url_for('static', filename='img/icons/water-marker.svg') }}",
-            iconSize: [27.5, 27.5],
-            popupAnchor: [0, -14]
-        });
-
-        function createMarker(lat, lng, icon, popupContent) {
-            const marker = L.marker([lat, lng], {icon: icon})
-                .bindPopup(popupContent)
-                .addTo(map);
-
-            return marker;
-        }
-
-        function updateMarker(marker, isActive) {
-            if (!isActive) {
-                marker.remove();
-            }
-        }
 
         </script>
     </body>

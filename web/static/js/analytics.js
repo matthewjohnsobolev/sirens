@@ -8,22 +8,12 @@
         if (window.track) window.track(name, params);
     }
 
-    var PILL_STATES = {
-        'green-oblast-button': 'idle',
-        'orange-oblast-button': 'alert',
-        'hatched-oblast-button': 'partial',
-        'yellow-oblast-button': 'shelling',
-        'red-oblast-button': 'explosion',
-        'gray-oblast-button': 'unknown'
-    };
-
+    // Стан плашка називає атрибутом, а не класом: класи — це про колір, а
+    // кольори станів на мапі вже мінялися місцями. Подія має рахувати
+    // «червоний рівень тривоги», а не «червону кнопку».
     function pillState(link) {
         var button = link.querySelector('button');
-        if (!button) return 'unknown';
-        for (var cls in PILL_STATES) {
-            if (button.classList.contains(cls)) return PILL_STATES[cls];
-        }
-        return 'unknown';
+        return (button && button.getAttribute('data-state')) || 'unknown';
     }
 
     // Район усередині обласного попапа має власну назву, місто — свою,

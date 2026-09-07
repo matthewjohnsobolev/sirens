@@ -1,11 +1,48 @@
-const ALERT_COLORS = {
-    IDLE: '#8A8A8A',
-    ALERT: '#FF831A',
-    EXPLOSION: '#FF1A1A',
-    SHELLING: '#FFDA1A'
+/* Палітра мапи лежить у tokens.css поряд із рештою дизайн-системи, а сюди
+   лише зчитується: колір стану потрібен і стилям (полігони, маркери,
+   плашки), і скриптам (патерни штрихування збираються в SVG, де змінної
+   CSS не підставиш). Два списки кольорів розійшлися б через тиждень, тож
+   джерело залишається одне.
+
+   Запасні значення — не марнослів'я: якщо стилі ще не приїхали або файл
+   віддали без tokens.css, мапа мусить намалюватися хоч якось, а не
+   лишитися безбарвною. */
+function mapColor(token, fallback) {
+    const root = document.documentElement;
+    const value = getComputedStyle(root).getPropertyValue(token).trim();
+    return value || fallback;
+}
+
+function mapNumber(token, fallback) {
+    const value = parseFloat(mapColor(token, ''));
+    return Number.isFinite(value) ? value : fallback;
+}
+
+// Колір рівня разом із його прозорістю: саме цією парою заливається і
+// суцільна область, і смуга штрихування. Одна пара на обидва випадки —
+// інакше «жовтий скрізь» і «жовтий у частині районів» вийдуть двома
+// різними жовтими.
+const MAP_TINTS = {
+    yellow: {
+        color: mapColor('--map-yellow', '#FFC53D'),
+        alpha: mapNumber('--map-yellow-alpha', 0.36)
+    },
+    red: {
+        color: mapColor('--map-red', '#F04438'),
+        alpha: mapNumber('--map-red-alpha', 0.40)
+    }
 };
 
-const FALLBACK_ORDER = ['explosion', 'alert', 'shelling'];
+/* Вибухи мапа поки не малює. Це рішення про те, що показувати, а не
+   обмеження даних: поле explosion лишається у відповіді й далі, просто
+   не бере участі ні у виборі стану, ні в кольорі. Повернути — одним
+   значенням тут. */
+const RENDER_EXPLOSIONS = false;
+
+const THREAT_ORDER = ['explosion', 'alert', 'shelling'];
+const FALLBACK_ORDER = THREAT_ORDER.filter(
+    kind => kind !== 'explosion' || RENDER_EXPLOSIONS
+);
 
 function pickDominant(threats) {
     if (!threats) return null;
@@ -20,13 +57,43 @@ function pickDominant(threats) {
     return best;
 }
 
+/* Дворівнева тривога: жовтий рівень попереджає, червоний жене в укриття.
+   Рівень приходить або окремим полем level, або хвостом типу
+   ('air_raid_alert:red') — беремо будь-який із двох, бо джерело може
+   говорити і так, і так.
+
+   Поки рівня немає в жодному вигляді, тривога вважається червоною. Це
+   свідомий вибір на користь обережності: до дворівневої системи
+   «Повітряна тривога» означала саме негайну загрозу, і применшити її
+   гірше, ніж перебільшити. */
+const DEFAULT_ALERT_LEVEL = 'red';
+const ALERT_LEVELS = { yellow: 'yellow', red: 'red' };
+
+function alertLevel(alert) {
+    if (!alert) return DEFAULT_ALERT_LEVEL;
+    const raw = alert.level
+        || (typeof alert.type === 'string' ? alert.type.split(':')[1] : null);
+    return ALERT_LEVELS[raw] || DEFAULT_ALERT_LEVEL;
+}
+
+/* Стан загрози в один рядок для плашки, маркера й полігона: тривога
+   розкладається на свій рівень, решта загроз лишається собою. */
+function threatVariant(kind, threat) {
+    if (kind === 'alert') return alertLevel(threat);
+    return kind || 'idle';
+}
+
+/* Класи плашок названі за станом, а не за кольором. Кольори щойно
+   переїхали — помаранчевий із тривоги пішов в артобстріл, жовтий і
+   червоний стали рівнями тривоги, — і клас на кшталт .orange-oblast-button
+   після такого переїзду брехав би про те, що показує. */
 const PILL_VARIANTS = {
-    idle:      { cls: 'green-oblast-button',   icon: 'air-raid-alert-cancelled-icon.svg', label: 'Відбій тривоги' },
-    alert:     { cls: 'orange-oblast-button',  icon: 'air-raid-alert-icon.svg',           label: 'Повітряна тривога' },
-    partial:   { cls: 'hatched-oblast-button', icon: 'air-raid-alert-icon.svg',           label: 'Тривога у районах' },
-    shelling:  { cls: 'yellow-oblast-button',  icon: 'yellow-logo.svg',                   label: 'Загроза артобстрілу' },
-    explosion: { cls: 'red-oblast-button',     icon: 'channel-red.svg',                   label: 'Чутно вибухи' },
-    unknown:   { cls: 'gray-oblast-button',    icon: 'no-data-icon.svg',                  label: 'Немає даних' }
+    idle:      { cls: 'pill--idle',      icon: 'air-raid-alert-cancelled-icon.svg', label: 'Відбій тривоги' },
+    yellow:    { cls: 'pill--yellow',    icon: 'air-raid-alert-icon.svg',           label: 'Жовтий рівень тривоги' },
+    red:       { cls: 'pill--red',       icon: 'air-raid-alert-icon.svg',           label: 'Червоний рівень тривоги' },
+    shelling:  { cls: 'pill--shelling',  icon: 'yellow-logo.svg',                   label: 'Загроза артобстрілу' },
+    explosion: { cls: 'pill--explosion', icon: 'channel-red.svg',                   label: 'Чутно вибухи' },
+    unknown:   { cls: 'pill--unknown',   icon: 'no-data-icon.svg',                  label: 'Немає даних' }
 };
 
 const MINUTE = 60;
@@ -61,8 +128,11 @@ function renderPill({ variant, text, updatedAt, source, showTime = true }) {
     const v = PILL_VARIANTS[variant] || PILL_VARIANTS.unknown;
     const duration = (showTime && updatedAt) ? formatDuration(updatedAt) : '';
     const timeHtml = duration ? `<div class="oblast-description-time">${duration}</div>` : '';
+    // Стан їде окремим атрибутом, а не читається з класу: аналітика має
+    // рахувати те, що сталося, а не те, як воно пофарбоване. Кольори на
+    // мапі вже переїжджали — назви станів лишилися.
     const body = `
-        <button class="${v.cls}">
+        <button class="oblast-pill ${v.cls}" data-state="${variant || 'unknown'}">
             <div class="icon-container"><img class="icon" src="static/img/icons/${v.icon}"></div>
             <div class="oblast-description-text">${text || v.label}</div>
             ${timeHtml}
@@ -84,7 +154,11 @@ function districtPillState(oblastData, key) {
     const dominant = pickDominant(threats) || 'idle';
     const winner = threats[dominant] || district.alert || {};
 
-    return { variant: dominant, updatedAt: winner.updated_at, source: winner.source };
+    return {
+        variant: threatVariant(dominant, winner),
+        updatedAt: winner.updated_at,
+        source: winner.source
+    };
 }
 
 const DISTRICT_MARKERS = [
@@ -160,9 +234,12 @@ function getMarkerThreats(apiData, marker) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-        ALERT_COLORS,
+        MAP_TINTS,
         FALLBACK_ORDER,
         PILL_VARIANTS,
+        RENDER_EXPLOSIONS,
+        alertLevel,
+        threatVariant,
         pickDominant,
         formatDuration,
         messageLink,

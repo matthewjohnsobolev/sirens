@@ -138,7 +138,8 @@ def get_district_status(
             "type": alert_raw.get(
                 "type", "air_raid_alert" if alert_status else "air_raid_alert_cancelled"
             ),
-            "level": alert_raw.get("level") or (
+            "level": alert_raw.get("level")
+            or (
                 alert_raw.get("type", "").split(":")[1]
                 if ":" in alert_raw.get("type", "")
                 else ("red" if alert_status else None)
@@ -428,7 +429,11 @@ def apply_threat_change(
                         act_lvl = client.hget(f"threat:alerts:city:{act_d}", "level")
                         if act_lvl:
                             active_levels.add(act_lvl)
-                obl_level = "red" if "red" in active_levels else ("yellow" if "yellow" in active_levels else (alert_level or "red"))
+                obl_level = (
+                    "red"
+                    if "red" in active_levels
+                    else ("yellow" if "yellow" in active_levels else (alert_level or "red"))
+                )
                 oblast_mapping["level"] = obl_level
             else:
                 oblast_mapping["level"] = ""

@@ -20,6 +20,18 @@ def test_config_paths():
     assert config.VERSION == "1.1.0"
 
 
+def test_map_tile_key_is_appended_without_breaking_an_existing_query():
+    """CARTO stamps "API KEY REQUIRED" across every tile without a key, so the
+    key has to reach the URL -- but never twice, and never by eating a query
+    string the operator wrote themselves."""
+    plain = "https://tiles/{z}/{x}/{y}.png"
+
+    assert config._with_api_key(plain, "k") == plain + "?api_key=k"
+    assert config._with_api_key(plain + "?r=2", "k") == plain + "?r=2&api_key=k"
+    assert config._with_api_key(plain + "?api_key=own", "k") == plain + "?api_key=own"
+    assert config._with_api_key(plain, "") == plain
+
+
 def test_config_r2_endpoint_defaults_when_account_id_set(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "account123")
     monkeypatch.delenv("CLOUDFLARE_R2_S3_ENDPOINT", raising=False)

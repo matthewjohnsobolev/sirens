@@ -175,24 +175,44 @@ def test_index_does_not_ship_libraries_it_never_calls(client):
     assert "jquery" not in html.lower()
     assert "papaparse" not in html.lower()
     assert html.count("leaflet.js") == 1
+    # MapLibre left with the vector basemap: ~250 KB of JS for labels the
+    # basemap no longer draws. The bundles are what must not ship -- the
+    # comment explaining why they went is meant to stay.
+    assert "maplibre-gl" not in html.lower()
 
 
 def test_index_credits_the_basemap_it_actually_uses(client):
-    """The vector basemap pulls the CARTO/OSM licence line from its own
-    tiles.json, and the raster fallback carries the OSM copyright line."""
+    """Raster tiles carry no licence line of their own, so the credit ships
+    with the page -- and it has to name whoever actually drew the ground."""
     html = client.get("/").get_data(as_text=True)
 
     assert "basemaps.cartocdn.com" in html
     assert "openstreetmap.org/copyright" in html
+    assert "carto.com/attributions" in html
 
 
-def test_index_keeps_a_basemap_for_browsers_without_webgl(client):
-    """The vector basemap needs WebGL. An alerts map has to open on the phone
-    someone actually holds, so the raster path must survive."""
+def test_index_draws_the_ground_with_plain_raster_tiles(client):
+    """The vector basemap was here for Ukrainian labels; the basemap carries no
+    labels at all now, so it went back to raster -- and with it went MapLibre
+    and the WebGL requirement. An alerts map has to open on the phone someone
+    actually holds."""
     html = client.get("/").get_data(as_text=True)
 
-    assert "webglWorks" in html
-    assert "tile.openstreetmap.org" in html
+    assert "L.tileLayer(" in html
+    assert "light_nolabels" in html
+    assert "webglWorks" not in html
+
+
+def test_index_lets_the_basemap_provider_be_swapped_in_the_environment(client, monkeypatch):
+    """A provider that wants an API key is configured, not patched into the
+    template -- and its credit line travels with it."""
+    monkeypatch.setattr(web_server, "MAP_TILES_URL", "https://tiles.example/{z}/{x}/{y}.png?key=k")
+    monkeypatch.setattr(web_server, "MAP_TILES_ATTRIBUTION", "&copy; Example")
+
+    html = client.get("/").get_data(as_text=True)
+
+    assert "https://tiles.example/{z}/{x}/{y}.png?key=k" in html
+    assert "Example" in html
 
 
 def test_static_url_fingerprint_follows_the_file_contents(app, tmp_path):
@@ -572,9 +592,7 @@ def test_report_notice_icon_keeps_the_popup_proportion(app):
     popup = (Path(app.static_folder) / "css" / "oblasts.css").read_text(encoding="utf-8")
 
     pill = int(re.search(r"--control-h:(\d+)px", css).group(1))
-    popup_pill = int(
-        re.search(r"\.green-oblast-button\s*\{[^}]*?height:\s*(\d+)px", popup, re.S).group(1)
-    )
+    popup_pill = int(re.search(r"\.oblast-pill\s*\{[^}]*?height:\s*(\d+)px", popup, re.S).group(1))
     popup_icon = int(re.search(r"\.icon\s*\{[^}]*?height:\s*(\d+)px", popup, re.S).group(1))
 
     assert f".notice-icon img{{width:{pill * popup_icon // popup_pill}px" in css

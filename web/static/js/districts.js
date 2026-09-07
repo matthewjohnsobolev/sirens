@@ -8,6 +8,7 @@
    віддали без tokens.css, мапа мусить намалюватися хоч якось, а не
    лишитися безбарвною. */
 function mapColor(token, fallback) {
+    if (typeof document === 'undefined' || !document.documentElement) return fallback;
     const root = document.documentElement;
     const value = getComputedStyle(root).getPropertyValue(token).trim();
     return value || fallback;

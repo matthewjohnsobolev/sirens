@@ -606,3 +606,81 @@ def test_sync_maintenance_state():
     with patch("ops.state.push_maintenance_to_kv", return_value=True):
         inactive_res = sync_maintenance_state(redis_conn=mock_redis)
     assert inactive_res.get("active") is False
+
+
+def test_get_district_status_level():
+    mock_redis = MagicMock()
+    # 1. Level present in hash
+    mock_redis.hgetall.side_effect = [
+        {"status": "true", "type": "air_raid_alert", "level": "yellow"},
+        {"status": "false"},
+        {"status": "true"},
+    ]
+    st1 = get_district_status("bucha", redis_conn=mock_redis)
+    assert st1["alert"]["status"] is True
+    assert st1["alert"]["level"] == "yellow"
+
+    # 2. Level in type string
+    mock_redis.hgetall.side_effect = [
+        {"status": "true", "type": "air_raid_alert:yellow"},
+        {"status": "false"},
+        {"status": "true"},
+    ]
+    st2 = get_district_status("bucha", redis_conn=mock_redis)
+    assert st2["alert"]["status"] is True
+    assert st2["alert"]["level"] == "yellow"
+
+    # 3. Default to red when active without level
+    mock_redis.hgetall.side_effect = [
+        {"status": "true", "type": "air_raid_alert"},
+        {"status": "false"},
+        {"status": "true"},
+    ]
+    st3 = get_district_status("bucha", redis_conn=mock_redis)
+    assert st3["alert"]["status"] is True
+    assert st3["alert"]["level"] == "red"
+
+    # 4. Inactive alert has None level
+    mock_redis.hgetall.side_effect = [
+        {"status": "false", "type": "air_raid_alert_cancelled"},
+        {"status": "false"},
+        {"status": "false"},
+    ]
+    st4 = get_district_status("bucha", redis_conn=mock_redis)
+    assert st4["alert"]["status"] is False
+    assert st4["alert"]["level"] is None
+
+
+def test_apply_threat_change_with_alert_level():
+    mock_redis = MagicMock()
+    mock_redis.scard.return_value = 1
+    mock_redis.smembers.return_value = {"bucha"}
+    mock_pg = MagicMock()
+    mock_cur = MagicMock()
+    mock_pg.cursor.return_value.__enter__.return_value = mock_cur
+
+    result = apply_threat_change(
+        district_key="bucha",
+        alert_active=True,
+        shelling_active=None,
+        dry_run=False,
+        redis_conn=mock_redis,
+        pg_conn=mock_pg,
+        env="dev",
+        alert_level="yellow",
+    )
+
+    assert result["dry_run"] is False
+    city_call = [
+        c
+        for c in mock_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:city:bucha"
+    ][0]
+    assert city_call.kwargs["mapping"]["level"] == "yellow"
+
+    obl_call = [
+        c
+        for c in mock_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:kyiv_oblast"
+    ][0]
+    assert obl_call.kwargs["mapping"]["level"] == "yellow"

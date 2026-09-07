@@ -790,7 +790,9 @@ def test_rehydrate_state_from_db_with_two_level_alerts(mock_web_pg, mock_web_red
     rehydrate_state_from_db()
 
     bucha_calls = [
-        c for c in pipeline.hset.call_args_list if c.args and c.args[0] == "threat:alerts:city:bucha"
+        c
+        for c in pipeline.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:city:bucha"
     ]
     assert len(bucha_calls) == 1
     mapping_bucha = bucha_calls[0].kwargs["mapping"]
@@ -806,4 +808,3 @@ def test_rehydrate_state_from_db_with_two_level_alerts(mock_web_pg, mock_web_red
     mapping_boryspil = boryspil_calls[0].kwargs["mapping"]
     assert mapping_boryspil["status"] == "true"
     assert mapping_boryspil["level"] == "red"
-

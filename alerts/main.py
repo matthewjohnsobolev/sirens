@@ -450,7 +450,9 @@ async def _record_alert_state(
                         if act_d == district_key and is_alert_active and level:
                             active_levels.add(level)
                         else:
-                            act_lvl = await redis_client.hget(f"threat:alerts:city:{act_d}", "level")
+                            act_lvl = await redis_client.hget(
+                                f"threat:alerts:city:{act_d}", "level"
+                            )
                             if act_lvl:
                                 active_levels.add(act_lvl)
                     if active_levels:

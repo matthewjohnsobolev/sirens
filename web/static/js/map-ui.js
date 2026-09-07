@@ -386,8 +386,6 @@
     // не заводить другу з іншого боку екрана.
     if (window.SirensThreats) control('bottomleft', syncTile).addTo(map);
 
-
-
     statusChip();
 
     // Поки перша відповідь не прийшла, стан невідомий — але мовчки:

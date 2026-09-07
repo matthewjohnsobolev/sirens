@@ -2579,6 +2579,75 @@ async def test_alert_history_and_threat_hash_record_base_type(
 
 
 @pytest.mark.asyncio
+async def test_record_alert_state_two_level_resolution(mock_redis):
+    mock_redis.scard.return_value = 2
+    mock_redis.smembers.return_value = {"bucha", "boryspil"}
+
+    async def fake_hget(key, field):
+        if key == "threat:alerts:city:boryspil" and field == "level":
+            return "red"
+        return None
+
+    mock_redis.hget.side_effect = fake_hget
+
+    await alerts_main._record_alert_state(
+        channel_id=None,
+        region="bucha",
+        alert_type="air_raid_alert",
+        level="yellow",
+    )
+
+    city_call = [
+        c
+        for c in mock_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:city:bucha"
+    ][0]
+    assert city_call.kwargs["mapping"]["level"] == "yellow"
+
+    obl_call = [
+        c
+        for c in mock_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:kyiv_oblast"
+    ][0]
+    assert obl_call.kwargs["mapping"]["status"] == "true"
+    assert obl_call.kwargs["mapping"]["level"] == "red"
+
+
+@pytest.mark.asyncio
+async def test_record_alert_state_yellow_only_oblast(mock_redis):
+    mock_redis.scard.return_value = 1
+    mock_redis.smembers.return_value = {"bucha"}
+
+    await alerts_main._record_alert_state(
+        channel_id=None,
+        region="bucha",
+        alert_type="air_raid_alert",
+        level="yellow",
+    )
+
+    obl_call = [
+        c
+        for c in mock_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:alerts:kyiv_oblast"
+    ][0]
+    assert obl_call.kwargs["mapping"]["level"] == "yellow"
+
+
+@pytest.mark.asyncio
+async def test_record_alert_state_cancellation_deletes_level(mock_redis):
+    mock_redis.scard.return_value = 0
+
+    await alerts_main._record_alert_state(
+        channel_id=None,
+        region="bucha",
+        alert_type="air_raid_alert_cancelled",
+    )
+
+    mock_redis.hdel.assert_any_await("threat:alerts:city:bucha", "level")
+    mock_redis.hdel.assert_any_await("threat:alerts:kyiv_oblast", "level")
+
+
+@pytest.mark.asyncio
 async def test_primary_source_ignored_when_broadcasting_limited_to_fallback(
     mock_redis, mock_telegram_client
 ):

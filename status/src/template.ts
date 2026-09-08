@@ -13,30 +13,30 @@ function getStateInfo(headline: string) {
     if (headline === 'Сповіщення не надходять') {
         return {
             cls: 'error',
-            icon: '/img/icons/explosion-icon.svg'
+            icon: '/img/icons/status-error.svg'
         };
     }
     if (headline.includes('— ні') || headline.includes('перебо')) {
         return {
             cls: 'warning',
-            icon: '/img/icons/air-raid-alert-icon.svg'
+            icon: '/img/icons/status-warning.svg'
         };
     }
     if (headline === 'Планові роботи') {
         return {
             cls: 'mnt',
-            icon: '/img/icons/mnt-icon.svg'
+            icon: '/img/icons/status-mnt.svg'
         };
     }
     if (headline === 'Немає даних') {
         return {
             cls: 'nodata',
-            icon: '/img/icons/no-data-icon.svg'
+            icon: '/img/icons/status-nodata.svg'
         };
     }
     return {
         cls: 'ok',
-        icon: '/img/icons/air-raid-alert-cancelled-icon.svg'
+        icon: '/img/icons/status-ok.svg'
     };
 }
 

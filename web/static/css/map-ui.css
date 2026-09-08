@@ -175,12 +175,12 @@
 }
 
 /* Кожна іконка — одне правило з маскою: сама маска більше ніде не
-   потрібна, тож заводити для неї змінну нема сенсу.
+   потрібна, тож заводити для неї змінну нема сенсу. */
 
-/* Жук нижчий за око і має більше ліній на тому ж полі, тож на однакових
-   метриках читався б жирнішим — звідси менший кегль. */
+/* Знак оклику в восьмикутнику — форма сповіщення про проблему. Метрики та
+   товщина штриха підігнані під кнопки зуму та оновлення (кегль 18px). */
 .map-ctl-icon--issue {
-    --icon-size: 17px;
+    --icon-size: 18px;
     -webkit-mask-image: url("../img/icons/bug-report-button-icon.svg");
     mask-image: url("../img/icons/bug-report-button-icon.svg");
 }
@@ -400,10 +400,11 @@
 .map-ctl--status {
     position: relative;
     isolation: isolate;
+    --pulse-cycle: 1.8s;
 }
 
 /* Гліф розміщено по центру кнопки завдяки flex-центруванню .map-ctl.
-   Колір змінюється тим самим переходом, що й раніше. Сам гліф тихо
+   Колір змінюється тим самим переходом, що й раніше. Сам гліф активно
    пульсує в такт перевіркам стану, а його хвиля розширюється приблизно
    до розміру іконки оновлення (18px). */
 .map-ctl-badge {
@@ -425,7 +426,7 @@
     inset: 0;
     border-radius: inherit;
     background: inherit;
-    opacity: 0.65;
+    opacity: 0.75;
     animation: map-status-pulse var(--pulse-cycle) cubic-bezier(0.24, 0, 0.38, 1) infinite;
     pointer-events: none;
     z-index: -1;
@@ -435,10 +436,10 @@
     0%, 100% {
         transform: scale(1);
     }
-    35% {
-        transform: scale(1.12);
+    30% {
+        transform: scale(1.18);
     }
-    70% {
+    65% {
         transform: scale(1);
     }
 }
@@ -446,9 +447,9 @@
 @keyframes map-status-pulse {
     0% {
         transform: scale(1);
-        opacity: 0.65;
+        opacity: 0.75;
     }
-    70% {
+    65% {
         transform: scale(2.25);
         opacity: 0;
     }

@@ -24,6 +24,15 @@ def test_index_route(client):
     assert response.headers.get("Cache-Control") == "no-cache, must-revalidate"
 
 
+def test_egg_route(client):
+    response = client.get("/egg")
+    assert response.status_code == 200
+    assert response.headers.get("Cache-Control") == "no-cache, must-revalidate"
+    html = response.get_data(as_text=True)
+    assert "/static/img/egg.png" in html
+    assert "background-color: #ffffff" in html
+
+
 def test_index_meta_tags(client):
     html = client.get("/").get_data(as_text=True)
     assert 'property="og:url" content="https://sirens.live"' in html

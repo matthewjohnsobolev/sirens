@@ -19,11 +19,6 @@
              max(var(--map-inset), env(safe-area-inset-left));
 }
 
-.leaflet-top.leaflet-right {
-    padding: max(var(--map-inset), env(safe-area-inset-top))
-             max(var(--map-inset), env(safe-area-inset-right)) 0 0;
-}
-
 .leaflet-top .leaflet-control {
     margin: 0 0 var(--gap);
 }
@@ -181,15 +176,6 @@
 
 /* Кожна іконка — одне правило з маскою: сама маска більше ніде не
    потрібна, тож заводити для неї змінну нема сенсу. */
-
-/* Хмарка повідомлення зі знаком оклику — форма зворотного зв'язку
-   та сповіщення про проблему. Кегль 21px гармонійно лягає в плитку. */
-.map-ctl-icon--issue {
-    --icon-size: 21px;
-    -webkit-mask-image: url("../img/icons/issue-report-button-icon.svg?v=3");
-    mask-image: url("../img/icons/issue-report-button-icon.svg?v=3");
-}
-
 
 
 /* Стрілка кола замикається сама на себе — рівно те, що робить кнопка:

@@ -144,14 +144,6 @@
     }
 
 
-    function issueLink() {
-        var link = L.DomUtil.create('a', 'map-ctl map-ctl--issue');
-        link.href = '/issue';
-        label(link, 'Повідомити про збій');
-        icon(link, 'issue');
-        return link;
-    }
-
     // Єдина плитка з текстом. Час у ній — момент останньої успішної
     // відповіді /api, а не остання тривога: питання, на яке вона
     // відповідає, — «на коли це правда», і воно не другорядне, тож
@@ -355,8 +347,6 @@
         var zoomButtons = zoomContainer.querySelectorAll('a');
         for (var i = 0; i < zoomButtons.length; i++) respondToPress(zoomButtons[i]);
     }
-
-    control('topright', issueLink).addTo(map);
 
     // Плитки стану та оновлення стоять у нижньому лівому куті разом:
     // стан передує кнопці часу.

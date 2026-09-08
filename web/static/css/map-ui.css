@@ -35,13 +35,31 @@
     margin-right: 0;
 }
 
-/* Плитка оновлення стоїть не в стопці інструментів, а у власному куті —
-   нижньому лівому, і на телефоні теж: ліва вертикаль на мапі одна, тож
-   плитка не заводить другу, а продовжує ту саму знизу. Відступ від краю
-   знову задає контейнер кута, тож сама плитка про свій кут не знає. */
+/* Плитки статусу й оновлення стоять у власному куті — нижньому лівому,
+   і на телефоні теж: стан передує кнопці часу в єдиній горизонтальній
+   лінії. Відступ від краю знову задає контейнер кута, тож самі плитки
+   про свій кут не знають. */
 .leaflet-bottom.leaflet-left {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--gap);
     padding: 0 0 max(var(--map-inset), env(safe-area-inset-bottom))
              max(var(--map-inset), env(safe-area-inset-left));
+}
+
+.leaflet-bottom.leaflet-left .leaflet-control {
+    float: none;
+    clear: none;
+    margin: 0;
+}
+
+.leaflet-bottom.leaflet-left .map-ctl--status {
+    order: 1;
+}
+
+.leaflet-bottom.leaflet-left .map-ctl--sync {
+    order: 2;
 }
 
 /* Правий нижній кут тримає атрибуцію карти й ліцензії. Відступ від краю
@@ -167,12 +185,7 @@
     mask-image: url("../img/icons/bug-report-button-icon.svg");
 }
 
-/* Пульс тягнеться на всю ширину поля й лишає порожнім правий верхній
-   кут — саме туди сідає крапка стану, тож вона нічого не перекриває. */
-.map-ctl-icon--status {
-    -webkit-mask-image: url("../img/icons/service-status-button-icon.svg");
-    mask-image: url("../img/icons/service-status-button-icon.svg");
-}
+
 
 /* Стрілка кола замикається сама на себе — рівно те, що робить кнопка:
    питає те саме джерело ще раз. Кегль загальний: малюнок такий самий
@@ -379,48 +392,70 @@
     }
 }
 
-/* ── Крапка стану ───────────────────────────────────────────────────── */
+/* ── Кнопка та гліф стану ────────────────────────────────────────────── */
 
-/* Стан сервісу — така сама плитка й у тій самій стопці, що решта: іконка
-   називає об'єкт, крапка в кутку каже стан. Окремої плашки зі своїм
-   кеглем і своєю висотою більше немає — менше компонентів, менше місць
-   розійтися. Час останнього оновлення пішов у title і aria-label: за тим,
-   чи він не застиг, стежить код, а не читач. */
+/* Стан сервісу — квадратна плитка в нижньому лівому куті перед кнопкою
+   часу. Піктограми всередині немає, статус показує кольоровий гліф по
+   центру, навколо якого розходиться м'який пульс. */
 .map-ctl--status {
     position: relative;
+    isolation: isolate;
 }
 
-/* Кільця крапці не треба: навколо неї і так порожнє поле плитки. Колір
-   змінюється тим самим переходом, що й у іконки, — стан не стрибає. */
+/* Гліф розміщено по центру кнопки завдяки flex-центруванню .map-ctl.
+   Колір змінюється тим самим переходом, що й раніше. Сам гліф тихо
+   пульсує в такт перевіркам стану, а його хвиля розширюється приблизно
+   до розміру іконки оновлення (18px). */
 .map-ctl-badge {
-    position: absolute;
-    top: 5px;
-    right: 5px;
+    position: relative;
+    display: block;
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background: var(--status-gray-bar);
     transition: background-color var(--motion);
+    animation: map-status-beacon var(--pulse-cycle) ease-in-out infinite;
 }
 
-/* Крапка «дихає» тим самим циклом, що й смужка поточної години на
-   статус-сторінці: сторінка, куди веде плитка, вітає знайомим рухом.
-   Розмах подиху дрібний навмисне: крапка каже «дані живі», а не кличе
-   натиснути. На мапі й так блимають тривоги — кнопка не має з ними
-   змагатися, тож її помітно лише боковим зором. */
+/* Хвиля пульсу розширюється від гліфа до розмірів іконки оновлення
+   (8px * 2.25 = 18px), плавно згасаючи до прозорості. */
 .map-ctl-badge::after {
     content: "";
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: var(--surface);
-    opacity: 0;
-    animation: map-status-breath var(--pulse-cycle) ease-in-out infinite;
+    background: inherit;
+    opacity: 0.65;
+    animation: map-status-pulse var(--pulse-cycle) cubic-bezier(0.24, 0, 0.38, 1) infinite;
+    pointer-events: none;
+    z-index: -1;
 }
 
-@keyframes map-status-breath {
-    0%, 100% { opacity: 0; }
-    50%      { opacity: .2; }
+@keyframes map-status-beacon {
+    0%, 100% {
+        transform: scale(1);
+    }
+    35% {
+        transform: scale(1.12);
+    }
+    70% {
+        transform: scale(1);
+    }
+}
+
+@keyframes map-status-pulse {
+    0% {
+        transform: scale(1);
+        opacity: 0.65;
+    }
+    70% {
+        transform: scale(2.25);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(2.25);
+        opacity: 0;
+    }
 }
 
 .map-ctl--status[data-state="ok"] .map-ctl-badge     { background: var(--status-green-bar); }
@@ -429,7 +464,8 @@
 .map-ctl--status[data-state="mnt"] .map-ctl-badge    { background: var(--status-blue-bar); }
 .map-ctl--status[data-state="nodata"] .map-ctl-badge { background: var(--status-gray-bar); }
 
-/* Немає даних — нема чому дихати. */
+/* Немає даних — нема чому пульсувати. */
+.map-ctl--status[data-state="nodata"] .map-ctl-badge,
 .map-ctl--status[data-state="nodata"] .map-ctl-badge::after {
     animation: none;
 }
@@ -662,6 +698,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .map-ctl-badge,
     .map-ctl-badge::after,
     .map-chip,
     .leaflet-control,

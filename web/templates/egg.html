@@ -25,7 +25,6 @@
             align-items: center;
             min-height: 100vh;
             min-height: 100dvh;
-            position: relative;
         }
         .egg-image {
             max-width: 100%;
@@ -37,76 +36,15 @@
             display: block;
             pointer-events: auto;
         }
-        .sound-toggle {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 40px;
-            height: 40px;
-            border: none;
-            border-radius: 50%;
-            background: rgba(0, 0, 0, 0.05);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #111111;
-            transition: background-color 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
-            z-index: 100;
-            padding: 0;
-            outline: none;
-        }
-        .sound-toggle:hover {
-            background: rgba(0, 0, 0, 0.12);
-            transform: scale(1.06);
-        }
-        .sound-toggle:focus-visible {
-            outline: 2px solid #111111;
-            outline-offset: 2px;
-        }
-        .sound-toggle svg {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-            fill: none;
-        }
-        .sound-toggle .icon-muted {
-            display: none;
-        }
-        .sound-toggle.muted .icon-playing {
-            display: none;
-        }
-        .sound-toggle.muted .icon-muted {
-            display: block;
-        }
     </style>
 </head>
 <body>
     <img class="egg-image" src="{{ static_url('img/egg.png') }}" alt="Egg">
 
-    <button id="sound-toggle" class="sound-toggle muted" aria-label="Увімкнути звук" title="Увімкнути звук" type="button">
-        <!-- Playing icon -->
-        <svg class="icon-playing" viewBox="0 0 24 24">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"></polygon>
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-        </svg>
-        <!-- Muted icon -->
-        <svg class="icon-muted" viewBox="0 0 24 24">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"></polygon>
-            <line x1="23" y1="9" x2="17" y2="15"></line>
-            <line x1="17" y1="9" x2="23" y2="15"></line>
-        </svg>
-    </button>
-
     <script>
         (() => {
             let audioCtx = null;
             let masterGain = null;
-            let isMuted = false;
             let clickBuffers = [];
             let isRunning = false;
             let nextClickTime = 0;
@@ -115,7 +53,6 @@
             let currentRate = baseRate;
             let schedulerTimer = null;
 
-            const toggleBtn = document.getElementById('sound-toggle');
             const eggImg = document.querySelector('.egg-image');
 
             function initAudio() {
@@ -154,7 +91,7 @@
             }
 
             function playClickAt(time) {
-                if (!audioCtx || isMuted || clickBuffers.length === 0) return;
+                if (!audioCtx || clickBuffers.length === 0) return;
                 const buf = clickBuffers[Math.floor(Math.random() * clickBuffers.length)];
                 const source = audioCtx.createBufferSource();
                 source.buffer = buf;
@@ -199,42 +136,10 @@
 
                 if (!isRunning) {
                     isRunning = true;
-                    isMuted = false;
                     masterGain.gain.setValueAtTime(0.35, audioCtx.currentTime);
                     nextClickTime = audioCtx.currentTime + 0.05;
                     schedulerTimer = setInterval(scheduleClicks, 25);
-                } else if (isMuted) {
-                    isMuted = false;
-                    masterGain.gain.setTargetAtTime(0.35, audioCtx.currentTime, 0.02);
                 }
-                updateUI();
-            }
-
-            function toggleMute(e) {
-                if (e) e.stopPropagation();
-                if (!isRunning || !audioCtx) {
-                    startSound();
-                    return;
-                }
-
-                if (audioCtx.state === 'suspended') {
-                    audioCtx.resume();
-                }
-
-                isMuted = !isMuted;
-                if (masterGain) {
-                    const target = isMuted ? 0 : 0.35;
-                    masterGain.gain.setTargetAtTime(target, audioCtx.currentTime, 0.02);
-                }
-                updateUI();
-            }
-
-            function updateUI() {
-                if (!toggleBtn) return;
-                const active = isRunning && !isMuted && audioCtx && audioCtx.state === 'running';
-                toggleBtn.classList.toggle('muted', !active);
-                toggleBtn.setAttribute('aria-label', active ? 'Вимкнути звук' : 'Увімкнути звук');
-                toggleBtn.setAttribute('title', active ? 'Вимкнути звук' : 'Увімкнути звук');
             }
 
             // Proximity radiation counter: intensity increases as cursor gets closer to the egg
@@ -260,18 +165,15 @@
                 }
             }, { passive: true });
 
-            toggleBtn.addEventListener('click', toggleMute);
-
-            // Click anywhere to activate if autoplay was blocked by browser
-            window.addEventListener('pointerdown', (e) => {
-                if (e.target.closest('#sound-toggle')) return;
-                if (!isRunning || (audioCtx && audioCtx.state === 'suspended') || isMuted) {
+            // Click or tap anywhere to activate audio context if blocked by browser autoplay policy
+            window.addEventListener('pointerdown', () => {
+                if (!isRunning || (audioCtx && audioCtx.state === 'suspended')) {
                     startSound();
                 }
             });
 
             window.addEventListener('keydown', () => {
-                if (!isRunning || (audioCtx && audioCtx.state === 'suspended') || isMuted) {
+                if (!isRunning || (audioCtx && audioCtx.state === 'suspended')) {
                     startSound();
                 }
             });

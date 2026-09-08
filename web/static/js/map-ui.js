@@ -143,20 +143,6 @@
         return (rem === 0 && elapsed > 0) ? 0 : SPIN_MS - rem;
     }
 
-    // Кнопка шарів відчиняє панель, а не перемикає щось сама: за нею
-    // стоїть уже не одне око, а два шари й легенда до них. Стопку тримає
-    // цей файл, тож і кнопка будується тут — панель до неї чіпляє
-    // layers-menu.js, який виконується раніше.
-    function layersButton() {
-        var button = L.DomUtil.create('button', 'map-ctl map-ctl--layers');
-        button.type = 'button';
-        label(button, 'Шари');
-        icon(button, 'layers');
-
-        if (window.SirensLayersMenu) window.SirensLayersMenu.mount(button);
-
-        return button;
-    }
 
     function issueLink() {
         var link = L.DomUtil.create('a', 'map-ctl map-ctl--issue');
@@ -371,7 +357,6 @@
         for (var i = 0; i < zoomButtons.length; i++) respondToPress(zoomButtons[i]);
     }
 
-    control('topleft', layersButton).addTo(map);
     control('topleft', issueLink).addTo(map);
     control('topleft', statusTile).addTo(map);
 

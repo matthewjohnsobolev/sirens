@@ -49,11 +49,11 @@
         <link rel="stylesheet" href="{{ static_url('css/main.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/map-ui.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/map-layers.css') }}">
-        <link rel="stylesheet" href="{{ static_url('css/layers-menu.css') }}">
+        <link rel="stylesheet" href="{{ static_url('css/legend.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/mobile.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/oblasts.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/channels.css') }}">
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
         <!-- Порядок тут не випадковий. districts.js — це словник станів і
@@ -63,12 +63,8 @@
         <script src="{{ static_url('js/threats.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/cities.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/oblasts.js') }}" type="text/javascript"></script>
-        <!-- Панель шарів визначає себе до того, як map-ui.js будує стопку
-             кнопок: кнопка шарів чіпляє панель через SirensLayersMenu, тож
-             панель має існувати раніше за кнопку. Обидва скрипти defer,
-             тож порядок тут — це і є порядок виконання. -->
-        <script src="{{ static_url('js/layers-menu.js') }}" defer></script>
         <script src="{{ static_url('js/map-ui.js') }}" defer></script>
+        <script src="{{ static_url('js/legend.js') }}" defer></script>
         <script src="{{ static_url('js/analytics.js') }}" defer></script>
 
         <script type="application/ld+json">
@@ -109,6 +105,67 @@
     <body>
         <h1 class="sr-only">Де зараз повітряна тривога в Україні</h1>
         <div id='map'></div>
+
+        <div class="legend-dock" id="legendDock">
+            <!-- Спливаючий поповер: власна ширина 208px, випливає вгору і розширюється вліво -->
+            <div class="legend-popover" id="legendPopover" aria-hidden="true" role="region" aria-label="Легенда мапи">
+                <!-- Секція: ОБЛАСТІ -->
+                <div class="legend-section">
+                    <div class="legend-tag">ОБЛАСТІ</div>
+                    <div class="legend-list">
+                        <div class="legend-row">
+                            <div class="glyph-box"><span class="swatch swatch-gray" aria-hidden="true"></span></div>
+                            <span class="legend-text">Немає тривоги</span>
+                        </div>
+                        <div class="legend-row">
+                            <div class="glyph-box"><span class="swatch swatch-yellow" aria-hidden="true"></span></div>
+                            <span class="legend-text">Жовтий рівень тривоги</span>
+                        </div>
+                        <div class="legend-row">
+                            <div class="glyph-box"><span class="swatch swatch-red" aria-hidden="true"></span></div>
+                            <span class="legend-text">Червоний рівень тривоги</span>
+                        </div>
+                        <div class="legend-row">
+                            <div class="glyph-box"><span class="swatch swatch-striped" aria-hidden="true"></span></div>
+                            <span class="legend-text">Часткова тривога у районах</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Секція: МІСТА -->
+                <div class="legend-section">
+                    <div class="legend-tag">МІСТА</div>
+                    <div class="legend-list">
+                        <div class="legend-row">
+                            <div class="glyph-box"><span class="dot dot-green" aria-hidden="true"></span></div>
+                            <span class="legend-text">Немає тривоги</span>
+                        </div>
+                        <div class="legend-row">
+                            <div class="glyph-box"><span class="dot dot-yellow" aria-hidden="true"></span></div>
+                            <span class="legend-text">Жовтий рівень тривоги</span>
+                        </div>
+                        <div class="legend-row">
+                            <div class="glyph-box"><span class="dot dot-orange" aria-hidden="true"></span></div>
+                            <span class="legend-text">Загроза артобстрілу</span>
+                        </div>
+                        <div class="legend-row">
+                            <div class="glyph-box"><span class="dot dot-red" aria-hidden="true"></span></div>
+                            <span class="legend-text">Червоний рівень тривоги</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Нерухома плашка: власна ширина за контентом, рівні відступи по 12px -->
+            <button class="legend-bar-btn" id="legendBtn" type="button" onclick="toggleLegend()" aria-expanded="false" aria-controls="legendPopover" aria-label="Що означають кольори">
+                <span class="bar-label">Що означають кольори</span>
+                <span class="chevron-wrap" aria-hidden="true">
+                    <svg class="bar-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <path d="M2 6.25L5 3.25L8 6.25" stroke="#8E8E93" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </span>
+            </button>
+        </div>
 
         <script>
 

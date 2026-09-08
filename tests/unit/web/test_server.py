@@ -205,6 +205,8 @@ def test_index_credits_the_basemap_it_actually_uses(client):
     assert "basemaps.cartocdn.com" in html
     assert "openstreetmap.org/copyright" in html
     assert "carto.com/attributions" in html
+    assert "/issue" in html
+    assert json.dumps("Збій?")[1:-1] in html
 
 
 def test_index_draws_the_ground_with_plain_raster_tiles(client):

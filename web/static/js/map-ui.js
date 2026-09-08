@@ -356,7 +356,7 @@
         for (var i = 0; i < zoomButtons.length; i++) respondToPress(zoomButtons[i]);
     }
 
-    control('topleft', issueLink).addTo(map);
+    control('topright', issueLink).addTo(map);
 
     // Плитки стану та оновлення стоять у нижньому лівому куті разом:
     // стан передує кнопці часу.

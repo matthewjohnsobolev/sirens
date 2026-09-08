@@ -222,6 +222,19 @@ def test_index_lets_the_basemap_provider_be_swapped_in_the_environment(client, m
     assert "Example" in html
 
 
+def test_index_renders_legend_dock_and_no_layers_menu(client):
+    """The layers button and menu are removed; the index page renders the legend dock
+    and links to legend.css and legend.js instead of layers-menu."""
+    html = client.get("/").get_data(as_text=True)
+
+    assert 'id="legendDock"' in html
+    assert 'id="legendPopover"' in html
+    assert "legend.css" in html
+    assert "legend.js" in html
+    assert "layers-menu.css" not in html
+    assert "layers-menu.js" not in html
+
+
 def test_static_url_fingerprint_follows_the_file_contents(app, tmp_path):
     from web.server import _static_fingerprint, static_url
 

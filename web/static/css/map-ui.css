@@ -126,6 +126,17 @@
     outline-offset: 2px;
 }
 
+/* Кнопка з відкритою панеллю інвертується: поки панель на екрані, вона
+   не «одна з кнопок», а те, звідки панель узялася. Поле — те саме темне,
+   що в чіпа, а іконка перевертається сама, бо малюється currentColor.
+   Селектор із .leaflet-container не для краси: Leaflet фарбує будь-яке
+   посилання в мапі своїм кольором тією ж вагою. */
+.leaflet-container .map-ctl[aria-expanded="true"],
+.leaflet-container .map-ctl[aria-expanded="true"]:hover {
+    background: var(--ink-solid);
+    border-color: var(--ink-solid);
+    color: var(--surface);
+}
 
 /* ── Іконки ─────────────────────────────────────────────────────────── */
 
@@ -148,16 +159,11 @@
 /* Кожна іконка — одне правило з маскою: сама маска більше ніде не
    потрібна, тож заводити для неї змінну нема сенсу.
 
-   Око показує стан маркерів: відкрите око, коли маркери видно на мапі,
-   і перекреслене — коли сховані. Файли названі відповідно. */
-.map-ctl-icon--markers-off {
-    -webkit-mask-image: url("../img/icons/markers-off-button-icon.svg");
-    mask-image: url("../img/icons/markers-off-button-icon.svg");
-}
-
-.map-ctl-icon--markers-on {
-    -webkit-mask-image: url("../img/icons/markers-on-button-icon.svg");
-    mask-image: url("../img/icons/markers-on-button-icon.svg");
+   Стос аркушів — це шари: верхній лежить на нижньому, і саме їх панель
+   вмикає й вимикає. */
+.map-ctl-icon--layers {
+    -webkit-mask-image: url("../img/icons/layers-button-icon.svg");
+    mask-image: url("../img/icons/layers-button-icon.svg");
 }
 
 /* Жук нижчий за око і має більше ліній на тому ж полі, тож на однакових
@@ -378,13 +384,6 @@
         opacity: 0;
         transform: translateY(3px);
     }
-}
-
-/* ── Приховані маркери ──────────────────────────────────────────────── */
-
-.markers-hidden .leaflet-marker-pane,
-.markers-hidden .leaflet-shadow-pane {
-    display: none;
 }
 
 /* ── Крапка стану ───────────────────────────────────────────────────── */

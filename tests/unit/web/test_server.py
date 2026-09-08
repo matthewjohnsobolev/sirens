@@ -229,6 +229,9 @@ def test_index_renders_legend_dock_and_no_layers_menu(client):
 
     assert 'id="legendDock"' in html
     assert 'id="legendPopover"' in html
+    assert 'id="legendInfoBtn"' in html
+    assert 'id="legendSheet"' in html
+    assert 'id="legendScrim"' in html
     assert "legend.css" in html
     assert "legend.js" in html
     assert "layers-menu.css" not in html

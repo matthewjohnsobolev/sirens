@@ -178,11 +178,11 @@
    потрібна, тож заводити для неї змінну нема сенсу. */
 
 /* Знак оклику в восьмикутнику — форма сповіщення про проблему. Метрики та
-   товщина штриха підігнані під кнопки зуму та оновлення (кегль 18px). */
+   товщина штриха підігнані під кнопки зуму та оновлення (кегль 22px). */
 .map-ctl-icon--issue {
-    --icon-size: 18px;
-    -webkit-mask-image: url("../img/icons/issue-report-button-icon.svg?v=1");
-    mask-image: url("../img/icons/issue-report-button-icon.svg?v=1");
+    --icon-size: 22px;
+    -webkit-mask-image: url("../img/icons/issue-report-button-icon.svg?v=2");
+    mask-image: url("../img/icons/issue-report-button-icon.svg?v=2");
 }
 
 

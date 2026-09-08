@@ -49,6 +49,7 @@
         <link rel="stylesheet" href="{{ static_url('css/main.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/map-ui.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/map-layers.css') }}">
+        <link rel="stylesheet" href="{{ static_url('css/layers-menu.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/mobile.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/oblasts.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/channels.css') }}">
@@ -62,6 +63,11 @@
         <script src="{{ static_url('js/threats.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/cities.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/oblasts.js') }}" type="text/javascript"></script>
+        <!-- Панель шарів визначає себе до того, як map-ui.js будує стопку
+             кнопок: кнопка шарів чіпляє панель через SirensLayersMenu, тож
+             панель має існувати раніше за кнопку. Обидва скрипти defer,
+             тож порядок тут — це і є порядок виконання. -->
+        <script src="{{ static_url('js/layers-menu.js') }}" defer></script>
         <script src="{{ static_url('js/map-ui.js') }}" defer></script>
         <script src="{{ static_url('js/analytics.js') }}" defer></script>
 

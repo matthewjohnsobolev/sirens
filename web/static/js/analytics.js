@@ -61,17 +61,6 @@
             return;
         }
 
-        var control = target.closest('.map-ctl--markers');
-        if (control) {
-            // Свій обробник кнопки вже відпрацював на етапі спливання,
-            // тож aria-pressed показує новий стан: натиснута кнопка —
-            // маркери приховані.
-            send('markers_toggle', {
-                markers_visible: control.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'
-            });
-            return;
-        }
-
         var status = target.closest('.map-ctl--status, .map-chip');
         if (status) {
             send('status_page_open', {

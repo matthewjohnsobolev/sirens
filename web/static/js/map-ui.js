@@ -143,22 +143,17 @@
         return (rem === 0 && elapsed > 0) ? 0 : SPIN_MS - rem;
     }
 
-    function markersButton() {
-        var button = L.DomUtil.create('button', 'map-ctl map-ctl--markers');
+    // Кнопка шарів відчиняє панель, а не перемикає щось сама: за нею
+    // стоїть уже не одне око, а два шари й легенда до них. Стопку тримає
+    // цей файл, тож і кнопка будується тут — панель до неї чіпляє
+    // layers-menu.js, який виконується раніше.
+    function layersButton() {
+        var button = L.DomUtil.create('button', 'map-ctl map-ctl--layers');
         button.type = 'button';
-        button.setAttribute('aria-pressed', 'false');
-        label(button, 'Прибрати маркери');
+        label(button, 'Шари');
+        icon(button, 'layers');
 
-        // Відкрите око, поки маркери видно; перекреслене — коли сховані.
-        var glyph = icon(button, 'markers-on');
-
-        L.DomEvent.on(button, 'click', function () {
-            var hidden = map.getContainer().classList.toggle('markers-hidden');
-            button.setAttribute('aria-pressed', String(hidden));
-            label(button, hidden ? 'Показати маркери' : 'Прибрати маркери');
-            glyph.className = 'map-ctl-icon map-ctl-icon--markers-' + (hidden ? 'off' : 'on');
-            if (hidden) map.closePopup();
-        });
+        if (window.SirensLayersMenu) window.SirensLayersMenu.mount(button);
 
         return button;
     }
@@ -376,7 +371,7 @@
         for (var i = 0; i < zoomButtons.length; i++) respondToPress(zoomButtons[i]);
     }
 
-    control('topleft', markersButton).addTo(map);
+    control('topleft', layersButton).addTo(map);
     control('topleft', issueLink).addTo(map);
     control('topleft', statusTile).addTo(map);
 

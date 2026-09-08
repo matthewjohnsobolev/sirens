@@ -188,7 +188,7 @@
     top: 50%;
     transform: translateY(-50%);
     font-family: var(--font);
-    font-size: 12px;
+    font-size: var(--text-helper);
     font-weight: var(--weight-control);
     line-height: 1;
     white-space: nowrap;

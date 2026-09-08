@@ -15,6 +15,9 @@
             width: 100%;
             height: 100%;
             background-color: #ffffff;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
         }
         body {
             display: flex;
@@ -22,6 +25,7 @@
             align-items: center;
             min-height: 100vh;
             min-height: 100dvh;
+            position: relative;
         }
         .egg-image {
             max-width: 100%;
@@ -31,10 +35,252 @@
             height: auto;
             object-fit: contain;
             display: block;
+            pointer-events: auto;
+        }
+        .sound-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.05);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #111111;
+            transition: background-color 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
+            z-index: 100;
+            padding: 0;
+            outline: none;
+        }
+        .sound-toggle:hover {
+            background: rgba(0, 0, 0, 0.12);
+            transform: scale(1.06);
+        }
+        .sound-toggle:focus-visible {
+            outline: 2px solid #111111;
+            outline-offset: 2px;
+        }
+        .sound-toggle svg {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+        .sound-toggle .icon-muted {
+            display: none;
+        }
+        .sound-toggle.muted .icon-playing {
+            display: none;
+        }
+        .sound-toggle.muted .icon-muted {
+            display: block;
         }
     </style>
 </head>
 <body>
     <img class="egg-image" src="{{ static_url('img/egg.png') }}" alt="Egg">
+
+    <button id="sound-toggle" class="sound-toggle muted" aria-label="Увімкнути звук" title="Увімкнути звук" type="button">
+        <!-- Playing icon -->
+        <svg class="icon-playing" viewBox="0 0 24 24">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"></polygon>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+        </svg>
+        <!-- Muted icon -->
+        <svg class="icon-muted" viewBox="0 0 24 24">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+        </svg>
+    </button>
+
+    <script>
+        (() => {
+            let audioCtx = null;
+            let masterGain = null;
+            let isMuted = false;
+            let clickBuffers = [];
+            let isRunning = false;
+            let nextClickTime = 0;
+            let baseRate = 8; // default background clicks per second
+            let targetRate = baseRate;
+            let currentRate = baseRate;
+            let schedulerTimer = null;
+
+            const toggleBtn = document.getElementById('sound-toggle');
+            const eggImg = document.querySelector('.egg-image');
+
+            function initAudio() {
+                if (audioCtx) return;
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContextClass) return;
+
+                audioCtx = new AudioContextClass();
+                masterGain = audioCtx.createGain();
+                masterGain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+                masterGain.connect(audioCtx.destination);
+
+                // Pre-generate 12 distinct click waveforms for organic micro-variations
+                const sampleRate = audioCtx.sampleRate;
+                const clickLen = Math.floor(sampleRate * 0.005); // 5ms click
+
+                for (let b = 0; b < 12; b++) {
+                    const buffer = audioCtx.createBuffer(1, clickLen, sampleRate);
+                    const data = buffer.getChannelData(0);
+                    const f1 = 2100 + Math.random() * 600;  // High resonant click
+                    const f2 = 1000 + Math.random() * 400;  // Body thud
+                    const decay = 1600 + Math.random() * 700;
+
+                    for (let i = 0; i < clickLen; i++) {
+                        const t = i / sampleRate;
+                        let env = Math.exp(-decay * t);
+                        if (i < 3) env *= (i / 3); // Soft attack to avoid DC pop
+                        let val = 0.65 * Math.sin(2 * Math.PI * f1 * t) + 0.35 * Math.sin(2 * Math.PI * f2 * t);
+                        if (i < Math.floor(sampleRate * 0.0012)) {
+                            val += 0.45 * (Math.random() * 2 - 1);
+                        }
+                        data[i] = val * env;
+                    }
+                    clickBuffers.push(buffer);
+                }
+            }
+
+            function playClickAt(time) {
+                if (!audioCtx || isMuted || clickBuffers.length === 0) return;
+                const buf = clickBuffers[Math.floor(Math.random() * clickBuffers.length)];
+                const source = audioCtx.createBufferSource();
+                source.buffer = buf;
+                source.playbackRate.value = 0.93 + Math.random() * 0.14;
+
+                const clickGain = audioCtx.createGain();
+                clickGain.gain.value = 0.65 + Math.random() * 0.35;
+
+                source.connect(clickGain);
+                clickGain.connect(masterGain);
+                source.start(time);
+            }
+
+            function scheduleClicks() {
+                if (!isRunning || !audioCtx) return;
+
+                const lookahead = 0.1; // 100ms lookahead
+                const currentTime = audioCtx.currentTime;
+
+                currentRate += (targetRate - currentRate) * 0.12;
+
+                if (nextClickTime < currentTime) {
+                    nextClickTime = currentTime;
+                }
+
+                while (nextClickTime < currentTime + lookahead) {
+                    playClickAt(nextClickTime);
+                    // Poisson process: interval = -ln(U) / rate
+                    const u = Math.max(1e-7, Math.random());
+                    const interval = -Math.log(u) / Math.max(1, currentRate);
+                    nextClickTime += interval;
+                }
+            }
+
+            function startSound() {
+                initAudio();
+                if (!audioCtx) return;
+
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+
+                if (!isRunning) {
+                    isRunning = true;
+                    isMuted = false;
+                    masterGain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+                    nextClickTime = audioCtx.currentTime + 0.05;
+                    schedulerTimer = setInterval(scheduleClicks, 25);
+                } else if (isMuted) {
+                    isMuted = false;
+                    masterGain.gain.setTargetAtTime(0.35, audioCtx.currentTime, 0.02);
+                }
+                updateUI();
+            }
+
+            function toggleMute(e) {
+                if (e) e.stopPropagation();
+                if (!isRunning || !audioCtx) {
+                    startSound();
+                    return;
+                }
+
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+
+                isMuted = !isMuted;
+                if (masterGain) {
+                    const target = isMuted ? 0 : 0.35;
+                    masterGain.gain.setTargetAtTime(target, audioCtx.currentTime, 0.02);
+                }
+                updateUI();
+            }
+
+            function updateUI() {
+                if (!toggleBtn) return;
+                const active = isRunning && !isMuted && audioCtx && audioCtx.state === 'running';
+                toggleBtn.classList.toggle('muted', !active);
+                toggleBtn.setAttribute('aria-label', active ? 'Вимкнути звук' : 'Увімкнути звук');
+                toggleBtn.setAttribute('title', active ? 'Вимкнути звук' : 'Увімкнути звук');
+            }
+
+            // Proximity radiation counter: intensity increases as cursor gets closer to the egg
+            function updateProximity(clientX, clientY) {
+                if (!eggImg) return;
+                const rect = eggImg.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const dist = Math.hypot(clientX - centerX, clientY - centerY);
+                const maxDist = Math.max(window.innerWidth, window.innerHeight) * 0.55;
+                const proximity = Math.max(0, Math.min(1, 1 - dist / maxDist));
+                // 8 clicks/sec at distance, climbing to ~36 clicks/sec at center
+                targetRate = baseRate + Math.pow(proximity, 2.2) * 28;
+            }
+
+            window.addEventListener('pointermove', (e) => {
+                updateProximity(e.clientX, e.clientY);
+            });
+
+            window.addEventListener('touchmove', (e) => {
+                if (e.touches.length > 0) {
+                    updateProximity(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: true });
+
+            toggleBtn.addEventListener('click', toggleMute);
+
+            // Click anywhere to activate if autoplay was blocked by browser
+            window.addEventListener('pointerdown', (e) => {
+                if (e.target.closest('#sound-toggle')) return;
+                if (!isRunning || (audioCtx && audioCtx.state === 'suspended') || isMuted) {
+                    startSound();
+                }
+            });
+
+            window.addEventListener('keydown', () => {
+                if (!isRunning || (audioCtx && audioCtx.state === 'suspended') || isMuted) {
+                    startSound();
+                }
+            });
+
+            // Attempt autoplay on load
+            window.addEventListener('load', () => {
+                startSound();
+            });
+        })();
+    </script>
 </body>
 </html>

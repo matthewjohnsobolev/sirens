@@ -31,6 +31,8 @@ def test_egg_route(client):
     html = response.get_data(as_text=True)
     assert "/static/img/egg.png" in html
     assert "background-color: #ffffff" in html
+    assert "sound-toggle" in html
+    assert "AudioContext" in html
 
 
 def test_index_meta_tags(client):

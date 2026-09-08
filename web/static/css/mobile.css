@@ -15,9 +15,9 @@
     }
 
     /* На вузьких екранах обмежуємо ширину атрибуції, щоб вона не перекривала
-       ліву плитку оновлення часу, і тримаємо плашку відкритою */
+       ліві плитки статусу та оновлення часу, і тримаємо плашку відкритою */
     .leaflet-bottom.leaflet-right {
-        max-width: calc(100vw - var(--control-w-sync) - var(--map-inset) * 3);
+        max-width: calc(100vw - var(--control-w-sync) - var(--control-h-map) - var(--gap) - var(--map-inset) * 3);
     }
 
     .leaflet-container .leaflet-control-attribution {

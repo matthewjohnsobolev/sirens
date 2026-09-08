@@ -215,7 +215,6 @@
         var link = L.DomUtil.create('a', 'map-ctl map-ctl--status');
         link.href = STATUS_PAGE;
         link.rel = 'noopener';
-        icon(link, 'status');
 
         var dot = L.DomUtil.create('span', 'map-ctl-badge', link);
         dot.setAttribute('aria-hidden', 'true');
@@ -358,13 +357,11 @@
     }
 
     control('topleft', issueLink).addTo(map);
-    control('topleft', statusTile).addTo(map);
 
-    // Плитка оновлення не стає в стопку інструментів: ті про перегляд, ця
-    // про дані. Кут у неї свій — нижній лівий, і на телефоні теж: ліва
-    // вертикаль на мапі одна, тож плитка продовжує ту саму лінію знизу, а
-    // не заводить другу з іншого боку екрана.
+    // Плитки стану та оновлення стоять у нижньому лівому куті разом:
+    // стан передує кнопці часу.
     if (window.SirensThreats) control('bottomleft', syncTile).addTo(map);
+    control('bottomleft', statusTile).addTo(map);
 
     statusChip();
 

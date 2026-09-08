@@ -222,18 +222,17 @@ def test_index_lets_the_basemap_provider_be_swapped_in_the_environment(client, m
     assert "Example" in html
 
 
-def test_index_renders_legend_dock_and_no_layers_menu(client):
-    """The layers button and menu are removed; the index page renders the legend dock
-    and links to legend.css and legend.js instead of layers-menu."""
+def test_index_does_not_render_legend_or_layers_menu(client):
+    """The legend dock, sheet, assets, and layers-menu are completely removed."""
     html = client.get("/").get_data(as_text=True)
 
-    assert 'id="legendDock"' in html
-    assert 'id="legendPopover"' in html
-    assert 'id="legendInfoBtn"' in html
-    assert 'id="legendSheet"' in html
-    assert 'id="legendScrim"' in html
-    assert "legend.css" in html
-    assert "legend.js" in html
+    assert 'id="legendDock"' not in html
+    assert 'id="legendPopover"' not in html
+    assert 'id="legendInfoBtn"' not in html
+    assert 'id="legendSheet"' not in html
+    assert 'id="legendScrim"' not in html
+    assert "legend.css" not in html
+    assert "legend.js" not in html
     assert "layers-menu.css" not in html
     assert "layers-menu.js" not in html
 

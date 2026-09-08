@@ -109,6 +109,10 @@ def index() -> str:
     return render_template("index.html")
 
 
+def egg() -> str:
+    return render_template("egg.html")
+
+
 def api() -> Any:
     return jsonify(get_all_threats_data())
 
@@ -427,6 +431,7 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
 
     app.add_url_rule("/", view_func=index)
     app.add_url_rule("/api", view_func=api, methods=["GET"])
+    app.add_url_rule("/egg", view_func=egg, methods=["GET"])
     app.add_url_rule("/issue", view_func=issue, methods=["GET", "POST"])
     app.add_url_rule("/status", view_func=status, methods=["GET"])
     app.add_url_rule("/sitemap.xml", view_func=sitemap, methods=["GET"])

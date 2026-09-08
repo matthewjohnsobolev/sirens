@@ -170,7 +170,7 @@
         for (var i = 0; i < LEGEND.length; i++) {
             var group = LEGEND[i];
             var node = create('div', 'map-layers__group', box);
-            create('div', 'map-layers__caption', node).textContent = group.caption;
+            create('div', 'map-layers__group-name', node).textContent = group.caption;
 
             for (var k = 0; k < group.keys.length; k++) {
                 var key = create('div', 'map-layers__key', node);

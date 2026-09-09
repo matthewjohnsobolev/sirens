@@ -19,41 +19,8 @@ html, body {
   transition: all 0.3s ease;
 }
 
-.leaflet-popup-content-wrapper {
-  border-radius: var(--radius-card, 12px);
-  box-shadow: var(--shadow-card, 0 3px 14px rgba(0, 0, 0, 0.15));
-  padding: 0;
-}
-
 .leaflet-popup-content {
-  width: 310px;
-  min-width: 310px;
-  max-width: 310px;
-  box-sizing: border-box;
-  margin: 16px;
-  padding: 0;
-  line-height: var(--leading-tight, 1.35);
-}
-
-.leaflet-popup-close-button {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink-muted, #757575);
-  font-family: var(--font, 'Inter', sans-serif);
-  font-size: 18px;
-  line-height: 1;
-  text-decoration: none;
-  transition: color var(--motion, 0.15s ease);
-}
-
-.leaflet-popup-close-button:hover {
-  color: var(--ink, #000);
+  margin: 15px;
 }
 
 /* Заголовок сторінки: мапа не має видимого тексту, тож h1 лишається

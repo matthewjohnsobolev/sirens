@@ -50,6 +50,7 @@
 
     --font: 'Inter', sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-icon: 'Material Symbols Rounded';
     --weight-regular: 400;
     --weight-control: 500;
     --weight-cta: 600;

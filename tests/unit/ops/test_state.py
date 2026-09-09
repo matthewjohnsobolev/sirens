@@ -478,8 +478,14 @@ def test_format_window_status():
     tz = get_kyiv_timezone()
     now = 100000
 
-    # Completed
+    # Completed (EN default)
     assert format_window_status(90000, 110000, completed=True, now_epoch=now) == (
+        "completed",
+        "completed",
+        "",
+    )
+    # Completed (UK)
+    assert format_window_status(90000, 110000, completed=True, now_epoch=now, lang="uk") == (
         "completed",
         "завершено",
         "",
@@ -488,11 +494,19 @@ def test_format_window_status():
     # Active - less than 1 min
     code, lbl, rem = format_window_status(90000, 100030, completed=False, now_epoch=now)
     assert code == "active"
-    assert lbl == "зараз"
-    assert rem == "ще <1 хв"
+    assert lbl == "now"
+    assert rem == "<1m remaining"
 
-    # Active - 47 min
+    # Active - 47 min (EN)
     code, lbl, rem = format_window_status(90000, 100000 + 47 * 60, completed=False, now_epoch=now)
+    assert code == "active"
+    assert lbl == "now"
+    assert rem == "47m remaining"
+
+    # Active - 47 min (UK)
+    code, lbl, rem = format_window_status(
+        90000, 100000 + 47 * 60, completed=False, now_epoch=now, lang="uk"
+    )
     assert code == "active"
     assert lbl == "зараз"
     assert rem == "ще 47 хв"
@@ -501,12 +515,20 @@ def test_format_window_status():
     code, lbl, rem = format_window_status(
         90000, 100000 + 2 * 3600 + 15 * 60, completed=False, now_epoch=now
     )
-    assert rem == "ще 2 год 15 хв"
+    assert rem == "2h 15m remaining"
 
-    # Scheduled - wait 45m
+    # Scheduled - wait 45m (EN)
     dt = datetime.datetime(2026, 9, 6, 23, 0, tzinfo=tz)
     code, lbl, wait = format_window_status(
         now + 45 * 60, now + 105 * 60, completed=False, now_epoch=now, start_dt=dt
+    )
+    assert code == "scheduled"
+    assert lbl == "06.09"
+    assert wait == "in 45m"
+
+    # Scheduled - wait 45m (UK)
+    code, lbl, wait = format_window_status(
+        now + 45 * 60, now + 105 * 60, completed=False, now_epoch=now, start_dt=dt, lang="uk"
     )
     assert code == "scheduled"
     assert lbl == "06.09"
@@ -516,18 +538,18 @@ def test_format_window_status():
     code, lbl, wait = format_window_status(
         now + 10 * 3600, now + 12 * 3600, completed=False, now_epoch=now, start_dt=dt
     )
-    assert wait == "через 10 год"
+    assert wait == "in 10h"
 
     # Scheduled - wait 2 days
     code, lbl, wait = format_window_status(
         now + 49 * 3600, now + 50 * 3600, completed=False, now_epoch=now, start_dt=dt
     )
-    assert wait == "через 2 дн."
+    assert wait == "in 2d"
 
     # Past
     assert format_window_status(80000, 90000, completed=False, now_epoch=now) == (
         "completed",
-        "завершено",
+        "completed",
         "",
     )
 
@@ -561,6 +583,7 @@ def test_schedule_management():
     assert len(windows) == 1
     assert windows[0]["id"] == win["id"]
     assert windows[0]["components_uk"] == "мапа, API"
+    assert windows[0]["components_en"] == "map, API"
     assert windows[0]["status_code"] in ("active", "scheduled")
 
     # Complete window by id
@@ -597,15 +620,85 @@ def test_sync_maintenance_state():
             }
         ]
     )
-    with patch("ops.state.push_maintenance_to_kv", return_value=True):
+    with patch("ops.state.push_maintenance_to_kv", return_value=True) as mock_push:
         active_res = sync_maintenance_state(redis_conn=mock_redis)
     assert active_res["id"] == "mnt_active"
+    mock_push.assert_called_once()
+    payload = mock_push.call_args[0][0]
+    assert "windows" in payload
+    assert len(payload["windows"]) == 1
+    assert payload["windows"][0]["id"] == "mnt_active"
 
-    # When no active window exists
-    mock_redis.get.return_value = json.dumps([])
-    with patch("ops.state.push_maintenance_to_kv", return_value=True):
+    # When no active window exists but completed window exists in schedule
+    mock_redis.get.return_value = json.dumps(
+        [
+            {
+                "id": "mnt_past",
+                "components": ["map", "api"],
+                "note": "Completed upgrade",
+                "start_epoch": now - 7200,
+                "end_epoch": now - 3600,
+                "start_iso": "2026-09-05T10:00:00+03:00",
+                "end_iso": "2026-09-05T11:00:00+03:00",
+                "completed": True,
+                "completed_at": now - 3600,
+            }
+        ]
+    )
+    with patch("ops.state.push_maintenance_to_kv", return_value=True) as mock_push_inactive:
         inactive_res = sync_maintenance_state(redis_conn=mock_redis)
     assert inactive_res.get("active") is False
+    mock_push_inactive.assert_called_once()
+    inactive_payload = mock_push_inactive.call_args[0][0]
+    assert "windows" in inactive_payload
+    assert len(inactive_payload["windows"]) == 1
+    assert inactive_payload["windows"][0]["id"] == "mnt_past"
+    assert inactive_payload["windows"][0]["completed"] is True
+
+
+def test_set_and_get_maintenance_preserves_windows():
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = None
+
+    with patch("ops.state.push_maintenance_to_kv", return_value=True) as mock_push:
+        res = set_maintenance(
+            active=True,
+            components=["map", "api"],
+            message="Scheduled database optimization",
+            redis_conn=mock_redis,
+            operator="admin",
+        )
+    assert res["active"] is True
+    assert res["components"] == ["map", "api"]
+    mock_push.assert_called_once()
+    cf_data = mock_push.call_args[0][0]
+    assert cf_data["active"] is True
+    assert "windows" in cf_data
+    assert len(cf_data["windows"]) >= 1
+
+    hset_mapping = mock_redis.hset.call_args[1]["mapping"]
+    assert "windows" in hset_mapping
+
+    # Test get_maintenance deserialization
+    import json
+    mock_redis.hgetall.return_value = {
+        "active": "true",
+        "id": hset_mapping.get("id", "mnt_test"),
+        "components": json.dumps(["map", "api"]),
+        "headline": "Планові роботи",
+        "subtitle": "Scheduled database optimization",
+        "start_iso": "2026-09-05T12:00:00+03:00",
+        "end_iso": "2026-09-05T12:45:00+03:00",
+        "updated_at": "12345678",
+        "operator": "admin",
+        "windows": hset_mapping["windows"],
+    }
+    parsed = get_maintenance(redis_conn=mock_redis)
+    assert parsed["active"] is True
+    assert parsed["id"] == hset_mapping.get("id", "mnt_test")
+    assert "windows" in parsed
+    assert isinstance(parsed["windows"], list)
+    assert len(parsed["windows"]) >= 1
 
 
 def test_get_district_status_level():

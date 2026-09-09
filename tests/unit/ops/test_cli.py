@@ -560,52 +560,52 @@ def test_mnt_ls_empty_and_populated(mock_list_mnt, runner):
     mock_list_mnt.return_value = []
     res_empty = runner.invoke(cli, ["mnt"])
     assert res_empty.exit_code == 0
-    assert "Немає запланованих робіт" in res_empty.output
+    assert "No scheduled maintenance windows" in res_empty.output
 
     # Invoked via maintenance alias
     res_empty_alias = runner.invoke(cli, ["maintenance", "status"])
     assert res_empty_alias.exit_code == 0
-    assert "Немає запланованих робіт" in res_empty_alias.output
+    assert "No scheduled maintenance windows" in res_empty_alias.output
 
     # Direct mnt_group invocation
     res_direct = runner.invoke(mnt_group, [])
     assert res_direct.exit_code == 0
-    assert "Немає запланованих робіт" in res_direct.output
+    assert "No scheduled maintenance windows" in res_direct.output
 
     # Populated via mnt status
     mock_list_mnt.return_value = [
         {
             "id": "mnt_1",
             "status_code": "active",
-            "status_label": "зараз",
+            "status_label": "now",
             "time_text": "02:00–03:30",
-            "components_uk": "мапа, API",
+            "components_en": "map, API",
             "note": "Оновлюємо базу",
-            "remaining_str": "ще 47 хв",
+            "remaining_str": "47m remaining",
         },
         {
             "id": "mnt_2",
             "status_code": "scheduled",
             "status_label": "06.09",
             "time_text": "23:00–23:30",
-            "components_uk": "API",
+            "components_en": "API",
             "note": "«Міграція схеми»",
-            "remaining_str": "через 10 год",
+            "remaining_str": "in 10h",
         },
     ]
     res_pop = runner.invoke(cli, ["mnt", "status"])
     assert res_pop.exit_code == 0
-    assert "зараз" in res_pop.output
+    assert "now" in res_pop.output
     assert "02:00–03:30" in res_pop.output
-    assert "мапа, API" in res_pop.output
+    assert "map, API" in res_pop.output
     assert "«Оновлюємо базу»" in res_pop.output
-    assert "ще 47 хв" in res_pop.output
+    assert "47m remaining" in res_pop.output
     assert "06.09" in res_pop.output
 
     # Backward compatibility via mnt ls
     res_pop_ls = runner.invoke(cli, ["mnt", "ls"])
     assert res_pop_ls.exit_code == 0
-    assert "зараз" in res_pop_ls.output
+    assert "now" in res_pop_ls.output
 
     # Error handling
     mock_list_mnt.side_effect = Exception("Redis error")
@@ -638,10 +638,10 @@ def test_mnt_add_command(mock_add_win, runner):
         ],
     )
     assert res.exit_code == 0
-    assert "Заплановано" in res.output
+    assert "scheduled" in res.output.lower()
     assert "02:00" in res.output
     assert "03:30" in res.output
-    assert "мапа, API" in res.output
+    assert "map, API" in res.output
     assert "«Оновлюємо базу»" in res.output
 
     # Error handling
@@ -657,7 +657,7 @@ def test_mnt_done_command(mock_complete, runner):
     mock_complete.return_value = None
     res_none = runner.invoke(cli, ["mnt", "done"])
     assert res_none.exit_code == 0
-    assert "Немає активних планових робіт для завершення" in res_none.output
+    assert "No active maintenance window to complete" in res_none.output
 
     # Completed active window
     mock_complete.return_value = {
@@ -667,14 +667,14 @@ def test_mnt_done_command(mock_complete, runner):
     }
     res_done = runner.invoke(cli, ["mnt", "done"])
     assert res_done.exit_code == 0
-    assert "Планові роботи завершено" in res_done.output
+    assert "completed" in res_done.output.lower()
     assert "Оновлюємо базу" in res_done.output
-    assert "мапа, API" in res_done.output
+    assert "map, API" in res_done.output
 
     # With window id
     res_id = runner.invoke(cli, ["mnt", "done", "mnt_123"])
     assert res_id.exit_code == 0
-    assert "Планові роботи завершено" in res_id.output
+    assert "completed" in res_id.output.lower()
 
     # Error handling
     mock_complete.side_effect = Exception("DB error")

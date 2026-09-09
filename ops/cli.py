@@ -598,15 +598,15 @@ class MntGroup(click.Group):
             "  status       Show scheduled maintenance windows and active status\n"
             "  on           Immediately start maintenance\n"
             "  off          Complete active maintenance window (alias for mnt done)\n"
-            "  add          Schedule a new maintenance window (планові роботи)\n"
-            "  done         Complete active maintenance window early (зняти достроково)\n\n"
+            "  add          Schedule a new maintenance window\n"
+            "  done         Complete active maintenance window early\n\n"
             "OPTIONS\n"
             "  -h, --help   Show this help message and exit\n\n"
             "EXAMPLES\n"
             "  sirens-ops mnt status\n"
-            '  sirens-ops mnt on --for 2h -m "Планові роботи"\n'
+            '  sirens-ops mnt on --for 2h -m "Scheduled maintenance"\n'
             "  sirens-ops mnt off\n"
-            '  sirens-ops mnt add --from "23:00" --for 2h -c map,api -n "Оновлення"\n'
+            '  sirens-ops mnt add --from "23:00" --for 2h -c map,api -n "Database upgrade"\n'
             "  sirens-ops mnt done\n"
         )
         formatter.write(help_text)
@@ -633,14 +633,14 @@ class MntAddCommand(click.Command):
             "USAGE\n"
             "  sirens-ops mnt add <components> [options]\n\n"
             "ARGUMENTS\n"
-            "  COMPONENTS       Target components (e.g. map, api, alerts, or all)\n\n"
+            "  COMPONENTS       Target components: all, map, api, broadcast, source (comma-separated)\n\n"
             "OPTIONS\n"
             '      --from       Start time in Kyiv timezone (e.g. "02:00", "now", default: now)\n'
             "      --for        Duration (e.g. 60m, 2h, default: 60m)\n"
-            "  -n, -m, --note   Notice description (планові роботи)\n"
+            "  -n, -m, --note   Maintenance notice description\n"
             "  -h, --help       Show this help message and exit\n\n"
             "EXAMPLES\n"
-            '  sirens-ops mnt add map,api --from "02:00" --for 90m -n "Оновлення БД"\n'
+            '  sirens-ops mnt add map,api --from "02:00" --for 90m -n "Database upgrade"\n'
             "  sirens-ops mnt add all --for 2h\n"
         )
         formatter.write(help_text)
@@ -671,11 +671,11 @@ class MntOnCommand(click.Command):
             "  COMPONENTS       Target components (default: all)\n\n"
             "OPTIONS\n"
             "      --for        Duration (default: 60m)\n"
-            "  -m, -n, --note   Notice description\n"
+            "  -m, -n, --note   Maintenance notice description\n"
             "  -h, --help       Show this help message and exit\n\n"
             "EXAMPLES\n"
             "  sirens-ops mnt on\n"
-            '  sirens-ops mnt on map,api --for 2h -m "Термінові роботи"\n'
+            '  sirens-ops mnt on map,api --for 2h -m "Urgent maintenance"\n'
         )
         formatter.write(help_text)
 
@@ -1039,23 +1039,26 @@ def metrics_cmd(ctx: click.Context):
 def print_mnt_schedule(windows: list[dict[str, Any]]) -> None:
     """Render scheduled maintenance windows list matching compact style."""
     if not windows:
-        console.print("  [dim green]○ Немає запланованих робіт.[/]")
+        console.print("  [dim green]○ No scheduled maintenance windows.[/]")
         return
 
     table = Table(
         box=None, show_header=True, header_style="bold dim", pad_edge=False, show_edge=False
     )
-    table.add_column("  STATUS", min_width=14)
-    table.add_column("TIME", min_width=14)
-    table.add_column("COMPONENTS", min_width=14)
-    table.add_column("NOTE", min_width=20)
-    table.add_column("REMAINING", style="dim")
+    table.add_column("  STATUS", min_width=10)
+    table.add_column("PERIOD", min_width=13)
+    table.add_column("COMPONENTS", min_width=12)
+    table.add_column("NOTE", min_width=14)
+    table.add_column("REMAINING", style="dim", no_wrap=True)
+    table.add_column("ID", style="dim", no_wrap=True)
 
     for w in windows:
         st_code = w.get("status_code", "")
         st_lbl = w.get("status_label", "")
         if st_code == "active":
             dot_str = f"  [bold blue]●[/] {st_lbl}"
+        elif st_code == "completed":
+            dot_str = f"  [dim green]○[/] {st_lbl}"
         else:
             dot_str = f"  [dim]○[/] {st_lbl}"
 
@@ -1063,14 +1066,23 @@ def print_mnt_schedule(windows: list[dict[str, Any]]) -> None:
         if note_val and not (note_val.startswith("«") and note_val.endswith("»")):
             note_formatted = f"«{note_val}»"
         else:
-            note_formatted = note_val
+            note_formatted = note_val or "-"
+
+        comps_str = (
+            w.get("components_formatted")
+            or w.get("components_en")
+            or (state.format_components_en(w["components"]) if "components" in w else None)
+            or w.get("components_uk")
+            or "all components"
+        )
 
         table.add_row(
             dot_str,
             w.get("time_text", ""),
-            w.get("components_uk", ""),
+            comps_str,
             note_formatted,
-            w.get("remaining_str", ""),
+            w.get("remaining_str") or "-",
+            w.get("id", ""),
         )
 
     console.print(Text("SCHEDULED MAINTENANCE", style="bold white"))
@@ -1080,7 +1092,7 @@ def print_mnt_schedule(windows: list[dict[str, Any]]) -> None:
 @cli.group(name="mnt", cls=MntGroup, context_settings=CONTEXT_SETTINGS, invoke_without_command=True)
 @click.pass_context
 def mnt_group(ctx: click.Context):
-    """Manage scheduled maintenance windows (планові роботи)."""
+    """Manage scheduled maintenance windows."""
     if ctx.invoked_subcommand is None:
         ctx.invoke(mnt_status_cmd)
 
@@ -1103,7 +1115,7 @@ def mnt_group(ctx: click.Context):
     "--message",
     "note",
     default=None,
-    help='Maintenance notice (e.g. "Оновлюємо базу")',
+    help='Maintenance notice (e.g. "Database upgrade")',
 )
 @click.pass_context
 def mnt_add_cmd(
@@ -1113,7 +1125,7 @@ def mnt_add_cmd(
     for_str: str,
     note: str | None,
 ):
-    """Schedule a new maintenance window (планові роботи)."""
+    """Schedule a new maintenance window."""
     try:
         win = state.add_maintenance_window(
             components=components,
@@ -1125,11 +1137,18 @@ def mnt_add_cmd(
         console.print(f"[red]error scheduling maintenance:[/] {e}")
         sys.exit(1)
 
-    comps_uk = state.format_components_uk(win["components"])
+    now = int(state.get_kyiv_now().timestamp())
+    start_ep = win.get("start_epoch")
+    end_ep = win.get("end_epoch")
+    is_active = (start_ep <= now <= end_ep) if (start_ep is not None and end_ep is not None) else (from_str.strip().lower() in ("now", "зараз"))
+    status_badge = "[bold blue]● active[/]" if is_active else "[bold blue]● scheduled[/]"
+
+    comps_str = state.format_components_en(win["components"])
     note_txt = f"«{win['note']}»" if win.get("note") else ""
-    console.print(f"{'TARGET':<12}maintenance ({comps_uk})")
-    console.print(f"{'STATUS':<12}[bold blue]● scheduled[/] (Заплановано)")
+    console.print(f"{'TARGET':<12}maintenance ({comps_str})")
+    console.print(f"{'STATUS':<12}{status_badge}")
     console.print(f"{'PERIOD':<12}{win['time_text']}")
+    console.print(f"{'ID':<12}{win['id']}")
     if note_txt:
         console.print(f"{'NOTE':<12}{note_txt}")
 
@@ -1172,7 +1191,7 @@ mnt_group.add_command(
 @click.argument("window_id", required=False, default=None)
 @click.pass_context
 def mnt_done_cmd(ctx: click.Context, window_id: str | None):
-    """Complete active maintenance window early (зняти достроково)."""
+    """Complete active maintenance window early."""
     try:
         res = state.complete_maintenance_window(window_id=window_id)
     except Exception as e:
@@ -1180,13 +1199,15 @@ def mnt_done_cmd(ctx: click.Context, window_id: str | None):
         sys.exit(1)
 
     if not res:
-        console.print("  [dim]Немає активних планових робіт для завершення.[/]")
+        console.print("  [dim]No active maintenance window to complete.[/]")
         return
 
-    comps_uk = state.format_components_uk(res.get("components", ["all"]))
+    comps_str = state.format_components_en(res.get("components", ["all"]))
     note_txt = f"«{res.get('note', '')}»" if res.get("note") else ""
-    console.print(f"{'TARGET':<12}maintenance ({comps_uk})")
-    console.print(f"{'STATUS':<12}[dim green]○ completed[/] (Планові роботи завершено)")
+    console.print(f"{'TARGET':<12}maintenance ({comps_str})")
+    console.print(f"{'STATUS':<12}[dim green]○ completed[/] (Maintenance window completed)")
+    if res.get("id"):
+        console.print(f"{'ID':<12}{res['id']}")
     if note_txt:
         console.print(f"{'NOTE':<12}{note_txt}")
 

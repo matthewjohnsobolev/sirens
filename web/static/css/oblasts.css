@@ -27,12 +27,11 @@
 }
 
 .oblast-name {
-    font-family: var(--font, 'Inter', sans-serif);
-    font-size: var(--text-control, 14px);
-    font-weight: var(--weight-title, 700);
-    line-height: var(--leading-tight, 1.35);
-    color: var(--ink, #000);
-    margin: 0 28px var(--gap-section, 10px) 0;
+    font-family: 'Inter', sans-serif, bold;
+    font-size: 14px;
+    font-weight: 700;
+    color: #000;
+    margin-bottom: 10px;
 }
 
 /* Плашка одна на всі стани, а стан міняє тільки колір поля. Раніше кожен
@@ -40,20 +39,19 @@
    переїхали між станами, шість однакових копій довелося б правити шість
    разів. */
 .oblast-pill {
-    font-family: var(--font, 'Inter', sans-serif);
-    font-size: var(--text-helper, 12px);
-    font-weight: var(--weight-control, 500);
+    font-family: 'Inter', sans-serif;
+    font-size: var(--text-helper);
+    font-weight: var(--weight-control);
     border: none;
     width: 100%;
-    box-sizing: border-box;
     height: 40px;
     display: flex;
     padding: 0;
-    border-radius: var(--radius-control, 10px);
+    border-radius: 10px;
     align-items: center;
     text-align: left;
     line-height: 14px;
-    color: var(--ink, #000);
+    color: #000;
     background-color: var(--pill-bg, var(--status-gray));
     transition: background-color var(--motion);
 }
@@ -98,14 +96,17 @@
     --pill-time-color: var(--status-gray-text, #52525B);
 }
 
+#indent {
+    margin-top: 10px;
+}
+
 .icon-container {
     width: 40px;
     height: 40px;
     display: flex;
     align-items: center;
+    margin: 0; 
     justify-content: center;
-    flex-shrink: 0;
-    margin: 0;
 }
 
 .icon {
@@ -120,18 +121,16 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding-right: var(--gap, 8px);
 }
 
 .oblast-description-time {
     margin-left: auto;
     flex: 0 0 auto;
+    min-width: 66px;
     font-family: var(--font-mono);
-    font-weight: var(--weight-control, 500);
-    font-size: var(--text-secondary, 11px);
-    line-height: 14px;
-    letter-spacing: var(--track-mono, 0.04em);
-    color: var(--pill-time-color, var(--ink-muted));
+    font-weight: 400;
+    font-size: 11px;
+    color: var(--pill-time-color);
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -153,17 +152,18 @@
 }
   
 .leaflet-popup-content > .info-block {
-    width: 100%;
+    width: 310px;
 }
 
 .container {
-    width: 100%;
-    box-sizing: border-box;
+    width: 310px;
+    max-height: 400px;
+    overflow: visible;
     position: relative;
 }
 
 .scrollable-content {
-    max-height: 180px;
+    max-height: 132px;
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 4px;
@@ -172,12 +172,10 @@
     touch-action: pan-y;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
 }
 
 .popup-city {
-    margin-bottom: var(--map-inset, 12px);
+    margin-bottom: 12px;
 }
 
 .popup-city:last-child {
@@ -195,12 +193,12 @@
     line-height: 14px;
     letter-spacing: var(--track-caption);
     text-transform: uppercase;
-    color: var(--ink-muted, #757575);
-    margin: 0 0 var(--gap-tight, 6px);
+    color: #757575;
+    margin: 0 0 6px;
 }
 
 .info-block {
-    margin-bottom: var(--gap, 8px);
+    margin-bottom: 8px;
 }
 
 .info-block:last-child {

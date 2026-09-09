@@ -35,10 +35,10 @@
     margin-right: 0;
 }
 
-/* Плитки статусу й оновлення стоять у власному куті — нижньому лівому,
-   і на телефоні теж: стан передує кнопці часу в єдиній горизонтальній
-   лінії. Відступ від краю знову задає контейнер кута, тож самі плитки
-   про свій кут не знають. */
+/* Плитка стану та свіжості даних стоїть у власному куті — нижньому лівому,
+   і на телефоні теж: стан і час останніх даних в єдиній горизонтальній
+   лінії. Відступ від краю знову задає контейнер кута, тож сама плитка
+   про свій кут не знає. */
 .leaflet-bottom.leaflet-left {
     display: flex;
     flex-direction: row;
@@ -52,14 +52,6 @@
     float: none;
     clear: none;
     margin: 0;
-}
-
-.leaflet-bottom.leaflet-left .map-ctl--status {
-    order: 1;
-}
-
-.leaflet-bottom.leaflet-left .map-ctl--sync {
-    order: 2;
 }
 
 /* Правий нижній кут тримає атрибуцію карти й ліцензії. Відступ від краю
@@ -312,51 +304,15 @@
     }
 }
 
-/* ── Плитка оновлення ───────────────────────────────────────────────── */
+/* ── Кнопка оновлення ───────────────────────────────────────────────── */
 
-/* Єдина плитка з текстом у полі, і через текст вона ширша за решту. Але
-   стопка ліворуч читається однією вертикаллю, тож вміст притиснутий до
-   лівого краю: іконка стоїть у такому самому квадраті, як у квадратних
-   кнопок, і потрапляє на ту саму лінію, а час висить праворуч від неї.
-   Відступ — половина порожнього поля того квадрата; волосінь із нього
-   віднімається, бо padding рахується вже за нею. */
-.map-ctl--sync {
-    width: var(--control-w-sync);
-    justify-content: flex-start;
-    padding-left: calc((var(--control-h) - var(--icon-size, 18px)) / 2 - 1px);
-    gap: var(--gap-tight);
-}
-
-/* Час говорить тією самою моно-капітеллю, що чіп і статус-сторінка, але
-   приглушено: іконка каже, що робити, час лише називає момент. */
-.map-sync-time {
-    font-family: var(--font-mono);
-    font-size: var(--text-secondary);
-    font-weight: var(--weight-control);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: .04em;
-    line-height: 1;
-    color: var(--ink-muted);
-    transition: color var(--motion);
-}
-
-.map-ctl--sync:hover .map-sync-time {
-    color: var(--ink-muted-hover);
-}
-
-/* Поки триває запит, крутиться сама іконка: поле не смикається, а час
-   лишається старим — підмінити його на прочерк означало б на секунду
-   сказати, що даних немає.
-
-   Коло сповільнюється до кінця оберту, і зупиняють його лише на цілому
-   колі — тривалість продубльована в map-ui.js. Відповідь із кешу приходить
-   за десяток мілісекунд, і зупинка «де застало» лишала б стрілку лежати
-   боком. */
-.map-ctl--sync[aria-busy="true"] {
+/* Кнопка оновлення стоїть під кнопками зуму в лівій стопці.
+   Квадратна плитка з іконкою оновлення, така сама як інші контроли стопки. */
+.map-ctl--refresh[aria-busy="true"] {
     cursor: default;
 }
 
-.map-ctl--sync[aria-busy="true"] .map-ctl-icon--refresh {
+.map-ctl--refresh[aria-busy="true"] .map-ctl-icon--refresh {
     transform-origin: center;
     will-change: transform;
     animation: map-sync-spin .9s cubic-bezier(.5, 0, .5, 1) infinite;
@@ -367,37 +323,41 @@
     to { transform: rotate(360deg); }
 }
 
-/* Новий час не підмінює старий беззвучно: коротке проявлення знизу — те
-   саме, яким приходить чіп. Анімується лише справжня зміна: відповіді
-   приходять щокілька секунд, а хвилина на плитці міняється рідше, і
-   блимати щотакту їй нема з чого. */
-.map-sync-time.is-fresh {
-    will-change: transform, opacity;
-    animation: map-sync-stamp var(--motion);
-}
+/* ── Плитка стану та свіжості даних ──────────────────────────────────── */
 
-@keyframes map-sync-stamp {
-    from {
-        opacity: 0;
-        transform: translateY(3px);
-    }
-}
-
-/* ── Кнопка та гліф стану ────────────────────────────────────────────── */
-
-/* Стан сервісу — квадратна плитка в нижньому лівому куті перед кнопкою
-   часу. Піктограми всередині немає, статус показує кольоровий гліф по
-   центру, навколо якого розходиться м'який пульс. */
+/* Єдина плитка з текстом у полі, і через текст вона ширша за решту.
+   Стопка ліворуч читається однією вертикаллю, тож вміст притиснутий до
+   лівого краю: гліф стоїть у такому самому квадраті, як іконки у квадратних
+   кнопок, і потрапляє на ту саму лінію, а час висить праворуч від нього.
+   Відступ — половина порожнього поля того квадрата; волосінь із нього
+   віднімається, бо padding рахується вже за нею. */
 .map-ctl--status {
     position: relative;
     isolation: isolate;
     --pulse-cycle: 1.8s;
+    width: var(--control-w-sync);
+    justify-content: flex-start;
+    padding-left: calc((var(--control-h) - var(--icon-size, 18px)) / 2 - 1px);
+    gap: var(--gap-tight);
 }
 
-/* Гліф розміщено по центру кнопки завдяки flex-центруванню .map-ctl.
-   Колір змінюється тим самим переходом, що й раніше. Сам гліф активно
-   пульсує в такт перевіркам стану, а його хвиля розширюється приблизно
-   до розміру іконки оновлення (18px). */
+.map-ctl--status:hover .map-sync-time {
+    color: var(--ink-muted-hover);
+}
+
+/* Гліф розміщено всередині слота 18x18px, який точно збігається за
+   розміром та центром з іконками інших контролів (18px). */
+.map-ctl-glyph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--icon-size, 18px);
+    height: var(--icon-size, 18px);
+    flex: none;
+}
+
+/* Гліф тихо пульсує в такт перевіркам стану, а його хвиля розширюється
+   приблизно до розміру іконки оновлення (18px). */
 .map-ctl-badge {
     position: relative;
     display: block;
@@ -409,8 +369,8 @@
     animation: map-status-beacon var(--pulse-cycle) ease-in-out infinite;
 }
 
-/* Хвиля пульсу розширюється від гліфа до розмірів іконки оновлення
-   (8px * 2.25 = 18px), плавно згасаючи до прозорості. */
+/* Хвиля пульсу розширюється від гліфа до розмірів слота (8px * 2.25 = 18px),
+   плавно згасаючи до прозорості. */
 .map-ctl-badge::after {
     content: "";
     position: absolute;
@@ -460,6 +420,35 @@
 .map-ctl--status[data-state="nodata"] .map-ctl-badge,
 .map-ctl--status[data-state="nodata"] .map-ctl-badge::after {
     animation: none;
+}
+
+/* Час говорить тією самою моно-капітеллю, що чіп і статус-сторінка, але
+   приглушено: гліф каже стан, час лише називає момент. */
+.map-sync-time {
+    font-family: var(--font-mono);
+    font-size: var(--text-secondary);
+    font-weight: var(--weight-control);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .04em;
+    line-height: 1;
+    color: var(--ink-muted);
+    transition: color var(--motion);
+}
+
+/* Новий час не підмінює старий беззвучно: коротке проявлення знизу — те
+   саме, яким приходить чіп. Анімується лише справжня зміна: відповіді
+   приходять щокілька секунд, а хвилина на плитці міняється рідше, і
+   блимати щотакту їй нема з чого. */
+.map-sync-time.is-fresh {
+    will-change: transform, opacity;
+    animation: map-sync-stamp var(--motion);
+}
+
+@keyframes map-sync-stamp {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
 }
 
 /* ── Чіп аварії ─────────────────────────────────────────────────────── */
@@ -669,7 +658,7 @@
         background: transparent;
     }
 
-    .map-ctl--sync:hover .map-sync-time {
+    .map-ctl--status:hover .map-sync-time {
         color: var(--ink-muted);
     }
 
@@ -709,7 +698,7 @@
 
     /* Замість оберту — притлумлена іконка: запит усе одно має бути видно,
        просто не рухом. */
-    .map-ctl--sync[aria-busy="true"] .map-ctl-icon--refresh {
+    .map-ctl--refresh[aria-busy="true"] .map-ctl-icon--refresh {
         animation: none;
         opacity: .45;
     }

@@ -61,10 +61,6 @@
             return;
         }
 
-        if (target.closest('a[href="/issue"]')) {
-            send('report_cta_click', { link_location: 'attribution' });
-            return;
-        }
 
         var status = target.closest('.map-ctl--status, .map-chip');
         if (status) {

@@ -623,6 +623,25 @@ def normalize_components(comps: list[str] | str | None) -> list[str]:
     return normalized or ["all"]
 
 
+EN_COMPONENT_NAMES: dict[str, str] = {
+    "all": "all components",
+    "broadcast": "broadcast",
+    "source": "source",
+    "map": "map",
+    "api": "API",
+}
+
+
+def format_components_en(comps: list[str]) -> str:
+    """Format components into English string, e.g. 'map, API'."""
+    if "all" in comps:
+        return "all components"
+    return ", ".join(EN_COMPONENT_NAMES.get(c, c) for c in comps)
+
+
+format_components = format_components_en
+
+
 def format_components_uk(comps: list[str]) -> str:
     """Format components into Ukrainian string, e.g. 'мапа, API'."""
     if "all" in comps:
@@ -723,50 +742,75 @@ def format_window_status(
     completed: bool = False,
     now_epoch: int | None = None,
     start_dt: datetime.datetime | None = None,
+    lang: str = "en",
 ) -> tuple[str, str, str]:
     """Determine status badge, state label, and relative remaining string.
 
     Returns (status_code, status_label, remaining_str)
-    e.g. ('active', 'зараз', 'ще 47 хв')
-         ('scheduled', '06.09', 'через 10 год')
-         ('completed', 'завершено', '')
+    e.g. ('active', 'now', '47m remaining')
+         ('scheduled', '06.09', 'in 10h')
+         ('completed', 'completed', '')
     """
     now = now_epoch if now_epoch is not None else int(get_kyiv_now().timestamp())
 
     if completed:
-        return "completed", "завершено", ""
+        return ("completed", "завершено", "") if lang == "uk" else ("completed", "completed", "")
 
     if start_epoch <= now <= end_epoch:
         rem_sec = max(0, end_epoch - now)
         rem_min = rem_sec // 60
-        if rem_min < 1:
-            rem_str = "ще <1 хв"
-        elif rem_min < 60:
-            rem_str = f"ще {rem_min} хв"
+        if lang == "uk":
+            if rem_min < 1:
+                rem_str = "ще <1 хв"
+            elif rem_min < 60:
+                rem_str = f"ще {rem_min} хв"
+            else:
+                h = rem_min // 60
+                m = rem_min % 60
+                rem_str = f"ще {h} год {m} хв" if m > 0 else f"ще {h} год"
+            return "active", "зараз", rem_str
         else:
-            h = rem_min // 60
-            m = rem_min % 60
-            rem_str = f"ще {h} год {m} хв" if m > 0 else f"ще {h} год"
-        return "active", "зараз", rem_str
+            if rem_min < 1:
+                rem_str = "<1m remaining"
+            elif rem_min < 60:
+                rem_str = f"{rem_min}m remaining"
+            else:
+                h = rem_min // 60
+                m = rem_min % 60
+                rem_str = f"{h}h {m}m remaining" if m > 0 else f"{h}h remaining"
+            return "active", "now", rem_str
 
     if now < start_epoch:
         wait_sec = start_epoch - now
         wait_min = wait_sec // 60
-        if wait_min < 60:
-            wait_str = f"через {wait_min} хв"
-        else:
-            h = wait_min // 60
-            m = wait_min % 60
-            if h < 24:
-                wait_str = f"через {h} год" if m == 0 else f"через {h} год {m} хв"
+        if lang == "uk":
+            if wait_min < 60:
+                wait_str = f"через {wait_min} хв"
             else:
-                d = h // 24
-                wait_str = f"через {d} дн."
+                h = wait_min // 60
+                m = wait_min % 60
+                if h < 24:
+                    wait_str = f"через {h} год" if m == 0 else f"через {h} год {m} хв"
+                else:
+                    d = h // 24
+                    wait_str = f"через {d} дн."
+            date_lbl = start_dt.strftime("%d.%m") if start_dt else "заплановано"
+            return "scheduled", date_lbl, wait_str
+        else:
+            if wait_min < 60:
+                wait_str = f"in {wait_min}m"
+            else:
+                h = wait_min // 60
+                m = wait_min % 60
+                if h < 24:
+                    wait_str = f"in {h}h" if m == 0 else f"in {h}h {m}m"
+                else:
+                    d = h // 24
+                    wait_str = f"in {d}d"
+            date_lbl = start_dt.strftime("%d.%m") if start_dt else "scheduled"
+            return "scheduled", date_lbl, wait_str
 
-        date_lbl = start_dt.strftime("%d.%m") if start_dt else "заплановано"
-        return "scheduled", date_lbl, wait_str
-
-    return "completed", "завершено", ""
+    return ("completed", "завершено", "") if lang == "uk" else ("completed", "completed", "")
 
 
 def push_maintenance_to_kv(maintenance_payload: dict[str, Any]) -> bool:
@@ -827,6 +871,24 @@ def sync_maintenance_state(redis_conn=None) -> dict[str, Any]:
             active_win = w
             break
 
+    # Prepare windows list for history on Cloudflare KV and status page
+    recent_cutoff = now - 7 * 86400
+    recent_windows = [
+        {
+            "id": w["id"],
+            "components": w["components"],
+            "note": w.get("note", ""),
+            "start_epoch": w["start_epoch"],
+            "end_epoch": w["end_epoch"],
+            "start_iso": w.get("start_iso", ""),
+            "end_iso": w.get("end_iso", ""),
+            "completed": bool(w.get("completed")),
+            "completed_at": w.get("completed_at"),
+        }
+        for w in schedule
+        if w.get("end_epoch", 0) >= recent_cutoff or not w.get("completed")
+    ]
+
     if active_win:
         note_val = active_win.get("note") or "Тривають планові технічні роботи."
         state_data = {
@@ -839,6 +901,7 @@ def sync_maintenance_state(redis_conn=None) -> dict[str, Any]:
             "end_iso": active_win["end_iso"],
             "updated_at": str(now),
             "operator": active_win.get("operator", ""),
+            "windows": json.dumps(recent_windows),
         }
         cf_payload = {
             "active": True,
@@ -850,6 +913,7 @@ def sync_maintenance_state(redis_conn=None) -> dict[str, Any]:
             "end_iso": active_win["end_iso"],
             "updated_at": get_kyiv_now().isoformat(),
             "operator": active_win.get("operator", ""),
+            "windows": recent_windows,
         }
     else:
         state_data = {
@@ -860,6 +924,7 @@ def sync_maintenance_state(redis_conn=None) -> dict[str, Any]:
             "subtitle": "Тривають планові технічні роботи.",
             "updated_at": str(now),
             "operator": "",
+            "windows": json.dumps(recent_windows),
         }
         cf_payload = {
             "active": False,
@@ -868,6 +933,7 @@ def sync_maintenance_state(redis_conn=None) -> dict[str, Any]:
             "subtitle": "Тривають планові технічні роботи.",
             "updated_at": get_kyiv_now().isoformat(),
             "operator": "",
+            "windows": recent_windows,
         }
 
     client.hset("system:maintenance", mapping=state_data)
@@ -921,6 +987,7 @@ def add_maintenance_window(
 def list_maintenance_windows(
     include_completed: bool = False,
     redis_conn=None,
+    lang: str = "en",
 ) -> list[dict[str, Any]]:
     """List scheduled maintenance windows."""
     client = redis_conn or get_redis_client()
@@ -947,6 +1014,7 @@ def list_maintenance_windows(
             completed=is_completed,
             now_epoch=now,
             start_dt=start_dt,
+            lang=lang,
         )
 
         time_text = w.get("time_text") or (
@@ -958,7 +1026,9 @@ def list_maintenance_windows(
         item["status_label"] = status_label
         item["remaining_str"] = remaining_str
         item["time_text"] = time_text
+        item["components_en"] = format_components_en(w["components"])
         item["components_uk"] = format_components_uk(w["components"])
+        item["components_formatted"] = format_components_en(w["components"]) if lang == "en" else format_components_uk(w["components"])
         results.append(item)
 
     return results
@@ -1022,6 +1092,62 @@ def set_maintenance(
     default_msg = "Тривають планові технічні роботи."
     subtitle_msg = message.strip() if message and message.strip() else default_msg
 
+    schedule = _load_schedule(client)
+    recent_cutoff = int(now_epoch) - 7 * 86400
+    changed = False
+
+    if active:
+        has_active = any(
+            not w.get("completed") and w["start_epoch"] <= int(now_epoch) <= w["end_epoch"]
+            for w in schedule
+        )
+        if not has_active:
+            import uuid
+
+            duration_sec = 3600
+            end_dt = now_kyiv + datetime.timedelta(seconds=duration_sec)
+            win = {
+                "id": f"mnt_{now_epoch}_{uuid.uuid4().hex[:6]}",
+                "components": comps_list,
+                "note": subtitle_msg,
+                "start_epoch": int(now_epoch),
+                "end_epoch": int(end_dt.timestamp()),
+                "start_iso": now_kyiv.isoformat(),
+                "end_iso": end_dt.isoformat(),
+                "time_text": format_window_time(now_kyiv, end_dt),
+                "created_at": int(now_epoch),
+                "operator": operator_name,
+                "completed": False,
+            }
+            schedule.append(win)
+            changed = True
+    else:
+        now_int = int(now_epoch)
+        for w in schedule:
+            if not w.get("completed") and w["start_epoch"] <= now_int <= w["end_epoch"]:
+                w["completed"] = True
+                w["completed_at"] = now_int
+                changed = True
+
+    if changed:
+        _save_schedule(client, schedule)
+
+    recent_windows = [
+        {
+            "id": w["id"],
+            "components": w["components"],
+            "note": w.get("note", ""),
+            "start_epoch": w["start_epoch"],
+            "end_epoch": w["end_epoch"],
+            "start_iso": w.get("start_iso", ""),
+            "end_iso": w.get("end_iso", ""),
+            "completed": bool(w.get("completed")),
+            "completed_at": w.get("completed_at"),
+        }
+        for w in schedule
+        if w.get("end_epoch", 0) >= recent_cutoff or not w.get("completed")
+    ]
+
     import json
 
     redis_data = {
@@ -1031,6 +1157,7 @@ def set_maintenance(
         "subtitle": subtitle_msg,
         "updated_at": now_epoch,
         "operator": operator_name,
+        "windows": json.dumps(recent_windows),
     }
     client.hset("system:maintenance", mapping=redis_data)
 
@@ -1041,24 +1168,12 @@ def set_maintenance(
         "subtitle": subtitle_msg,
         "updated_at": now_kyiv.isoformat(),
         "operator": operator_name,
+        "windows": recent_windows,
     }
 
     cf_synced = False
     if sync_cf:
         cf_synced = push_maintenance_to_kv(cf_payload)
-
-    if not active:
-        # Also mark any active window in schedule as completed
-        schedule = _load_schedule(client)
-        now_int = int(now_epoch)
-        changed = False
-        for w in schedule:
-            if not w.get("completed") and w["start_epoch"] <= now_int <= w["end_epoch"]:
-                w["completed"] = True
-                w["completed_at"] = now_int
-                changed = True
-        if changed:
-            _save_schedule(client, schedule)
 
     return {
         "active": active,
@@ -1080,11 +1195,13 @@ def get_maintenance(redis_conn=None) -> dict[str, Any]:
     if not raw:
         return {
             "active": False,
+            "id": "",
             "components": ["all"],
             "headline": "Планові роботи",
             "subtitle": "Тривають планові технічні роботи.",
             "updated_at": 0,
             "operator": "",
+            "windows": [],
         }
 
     is_active = str(raw.get("active", "")).lower() in ("true", "1", "active")
@@ -1101,11 +1218,21 @@ def get_maintenance(redis_conn=None) -> dict[str, Any]:
     except (ValueError, TypeError):
         updated_epoch = 0
 
+    windows_raw = raw.get("windows")
+    windows = []
+    if windows_raw:
+        try:
+            windows = json.loads(windows_raw) if isinstance(windows_raw, str) else windows_raw
+        except Exception:
+            windows = []
+
     return {
         "active": is_active,
+        "id": raw.get("id", ""),
         "components": comps,
         "headline": raw.get("headline", "Планові роботи"),
         "subtitle": raw.get("subtitle", "Тривають планові технічні роботи."),
         "updated_at": updated_epoch,
         "operator": raw.get("operator", ""),
+        "windows": windows,
     }

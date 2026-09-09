@@ -54,13 +54,29 @@ export interface TelemetryAlert {
     message_link?: string | null;
 }
 
+export interface MaintenanceWindowData {
+    id?: string;
+    components?: string[];
+    note?: string;
+    start_epoch?: number;
+    end_epoch?: number;
+    start_iso?: string;
+    end_iso?: string;
+    completed?: boolean;
+    completed_at?: number | null;
+}
+
 export interface MaintenanceData {
     active: boolean;
+    id?: string;
     headline?: string;
     subtitle?: string;
     components?: string[];
+    start_iso?: string;
+    end_iso?: string;
     updated_at?: string;
     operator?: string;
+    windows?: MaintenanceWindowData[];
 }
 
 export interface TelemetryData {

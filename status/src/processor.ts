@@ -1,4 +1,4 @@
-import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry, fetchMaintenance, healthchecksSlug, uptimeRobotKey } from "./api";
+import { Env, COMPONENTS_SPEC, fetchHealthchecks, fetchHealthcheckFlips, fetchUptimeRobot, fetchTelemetry, fetchMaintenance, healthchecksSlug, uptimeRobotKey, MaintenanceWindowData } from "./api";
 import { UK_MONTHS, formatHourParts, formatHourTitle, summarizeHours, getKyivParts, formatLocationLocative, relativeDayLabel } from "./helpers";
 
 const WINDOW_HOURS = 24;
@@ -148,6 +148,21 @@ export async function computeStatusData(env: Env) {
             ? telemetry.maintenance
             : null;
 
+    const rawWindows = ((maintenance?.windows || telemetry?.maintenance?.windows || []) as MaintenanceWindowData[]);
+    const allWindows: MaintenanceWindowData[] = [...rawWindows];
+    if (activeMaintenance && activeMaintenance.active) {
+        const activeId = activeMaintenance.id || "active";
+        if (!allWindows.some(w => w.id === activeId)) {
+            allWindows.push({
+                id: activeId,
+                components: activeMaintenance.components || ["all"],
+                start_iso: activeMaintenance.start_iso,
+                end_iso: activeMaintenance.end_iso,
+                completed: false
+            });
+        }
+    }
+
     const mntAppliesToComp = (key: string) => {
         if (!activeMaintenance) return false;
         const comps = activeMaintenance.components || ["all"];
@@ -196,6 +211,36 @@ export async function computeStatusData(env: Env) {
             }
         }
 
+        const compMntWindows = allWindows.filter(w => {
+            const comps = w.components || ["all"];
+            return comps.includes("all") || comps.includes(spec.key);
+        });
+
+        const mntIntervals: { start: Date; end: Date; completed: boolean }[] = [];
+        for (const w of compMntWindows) {
+            let wStart: Date | null = null;
+            let wEnd: Date | null = null;
+            if (w.start_epoch) {
+                wStart = new Date(w.start_epoch * 1000);
+            } else if (w.start_iso) {
+                wStart = new Date(w.start_iso);
+            }
+            if (w.completed && w.completed_at) {
+                wEnd = new Date(w.completed_at * 1000);
+            } else if (w.completed && w.end_epoch) {
+                wEnd = new Date(w.end_epoch * 1000);
+            } else if (w.end_epoch) {
+                wEnd = new Date(w.end_epoch * 1000);
+            } else if (w.end_iso) {
+                wEnd = new Date(w.end_iso);
+            } else if (!w.completed) {
+                wEnd = now;
+            }
+            if (wStart && wEnd && !isNaN(wStart.getTime()) && !isNaN(wEnd.getTime()) && wEnd > wStart) {
+                mntIntervals.push({ start: wStart, end: wEnd, completed: Boolean(w.completed) });
+            }
+        }
+
         const historyKnown = probe.present && probe.flips_ok && historyStart !== null;
         let windowStart = now;
         let intervals: {start: Date, end: Date}[] = [];
@@ -225,7 +270,26 @@ export async function computeStatusData(env: Env) {
 
             const dateIso = hourStart.toISOString();
 
+            let mntSec = 0;
+            for (const mnt of mntIntervals) {
+                mntSec += overlapSeconds(actualStart, actualEnd, mnt.start, mnt.end);
+            }
+            const isMntHour = mntSec > 0 && actualEnd > actualStart;
+
             if (!historyKnown || actualEnd <= actualStart) {
+                if (isMntHour) {
+                    const parts = formatHourParts(dateIso, "mnt", spec.key);
+                    hours.push({
+                        date: dateIso,
+                        state: "mnt",
+                        timeText: parts.timeText,
+                        statusText: parts.statusText,
+                        title: parts.fullTitle
+                    });
+                    trackedHours++;
+                    trackedSeconds += (actualEnd.getTime() - actualStart.getTime()) / 1000;
+                    continue;
+                }
                 const parts = formatHourParts(dateIso, "nodata", spec.key);
                 hours.push({
                     date: dateIso,
@@ -241,8 +305,15 @@ export async function computeStatusData(env: Env) {
             let hasDownInterval = false;
             for (const interval of intervalStates) {
                 const overlap = overlapSeconds(actualStart, actualEnd, interval.start, interval.end);
-                down += overlap;
-                if (overlap > 0 && interval.isDown) hasDownInterval = true;
+                let mntDowntime = 0;
+                for (const mnt of mntIntervals) {
+                    const subStart = new Date(Math.max(actualStart.getTime(), interval.start.getTime()));
+                    const subEnd = new Date(Math.min(actualEnd.getTime(), interval.end.getTime()));
+                    mntDowntime += overlapSeconds(subStart, subEnd, mnt.start, mnt.end);
+                }
+                const netDown = Math.max(0, overlap - mntDowntime);
+                down += netDown;
+                if (netDown > 0 && interval.isDown) hasDownInterval = true;
             }
             trackedHours++;
             trackedSeconds += (actualEnd.getTime() - actualStart.getTime()) / 1000;
@@ -251,6 +322,7 @@ export async function computeStatusData(env: Env) {
             let state = "ok";
             if (hasDownInterval) state = "down";
             else if (down > 0) state = "minor";
+            else if (isMntHour) state = "mnt";
 
             const parts = formatHourParts(dateIso, state, spec.key);
             hours.push({
@@ -304,6 +376,8 @@ export async function computeStatusData(env: Env) {
                 hours[hours.length - 1].statusText = updatedParts.statusText;
                 hours[hours.length - 1].title = updatedParts.fullTitle;
             }
+        } else if (compState === "mnt") {
+            compState = (probe.live && probe.live !== "mnt") ? probe.live : "ok";
         }
 
         components.push({
@@ -312,7 +386,7 @@ export async function computeStatusData(env: Env) {
             desc: spec.desc,
             uptime: uptimePct,
             hours,
-            monitored: probe.present || Boolean(activeMaintenance),
+            monitored: probe.present || Boolean(activeMaintenance) || compMntWindows.length > 0,
             state: compState,
             outage_since: outageSince
         });

@@ -56,6 +56,11 @@
             return;
         }
 
+        if (target.closest('.map-ctl--issue')) {
+            send('report_cta_click', { link_location: 'map' });
+            return;
+        }
+
         if (target.closest('a[href="/issue"]')) {
             send('report_cta_click', { link_location: 'attribution' });
             return;

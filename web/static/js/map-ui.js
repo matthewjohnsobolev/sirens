@@ -4,7 +4,7 @@
    Стан сервісу говорить двома голосами: крапка на плитці — завжди,
    темний чіп — лише коли є що сказати. Кнопка оновлення стоїть окремо
    у верхньому лівому куті під зумом. Плитка стану та свіжості даних
-   стоїть у нижньому лівому куті. */
+   і кнопка повідомлення про збій стоять у нижньому лівому куті. */
 (function () {
     'use strict';
 
@@ -227,6 +227,21 @@
         return link;
     }
 
+    // Окрема кнопка повідомлення про збій поруч із плиткою часу.
+    function issueTile() {
+        var link = L.DomUtil.create('a', 'map-ctl map-ctl--issue');
+        link.href = '/issue';
+        label(link, 'Повідомити про збій');
+
+        var glyph = L.DomUtil.create('span', 'map-ctl-icon map-ctl-icon--issue material-symbols-rounded', link);
+        glyph.setAttribute('aria-hidden', 'true');
+        glyph.textContent = 'feedback';
+
+        respondToPress(link);
+
+        return link;
+    }
+
     // Чіп не стоїть у кутовій стопці, тож і не є контролом Leaflet: його
     // тримає сам контейнер мапи. Обгортка з aria-live лишається в DOM
     // назавжди — порожній регіон має існувати заздалегідь, інакше поява
@@ -363,7 +378,10 @@
     // Кнопка оновлення стоїть під кнопками зуму в лівій стопці.
     if (window.SirensThreats) control('topleft', refreshTile).addTo(map);
 
-    // Плитка стану та свіжості даних стоїть у нижньому лівому куті.
+    // Плитка стану та кнопка повідомлення про збій стоять у нижньому лівому куті.
+    // issueTile додається першою, щоб statusTile стала перед нею (Leaflet додає
+    // bottom-контроли через insertBefore firstChild).
+    control('bottomleft', issueTile).addTo(map);
     control('bottomleft', statusTile).addTo(map);
 
     statusChip();

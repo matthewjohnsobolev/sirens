@@ -217,7 +217,9 @@
         var link = L.DomUtil.create('a', 'map-ctl map-ctl--issue');
         link.href = '/issue';
         label(link, 'Повідомити про збій');
-        icon(link, 'issue');
+        var flag = L.DomUtil.create('span', 'map-ctl-icon map-ctl-icon--flag material-symbols-rounded', link);
+        flag.setAttribute('aria-hidden', 'true');
+        flag.textContent = 'flag';
         return link;
     }
 

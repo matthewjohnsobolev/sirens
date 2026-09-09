@@ -11,6 +11,15 @@
     --status-gray: #E8E8E8;
     --status-gray-hover: #EEEEEE;
 
+    /* Динамічні доступні відтінки для тексту часу в плашках:
+       кожен відтінок строго прив'язаний до фону плашки та відповідає WCAG AA */
+    --status-green-text: #155E27;
+    --status-yellow-text: #713F12;
+    --status-orange-text: #7C2D12;
+    --status-red-text: #851414;
+    --status-crimson-text: #6B0F1A;
+    --status-gray-text: #52525B;
+
     --alert: #FF831A;
     --explosion: #FF1A1A;
 

@@ -121,7 +121,7 @@ function getMarkerPopupContent(marker, threats) {
          + subscribeButtonHtml(marker.channel);
 }
 
-var customOptions = {'maxWidth': '310', 'width': '310'};
+var customOptions = { minWidth: 310, maxWidth: 310 };
 
 // Маркери будуються один раз, а далі лише міняють стан: перестворювати
 // їх на кожній відповіді означало б згортати відкритий попап і губити

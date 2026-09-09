@@ -1028,7 +1028,11 @@ def list_maintenance_windows(
         item["time_text"] = time_text
         item["components_en"] = format_components_en(w["components"])
         item["components_uk"] = format_components_uk(w["components"])
-        item["components_formatted"] = format_components_en(w["components"]) if lang == "en" else format_components_uk(w["components"])
+        item["components_formatted"] = (
+            format_components_en(w["components"])
+            if lang == "en"
+            else format_components_uk(w["components"])
+        )
         results.append(item)
 
     return results

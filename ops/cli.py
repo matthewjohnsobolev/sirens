@@ -1140,7 +1140,11 @@ def mnt_add_cmd(
     now = int(state.get_kyiv_now().timestamp())
     start_ep = win.get("start_epoch")
     end_ep = win.get("end_epoch")
-    is_active = (start_ep <= now <= end_ep) if (start_ep is not None and end_ep is not None) else (from_str.strip().lower() in ("now", "зараз"))
+    is_active = (
+        (start_ep <= now <= end_ep)
+        if (start_ep is not None and end_ep is not None)
+        else (from_str.strip().lower() in ("now", "зараз"))
+    )
     status_badge = "[bold blue]● active[/]" if is_active else "[bold blue]● scheduled[/]"
 
     comps_str = state.format_components_en(win["components"])

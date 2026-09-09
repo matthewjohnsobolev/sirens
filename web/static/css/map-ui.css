@@ -119,7 +119,9 @@
     text-decoration: none;
     transition: background-color var(--motion),
                 border-color var(--motion),
-                color var(--motion);
+                color var(--motion),
+                transform var(--motion),
+                box-shadow var(--motion);
 }
 
 .map-ctl:hover {
@@ -129,6 +131,7 @@
 
 .map-ctl:active {
     background: var(--hairline);
+    transform: scale(0.96);
 }
 
 .map-ctl:focus-visible {
@@ -150,9 +153,8 @@
 
 /* ── Іконки ─────────────────────────────────────────────────────────── */
 
-/* Іконка малюється маскою по currentColor, тож перефарбовується разом із
-   кнопкою: <img> цього не вміє. Перехід той самий, що й у плитки, —
-   інакше на інверсії малюнок стрибає у білий раніше за поле. */
+/* Всі іконки побудовані в єдиній дизайн-системі з уніфікованою товщиною
+   штриха (2px), оптичною вагою та геометрією. Малюються маскою по currentColor. */
 .map-ctl-icon {
     width: var(--icon-size, 18px);
     height: var(--icon-size, 18px);
@@ -164,40 +166,27 @@
     mask-position: center;
     -webkit-mask-size: contain;
     mask-size: contain;
+    flex: none;
 }
 
-/* Кожна іконка — одне правило з маскою або гліфом: сама маска більше ніде не
-   потрібна, тож заводити для неї змінну нема сенсу. */
-
-/* Хмарка повідомлення зі знаком оклику — форма зворотного зв'язку
-   та сповіщення про проблему (Material Symbols Rounded feedback).
-   Кегль 19px та оптичний розмір підігнані під мобільну дизайн-систему,
-   розмір та товщину штриха інших кнопок (18px refresh, 16px zoom).
-   Колір темно-сірий (#374151), у тон іншим кнопкам інтерфейсу. */
+/* Хмарка сповіщення зі знаком оклику — форма зворотного зв'язку */
 .map-ctl-icon--issue {
-    --icon-size: 19px;
-    background: #374151;
+    --icon-size: 18px;
     -webkit-mask-image: url("../img/icons/issue-report-button-icon.svg");
     mask-image: url("../img/icons/issue-report-button-icon.svg");
 }
 
-
-/* Стрілка кола замикається сама на себе — рівно те, що робить кнопка:
-   питає те саме джерело ще раз. Кегль загальний: малюнок такий самий
-   круглий і на тому ж полі, що око. */
+/* Стрілка оновлення даних */
 .map-ctl-icon--refresh {
+    --icon-size: 18px;
     -webkit-mask-image: url("../img/icons/refresh-button-icon.svg");
     mask-image: url("../img/icons/refresh-button-icon.svg");
 }
 
-/* Плюс і мінус — такі самі маски, як решта іконок: уся стопка малюється
-   одним способом і не залежить від того, чи приїхав Inter. Кегль менший
-   за інші іконки: на 16px лінія лягає рівно в два пікселі й не мулиться
-   на звичайних екранах, а два штрихи в полі й так важать більше за один
-   суцільний малюнок. */
+/* Плюс і мінус масштабування */
 .map-ctl-icon--zoom-in,
 .map-ctl-icon--zoom-out {
-    --icon-size: 16px;
+    --icon-size: 18px;
 }
 
 .map-ctl-icon--zoom-in {
@@ -317,14 +306,43 @@
     }
 }
 
-/* ── Кнопка оновлення ───────────────────────────────────────────────── */
+/* ── Плитка часу та оновлення даних ──────────────────────────────────── */
 
-/* Кнопка оновлення стоїть під кнопками зуму в лівій стопці.
-   Квадратна плитка з іконкою оновлення, така сама як інші контроли стопки. */
+/* Єдина плитка з текстом у полі. Стопка ліворуч читається єдиним блоком:
+   гліф стану (зелена крапка) стоїть ліворуч, час по центру моно-шрифтом
+   JetBrains Mono, а іконка оновлення праворуч. Вся плитка клікабельна
+   для оновлення даних мапи без переходів на зовнішні сторінки. */
+.map-ctl--time,
+.map-ctl--status {
+    position: relative;
+    isolation: isolate;
+    --pulse-cycle: 1.8s;
+    width: var(--control-w-sync);
+    height: var(--control-h);
+    padding: 0 10px;
+    gap: var(--gap-tight);
+    justify-content: center;
+    order: 1;
+}
+
+.map-ctl--issue {
+    order: 2;
+    color: var(--ink);
+}
+
+.map-ctl--time:hover .map-sync-time,
+.map-ctl--status:hover .map-sync-time {
+    color: var(--ink);
+}
+
+.map-ctl--time[aria-busy="true"],
+.map-ctl--status[aria-busy="true"],
 .map-ctl--refresh[aria-busy="true"] {
     cursor: default;
 }
 
+.map-ctl--time[aria-busy="true"] .map-ctl-icon--refresh,
+.map-ctl--status[aria-busy="true"] .map-ctl-icon--refresh,
 .map-ctl--refresh[aria-busy="true"] .map-ctl-icon--refresh {
     transform-origin: center;
     will-change: transform;
@@ -334,53 +352,6 @@
 @keyframes map-sync-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
-}
-
-/* ── Плитка стану та свіжості даних ──────────────────────────────────── */
-
-/* Єдина плитка з текстом у полі, і через текст вона ширша за решту.
-   Стопка ліворуч читається однією вертикаллю, тож вміст притиснутий до
-   лівого краю: гліф стоїть у такому самому квадраті, як іконки у квадратних
-   кнопок, і потрапляє на ту саму лінію, а час висить праворуч від нього.
-   Відступ — половина порожнього поля того квадрата; волосінь із нього
-   віднімається, бо padding рахується вже за нею. */
-.map-ctl--status {
-    position: relative;
-    isolation: isolate;
-    --pulse-cycle: 1.8s;
-    width: var(--control-w-sync);
-    justify-content: flex-start;
-    padding-left: calc((var(--control-h) - var(--icon-size, 18px)) / 2 - 1px);
-    gap: var(--gap-tight);
-    order: 1;
-}
-
-.map-ctl--issue {
-    order: 2;
-    color: #374151;
-    transition: background-color var(--motion),
-                border-color var(--motion),
-                transform var(--motion),
-                color var(--motion);
-}
-
-.map-ctl--issue:hover {
-    background: #f3f4f6;
-    border-color: var(--hairline-hover);
-    color: var(--ink);
-}
-
-.map-ctl--issue:hover .map-ctl-icon--issue {
-    background: var(--ink);
-}
-
-.map-ctl--issue:active {
-    transform: scale(0.95);
-    background: #e5e7eb;
-}
-
-.map-ctl--status:hover .map-sync-time {
-    color: var(--ink-muted-hover);
 }
 
 /* Гліф розміщено всередині слота 18x18px, який точно збігається за
@@ -448,29 +419,43 @@
     }
 }
 
+.map-ctl--time[data-state="ok"] .map-ctl-badge,
 .map-ctl--status[data-state="ok"] .map-ctl-badge     { background: var(--status-green-bar); }
+.map-ctl--time[data-state="minor"] .map-ctl-badge,
 .map-ctl--status[data-state="minor"] .map-ctl-badge  { background: var(--status-orange-bar); }
+.map-ctl--time[data-state="down"] .map-ctl-badge,
 .map-ctl--status[data-state="down"] .map-ctl-badge   { background: var(--status-red-bar); }
+.map-ctl--time[data-state="mnt"] .map-ctl-badge,
 .map-ctl--status[data-state="mnt"] .map-ctl-badge    { background: var(--status-blue-bar); }
+.map-ctl--time[data-state="nodata"] .map-ctl-badge,
 .map-ctl--status[data-state="nodata"] .map-ctl-badge { background: var(--status-gray-bar); }
 
 /* Немає даних — нема чому пульсувати. */
+.map-ctl--time[data-state="nodata"] .map-ctl-badge,
+.map-ctl--time[data-state="nodata"] .map-ctl-badge::after,
 .map-ctl--status[data-state="nodata"] .map-ctl-badge,
 .map-ctl--status[data-state="nodata"] .map-ctl-badge::after {
     animation: none;
 }
 
-/* Час говорить тією самою моно-капітеллю, що чіп і статус-сторінка, але
-   приглушено: гліф каже стан, час лише називає момент. */
+/* Час набрано моноширинним шрифтом JetBrains Mono.
+   Розмір (12.5px), насиченість (600) та інтерліньяж тонко налаштовані
+   для ідеального оптичного вирівнювання по вертикалі з індикатором стану (8px)
+   та сусідніми іконками (18px). */
 .map-sync-time {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-family: var(--font-mono);
-    font-size: var(--text-secondary);
-    font-weight: var(--weight-control);
+    font-size: 12.5px;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
-    letter-spacing: .04em;
+    letter-spacing: 0.03em;
     line-height: 1;
-    color: var(--ink-muted);
+    color: var(--ink);
     transition: color var(--motion);
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 /* Новий час не підмінює старий беззвучно: коротке проявлення знизу — те
@@ -696,8 +681,9 @@
         background: transparent;
     }
 
+    .map-ctl--time:hover .map-sync-time,
     .map-ctl--status:hover .map-sync-time {
-        color: var(--ink-muted);
+        color: var(--ink);
     }
 
     .map-chip:hover {
@@ -715,19 +701,9 @@
         text-decoration: none;
     }
 
-    .map-ctl--issue:hover {
-        background: var(--surface);
-        border-color: var(--hairline);
-        color: #374151;
-    }
-
-    .map-ctl--issue:hover .map-ctl-icon--issue {
-        background: #374151;
-    }
-
-    .map-ctl--issue:active {
-        transform: scale(0.95);
-        background: #e5e7eb;
+    .map-ctl:active {
+        transform: scale(0.96);
+        background: var(--hairline);
     }
 }
 
@@ -742,7 +718,7 @@
         animation: none;
     }
 
-    .map-ctl--issue:active {
+    .map-ctl:active {
         transform: none;
     }
 
@@ -756,6 +732,8 @@
 
     /* Замість оберту — притлумлена іконка: запит усе одно має бути видно,
        просто не рухом. */
+    .map-ctl--time[aria-busy="true"] .map-ctl-icon--refresh,
+    .map-ctl--status[aria-busy="true"] .map-ctl-icon--refresh,
     .map-ctl--refresh[aria-busy="true"] .map-ctl-icon--refresh {
         animation: none;
         opacity: .45;

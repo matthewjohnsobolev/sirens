@@ -1,10 +1,6 @@
 /* Навігаційні кнопки, свіжість даних і стан сервісу на мапі.
-   Кожна кнопка — окремий контрол Leaflet, тож стопку тримає сам Leaflet:
-   порядок задається порядком addTo, відступи — кутовим контейнером.
-   Стан сервісу говорить двома голосами: крапка на плитці — завжди,
-   темний чіп — лише коли є що сказати. Кнопка оновлення стоїть окремо
-   у верхньому лівому куті під зумом. Плитка стану та свіжості даних
-   і кнопка повідомлення про збій стоять у нижньому лівому куті. */
+   Стопка зуму (+/−) живе у верхньому лівому куті. Плитка часу та оновлення даних
+   і кнопка повідомлення про збій стоять у нижньому лівому куті в єдиній лінії. */
 (function () {
     'use strict';
 
@@ -67,10 +63,12 @@
             at = moment ? kyivTime.format(moment) : null;
         }
 
-        tile.title = 'Стан системи';
-        var text = 'Стан системи: ' + currentInfo.word.toLowerCase() + '.';
-        if (at) text += ' Дані станом на ' + at + '.';
-        tile.setAttribute('aria-label', text);
+        var text = 'Оновити дані';
+        if (at) text = 'Дані станом на ' + at + '. Натисніть, щоб оновити';
+        tile.title = text;
+        var accessible = text;
+        if (currentInfo && currentInfo.word) accessible += ' (Стан системи: ' + currentInfo.word.toLowerCase() + ')';
+        tile.setAttribute('aria-label', accessible);
     }
 
     // Елемент будується один раз і запам'ятовується: setPosition знімає
@@ -159,48 +157,23 @@
     }
 
 
-    // Окрема кнопка оновлення даних під кнопками зуму.
-    function refreshTile() {
-        var button = L.DomUtil.create('button', 'map-ctl map-ctl--refresh');
+    // Єдина плитка з текстом: стан сервісу, свіжість даних та дія оновлення.
+    // Кольоровий гліф показує стан системи, час — момент останньої успішної
+    // відповіді /api, а клік по кнопці оновлює дані з анімацією оберту іконки.
+    // Жодних посилань чи редиректів на зовнішні сторінки — виключно перезавантаження даних.
+    function timeTile() {
+        var button = L.DomUtil.create('button', 'map-ctl map-ctl--time');
         button.type = 'button';
-        label(button, 'Оновити дані');
-        icon(button, 'refresh');
 
-        L.DomEvent.on(button, 'click', function () {
-            if (button.getAttribute('aria-busy') === 'true') return;
-            button.setAttribute('aria-busy', 'true');
-
-            var since = Date.now();
-
-            function done() {
-                setTimeout(function () {
-                    button.removeAttribute('aria-busy');
-                }, spinTail(since));
-            }
-
-            SirensThreats.load(true).then(done, done);
-        });
-
-        return button;
-    }
-
-    // Єдина плитка з текстом. Стан сервісу показує кольоровий гліф,
-    // а час у ній — момент останньої успішної відповіді /api, а не
-    // остання тривога: питання, на яке вона відповідає, — «на коли це
-    // правда», і воно не другорядне, тож ховати відповідь під
-    // наведення не можна: пальцем не наводять.
-    function statusTile() {
-        var link = L.DomUtil.create('a', 'map-ctl map-ctl--status');
-        link.href = STATUS_PAGE;
-        link.rel = 'noopener';
-
-        var glyph = L.DomUtil.create('span', 'map-ctl-glyph', link);
+        var glyph = L.DomUtil.create('span', 'map-ctl-glyph', button);
         var dot = L.DomUtil.create('span', 'map-ctl-badge', glyph);
         dot.setAttribute('aria-hidden', 'true');
 
-        var stamp = L.DomUtil.create('span', 'map-sync-time', link);
+        var stamp = L.DomUtil.create('span', 'map-sync-time', button);
 
-        tile = link;
+        icon(button, 'refresh');
+
+        tile = button;
 
         function say() {
             var moment = window.SirensThreats ? SirensThreats.at() : null;
@@ -219,12 +192,32 @@
             flash(stamp, 'is-fresh');
         }
 
+        L.DomEvent.on(button, 'click', function (e) {
+            L.DomEvent.stop(e);
+            if (button.getAttribute('aria-busy') === 'true') return;
+            button.setAttribute('aria-busy', 'true');
+
+            var since = Date.now();
+
+            function done() {
+                setTimeout(function () {
+                    button.removeAttribute('aria-busy');
+                }, spinTail(since));
+            }
+
+            if (window.SirensThreats && window.SirensThreats.load) {
+                SirensThreats.load(true).then(done, done);
+            } else {
+                done();
+            }
+        });
+
         if (window.SirensThreats) {
             SirensThreats.onPaint(say);
         }
         say();
 
-        return link;
+        return button;
     }
 
     // Окрема кнопка повідомлення про збій поруч із плиткою часу.
@@ -369,14 +362,11 @@
         for (var i = 0; i < zoomButtons.length; i++) respondToPress(zoomButtons[i]);
     }
 
-    // Кнопка оновлення стоїть під кнопками зуму в лівій стопці.
-    if (window.SirensThreats) control('topleft', refreshTile).addTo(map);
-
-    // Плитка стану та кнопка повідомлення про збій стоять у нижньому лівому куті.
-    // issueTile додається першою, щоб statusTile стала перед нею (Leaflet додає
+    // Плитка часу та оновлення і кнопка повідомлення про збій стоять у нижньому лівому куті.
+    // issueTile додається першою, щоб timeTile стала перед нею (Leaflet додає
     // bottom-контроли через insertBefore firstChild).
     control('bottomleft', issueTile).addTo(map);
-    control('bottomleft', statusTile).addTo(map);
+    control('bottomleft', timeTile).addTo(map);
 
     statusChip();
 

@@ -308,15 +308,13 @@
 
 /* ── Плитка часу та оновлення даних ──────────────────────────────────── */
 
-/* Єдина плитка з текстом у полі. Стопка ліворуч читається єдиним блоком:
-   гліф стану (зелена крапка) стоїть ліворуч, час по центру моно-шрифтом
-   JetBrains Mono, а іконка оновлення праворуч. Вся плитка клікабельна
-   для оновлення даних мапи без переходів на зовнішні сторінки. */
+/* Єдина плитка з текстом у полі: кругла іконка оновлення ліворуч та час
+   моно-шрифтом JetBrains Mono праворуч. Вся плитка клікабельна для
+   перезавантаження даних мапи без переходів на зовнішні сторінки. */
 .map-ctl--time,
 .map-ctl--status {
     position: relative;
     isolation: isolate;
-    --pulse-cycle: 1.8s;
     width: var(--control-w-sync);
     height: var(--control-h);
     padding: 0 10px;
@@ -354,94 +352,10 @@
     to { transform: rotate(360deg); }
 }
 
-/* Гліф розміщено всередині слота 18x18px, який точно збігається за
-   розміром та центром з іконками інших контролів (18px). */
-.map-ctl-glyph {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--icon-size, 18px);
-    height: var(--icon-size, 18px);
-    flex: none;
-}
-
-/* Гліф тихо пульсує в такт перевіркам стану, а його хвиля розширюється
-   приблизно до розміру іконки оновлення (18px). */
-.map-ctl-badge {
-    position: relative;
-    display: block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--status-gray-bar);
-    transition: background-color var(--motion);
-    animation: map-status-beacon var(--pulse-cycle) ease-in-out infinite;
-}
-
-/* Хвиля пульсу розширюється від гліфа до розмірів слота (8px * 2.25 = 18px),
-   плавно згасаючи до прозорості. */
-.map-ctl-badge::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: inherit;
-    opacity: 0.75;
-    animation: map-status-pulse var(--pulse-cycle) cubic-bezier(0.24, 0, 0.38, 1) infinite;
-    pointer-events: none;
-    z-index: -1;
-}
-
-@keyframes map-status-beacon {
-    0%, 100% {
-        transform: scale(1);
-    }
-    30% {
-        transform: scale(1.18);
-    }
-    65% {
-        transform: scale(1);
-    }
-}
-
-@keyframes map-status-pulse {
-    0% {
-        transform: scale(1);
-        opacity: 0.75;
-    }
-    65% {
-        transform: scale(2.25);
-        opacity: 0;
-    }
-    100% {
-        transform: scale(2.25);
-        opacity: 0;
-    }
-}
-
-.map-ctl--time[data-state="ok"] .map-ctl-badge,
-.map-ctl--status[data-state="ok"] .map-ctl-badge     { background: var(--status-green-bar); }
-.map-ctl--time[data-state="minor"] .map-ctl-badge,
-.map-ctl--status[data-state="minor"] .map-ctl-badge  { background: var(--status-orange-bar); }
-.map-ctl--time[data-state="down"] .map-ctl-badge,
-.map-ctl--status[data-state="down"] .map-ctl-badge   { background: var(--status-red-bar); }
-.map-ctl--time[data-state="mnt"] .map-ctl-badge,
-.map-ctl--status[data-state="mnt"] .map-ctl-badge    { background: var(--status-blue-bar); }
-.map-ctl--time[data-state="nodata"] .map-ctl-badge,
-.map-ctl--status[data-state="nodata"] .map-ctl-badge { background: var(--status-gray-bar); }
-
-/* Немає даних — нема чому пульсувати. */
-.map-ctl--time[data-state="nodata"] .map-ctl-badge,
-.map-ctl--time[data-state="nodata"] .map-ctl-badge::after,
-.map-ctl--status[data-state="nodata"] .map-ctl-badge,
-.map-ctl--status[data-state="nodata"] .map-ctl-badge::after {
-    animation: none;
-}
-
 /* Час набрано моноширинним шрифтом JetBrains Mono.
    Розмір (12.5px), насиченість (600) та інтерліньяж тонко налаштовані
-   для ідеального оптичного вирівнювання по вертикалі з індикатором стану (8px)
-   та сусідніми іконками (18px). */
+   для ідеального оптичного вирівнювання по вертикалі з іконкою оновлення (18px)
+   та сусідніми кнопками (18px). */
 .map-sync-time {
     display: inline-flex;
     align-items: center;
@@ -708,8 +622,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .map-ctl-badge,
-    .map-ctl-badge::after,
     .map-chip,
     .leaflet-control,
     .leaflet-bar a.is-pressed .map-ctl-icon,

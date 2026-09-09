@@ -235,7 +235,7 @@ for (const marker of DISTRICT_MARKERS) {
     if (marker.oblast === marker.district) CITY_REGIONS[marker.oblast] = marker;
 }
 
-var customOptions = {'maxWidth': '310', 'width': '310'};
+var customOptions = { minWidth: 310, maxWidth: 310 };
 
 const OBLAST_NAMES = {
     'cherkasy_oblast': 'Черкаська область', 'chernihiv_oblast': 'Чернігівська область',

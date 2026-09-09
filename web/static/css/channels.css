@@ -1,44 +1,49 @@
 .channel-popup-name {
-    font-family: 'Inter', sans-serif, bold;
-    font-size: 14px;
-    font-weight: 700;
-    color: #000;
-    margin-bottom: 10px;
+    font-family: var(--font, 'Inter', sans-serif);
+    font-size: var(--text-control, 14px);
+    font-weight: var(--weight-title, 700);
+    line-height: var(--leading-tight, 1.35);
+    color: var(--ink, #000);
+    margin: 0 28px var(--gap-section, 10px) 0;
 }
   
 .channel-popup-button {
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
+    font-family: var(--font, 'Inter', sans-serif);
+    font-size: var(--text-helper, 12px);
+    font-weight: var(--weight-control, 500);
     border: none;
-    width: 310px;
+    width: 100%;
+    box-sizing: border-box;
     height: 40px;
     display: flex;
     padding: 0;
-    border-radius: 10px;
+    border-radius: var(--radius-control, 10px);
     align-items: center;
-    color: #000;
-    background-color: #BFF0FF;
+    color: var(--ink, #000);
+    background-color: var(--status-blue, #BFF0FF);
     text-align: left;
     line-height: 14px;
+    transition: background-color var(--motion, 0.15s ease);
 }
   
 .channel-popup-button-special {
-    font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    margin-top: 10px;
+    font-family: var(--font, 'Inter', sans-serif);
+    font-size: var(--text-helper, 12px);
+    font-weight: var(--weight-control, 500);
+    margin-top: 0;
     border: none; 
-    width: 310px;
+    width: 100%;
+    box-sizing: border-box;
     height: 40px;
     display: flex;
     padding: 0;
-    border-radius: 10px;
+    border-radius: var(--radius-control, 10px);
     align-items: center; 
-    color: #000;
+    color: var(--ink, #000);
     background-color: #FFF09D;
     text-align: left;
     line-height: 14px;
+    transition: background-color var(--motion, 0.15s ease);
 }
   
 .icon-container-marker-special {
@@ -47,20 +52,21 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
   
 .channel-popup-button a {
-    color: #000;
+    color: var(--ink, #000);
     text-decoration: none;
 }
   
 .channel-popup-button-special a {
-    color: #000;
+    color: var(--ink, #000);
     text-decoration: none;
 }
   
 .channel-popup-button:hover {
-    background-color: #D2F4FF;
+    background-color: var(--status-blue-hover, #D2F4FF);
 }
   
 .icon-container-marker {

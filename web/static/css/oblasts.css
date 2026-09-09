@@ -1,7 +1,7 @@
 :root {
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
                  Consolas, 'Liberation Mono', monospace;
-    --pill-time-color: rgba(0, 0, 0, 0.6);
+    --pill-time-color: var(--ink-muted, #757575);
 
     /* Вибухи мапа поки не малює (RENDER_EXPLOSIONS у districts.js), але
        стан нікуди не подівся — і колір йому потрібен свій. Червоний уже
@@ -27,11 +27,12 @@
 }
 
 .oblast-name {
-    font-family: 'Inter', sans-serif, bold;
-    font-size: 14px;
-    font-weight: 700;
-    color: #000;
-    margin-bottom: 10px;
+    font-family: var(--font, 'Inter', sans-serif);
+    font-size: var(--text-control, 14px);
+    font-weight: var(--weight-title, 700);
+    line-height: var(--leading-tight, 1.35);
+    color: var(--ink, #000);
+    margin: 0 28px var(--gap-section, 10px) 0;
 }
 
 /* Плашка одна на всі стани, а стан міняє тільки колір поля. Раніше кожен
@@ -39,19 +40,20 @@
    переїхали між станами, шість однакових копій довелося б правити шість
    разів. */
 .oblast-pill {
-    font-family: 'Inter', sans-serif;
-    font-size: var(--text-helper);
-    font-weight: var(--weight-control);
+    font-family: var(--font, 'Inter', sans-serif);
+    font-size: var(--text-helper, 12px);
+    font-weight: var(--weight-control, 500);
     border: none;
     width: 100%;
+    box-sizing: border-box;
     height: 40px;
     display: flex;
     padding: 0;
-    border-radius: 10px;
+    border-radius: var(--radius-control, 10px);
     align-items: center;
     text-align: left;
     line-height: 14px;
-    color: #000;
+    color: var(--ink, #000);
     background-color: var(--pill-bg, var(--status-gray));
     transition: background-color var(--motion);
 }
@@ -63,35 +65,37 @@
 .pill--idle {
     --pill-bg: var(--status-green);
     --pill-bg-hover: var(--status-green-hover);
+    --pill-time-color: var(--status-green-text, #155E27);
 }
 
 .pill--yellow {
     --pill-bg: var(--status-yellow);
     --pill-bg-hover: #FFF6AB;
+    --pill-time-color: var(--status-yellow-text, #713F12);
 }
 
 .pill--shelling {
     --pill-bg: var(--status-orange);
     --pill-bg-hover: var(--status-orange-hover);
+    --pill-time-color: var(--status-orange-text, #7C2D12);
 }
 
 .pill--red {
     --pill-bg: var(--status-red);
     --pill-bg-hover: var(--status-red-hover);
+    --pill-time-color: var(--status-red-text, #851414);
 }
 
 .pill--explosion {
     --pill-bg: var(--status-crimson);
     --pill-bg-hover: var(--status-crimson-hover);
+    --pill-time-color: var(--status-crimson-text, #6B0F1A);
 }
 
 .pill--unknown {
     --pill-bg: var(--status-gray);
     --pill-bg-hover: var(--status-gray-hover);
-}
-
-#indent {
-    margin-top: 10px;
+    --pill-time-color: var(--status-gray-text, #52525B);
 }
 
 .icon-container {
@@ -99,8 +103,9 @@
     height: 40px;
     display: flex;
     align-items: center;
-    margin: 0; 
     justify-content: center;
+    flex-shrink: 0;
+    margin: 0;
 }
 
 .icon {
@@ -115,19 +120,22 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    padding-right: var(--gap, 8px);
 }
 
 .oblast-description-time {
+    margin-left: auto;
     flex: 0 0 auto;
-    min-width: 66px;
     font-family: var(--font-mono);
-    font-weight: 400;
-    font-size: 11px;
-    color: var(--pill-time-color);
+    font-weight: var(--weight-control, 500);
+    font-size: var(--text-secondary, 11px);
+    line-height: 14px;
+    letter-spacing: var(--track-mono, 0.04em);
+    color: var(--pill-time-color, var(--ink-muted));
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    padding-right: 8px;
+    padding-right: 12px;
     white-space: nowrap;
 }
 
@@ -145,29 +153,31 @@
 }
   
 .leaflet-popup-content > .info-block {
-    width: 310px;
+    width: 100%;
 }
 
 .container {
-    width: 310px;
-    max-height: 400px;
-    overflow: visible;
+    width: 100%;
+    box-sizing: border-box;
     position: relative;
 }
 
 .scrollable-content {
-    max-height: 132px;
+    max-height: 180px;
     overflow-y: auto;
     overflow-x: hidden;
-    margin-right: -10px;
+    padding-right: 4px;
+    box-sizing: border-box;
     /* Prevent scroll chaining to the underlying map */
     touch-action: pan-y;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
 }
 
 .popup-city {
-    margin-bottom: 12px;
+    margin-bottom: var(--map-inset, 12px);
 }
 
 .popup-city:last-child {
@@ -185,12 +195,12 @@
     line-height: 14px;
     letter-spacing: var(--track-caption);
     text-transform: uppercase;
-    color: #757575;
-    margin: 0 0 6px;
+    color: var(--ink-muted, #757575);
+    margin: 0 0 var(--gap-tight, 6px);
 }
 
 .info-block {
-    margin-bottom: 8px;
+    margin-bottom: var(--gap, 8px);
 }
 
 .info-block:last-child {
@@ -198,44 +208,31 @@
 }
 
 .scrollable-content::-webkit-scrollbar {
-    width: 10px;
+    width: 8px;
 }
 
-/* Прозорі поля лишаємо тільки з боків: вони звужують смугу до 4px. Поля
-   згори й знизу вкорочували б доріжку, і вона не діставала б до краю
-   останньої плашки.
-
-   Радіус тут еліптичний, бо браузер віднімає від нього товщину рамки з того
-   ж боку: 5px − 3px по горизонталі й 2px − 0 по вертикалі дають однакові
-   2px, тобто круглі торці. Однакові 5px розтягнули б їх у кулю. */
 .scrollable-content::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05);
-    background-clip: padding-box;
-    border: 0 solid transparent;
-    border-left-width: 3px;
-    border-right-width: 3px;
-    border-radius: 5px / 2px;
+    background: transparent;
 }
 
 .scrollable-content::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.25);
     background-clip: padding-box;
-    border: 0 solid transparent;
-    border-left-width: 3px;
-    border-right-width: 3px;
-    border-radius: 5px / 2px;
+    border: 2px solid transparent;
+    border-radius: 4px;
     min-height: 24px;
 }
 
 .scrollable-content::-webkit-scrollbar-thumb:hover {
     background: rgba(0, 0, 0, 0.4);
     background-clip: padding-box;
+    border: 2px solid transparent;
 }
 
 /* Firefox fallback for custom scrollbar (isolated to avoid overriding ::-webkit-scrollbar in Chrome 121+) */
 @supports not selector(::-webkit-scrollbar) {
     .scrollable-content {
         scrollbar-width: thin;
-        scrollbar-color: rgba(0, 0, 0, 0.25) rgba(0, 0, 0, 0.05);
+        scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
     }
 }

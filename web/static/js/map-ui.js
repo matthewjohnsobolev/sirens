@@ -232,13 +232,7 @@
         var link = L.DomUtil.create('a', 'map-ctl map-ctl--issue');
         link.href = '/issue';
         label(link, 'Повідомити про збій');
-
-        var glyph = L.DomUtil.create('span', 'map-ctl-icon map-ctl-icon--issue material-symbols-rounded', link);
-        glyph.setAttribute('aria-hidden', 'true');
-        glyph.textContent = 'feedback';
-
-        respondToPress(link);
-
+        icon(link, 'issue');
         return link;
     }
 

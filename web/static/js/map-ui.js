@@ -66,9 +66,7 @@
         var text = 'Оновити дані';
         if (at) text = 'Дані станом на ' + at + '. Натисніть, щоб оновити';
         tile.title = text;
-        var accessible = text;
-        if (currentInfo && currentInfo.word) accessible += ' (Стан системи: ' + currentInfo.word.toLowerCase() + ')';
-        tile.setAttribute('aria-label', accessible);
+        tile.setAttribute('aria-label', text);
     }
 
     // Елемент будується один раз і запам'ятовується: setPosition знімає
@@ -157,21 +155,15 @@
     }
 
 
-    // Єдина плитка з текстом: стан сервісу, свіжість даних та дія оновлення.
-    // Кольоровий гліф показує стан системи, час — момент останньої успішної
-    // відповіді /api, а клік по кнопці оновлює дані з анімацією оберту іконки.
-    // Жодних посилань чи редиректів на зовнішні сторінки — виключно перезавантаження даних.
+    // Єдина плитка з текстом: свіжість даних та дія оновлення.
+    // Кругла стрілка запускає перезавантаження даних, а час показує момент останньої успішної відповіді /api.
     function timeTile() {
         var button = L.DomUtil.create('button', 'map-ctl map-ctl--time');
         button.type = 'button';
 
-        var glyph = L.DomUtil.create('span', 'map-ctl-glyph', button);
-        var dot = L.DomUtil.create('span', 'map-ctl-badge', glyph);
-        dot.setAttribute('aria-hidden', 'true');
+        icon(button, 'refresh');
 
         var stamp = L.DomUtil.create('span', 'map-sync-time', button);
-
-        icon(button, 'refresh');
 
         tile = button;
 

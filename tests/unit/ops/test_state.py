@@ -681,6 +681,7 @@ def test_set_and_get_maintenance_preserves_windows():
 
     # Test get_maintenance deserialization
     import json
+
     mock_redis.hgetall.return_value = {
         "active": "true",
         "id": hset_mapping.get("id", "mnt_test"),

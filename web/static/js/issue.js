@@ -67,7 +67,37 @@ function getDefaultTimeStr(dateObj = new Date()) {
 
 let selectedDate = new Date();
 let selectedTimeStr = getDefaultTimeStr();
-let tab = Object.keys(SETS)[0];
+
+function getInitialTab() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const paramTab = urlParams.get('tab');
+  if (paramTab && TAB_CATEGORIES[paramTab]) return paramTab;
+
+  const hash = window.location.hash.replace('#', '');
+  if (hash && TAB_CATEGORIES[hash]) return hash;
+
+  try {
+    if (document.referrer) {
+      const ref = new URL(document.referrer);
+      if (
+        (ref.origin === window.location.origin || !ref.origin) &&
+        (ref.pathname === '/' || ref.pathname === '')
+      ) {
+        return 'map';
+      }
+    }
+  } catch (e) {}
+
+  const activeBtn = tabs.find(b => b.getAttribute('aria-checked') === 'true');
+  if (activeBtn && activeBtn.dataset.tab) {
+    return activeBtn.dataset.tab;
+  }
+
+  return Object.keys(SETS)[0];
+}
+
+const initialTab = getInitialTab();
+let tab = initialTab;
 
 function formatUkrainianDate(dateObj) {
   const d = dateObj.getDate();
@@ -466,10 +496,15 @@ function attachScrollbar(view){
     const max = range();
     host.classList.toggle('is-scrollable', max > 1);
     if(max <= 1) return;
-    const track  = bar.clientHeight;
+    const track  = bar.clientHeight || view.clientHeight || (host.clientHeight ? host.clientHeight - 8 : 0);
+    if(track <= 0) return;
     const height = Math.max(THUMB_MIN, Math.round(track * view.clientHeight / view.scrollHeight));
+    const free = Math.max(0, track - height);
+    const clampedTop = Math.max(0, Math.min(view.scrollTop, max));
+    const y = max > 0 ? Math.round(free * clampedTop / max) : 0;
     thumb.style.height = height + 'px';
-    thumb.style.transform = `translateY(${Math.round((track - height) * view.scrollTop / max)}px)`;
+    thumb.style.webkitTransform = `translate3d(0, ${y}px, 0)`;
+    thumb.style.transform = `translate3d(0, ${y}px, 0)`;
   }
 
   let fromY = 0, fromTop = 0;
@@ -561,7 +596,12 @@ function comboRender(q){
     return `<li class="combo-option" role="option" id="city-opt-${i}" aria-selected="false">${label}</li>`;
   }).join('');
   comboOpen();
-  if(cityScroll) cityScroll.update();
+  if(cityScroll) {
+    cityScroll.update();
+    requestAnimationFrame(() => {
+      if(cityScroll) cityScroll.update();
+    });
+  }
 }
 
 function comboOpen(){
@@ -931,6 +971,7 @@ function showNotice(kind, text){
 
 if (exactDate) exactDate.placeholder = formatUkrainianDate(selectedDate);
 if (exactTime) exactTime.placeholder = formatUkrainianTime(selectedTimeStr, selectedDate);
-select(0);
+const initialTabIndex = tabs.findIndex(b => b.dataset.tab === initialTab);
+select(initialTabIndex >= 0 ? initialTabIndex : 0);
 
 if (document.body.classList.contains('sent')) showNotice('ok', MSG.ok);

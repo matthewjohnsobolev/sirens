@@ -7,6 +7,11 @@
 <meta name="description" content="Сповіщення не прийшло, запізнилося або мапа показує не те? Опишіть проблему — розберемось.">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#F4F4F4">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Сирени">
+<meta name="format-detection" content="telephone=no">
 <link rel="canonical" href="{{ site_url }}/issue">
 
 {% include "_analytics.html" %}
@@ -44,6 +49,7 @@
 
 <script type="application/json" id="report-config">{{ page_config | tojson }}</script>
 <script src="{{ static_url('js/issue.js') }}" defer></script>
+<script src="{{ static_url('js/pwa.js') }}" defer></script>
 
 <script type="application/ld+json">
 {
@@ -82,13 +88,13 @@
     </div>
 
     <form id="report-form" action="/issue" method="POST" novalidate>
-      <input type="hidden" name="category" id="input-category" value="{{ categories[0].name }}">
+      <input type="hidden" name="category" id="input-category" value="{{ initial_category.name }}">
       <input type="hidden" name="sub_option" id="input-sub-option" value="">
 
       <div class="seg" role="radiogroup" aria-label="Розділ">
-        <div class="seg-slider" id="seg-slider" aria-hidden="true"></div>
+        <div class="seg-slider" id="seg-slider" aria-hidden="true"{% if initial_tab == 'map' %} style="-webkit-transform:translate3d(100%, 0, 0);transform:translate3d(100%, 0, 0);"{% elif initial_tab == 'other' %} style="-webkit-transform:translate3d(200%, 0, 0);transform:translate3d(200%, 0, 0);"{% endif %}></div>
         {%- for category in categories %}
-        <button type="button" role="radio" aria-checked="{{ 'true' if loop.first else 'false' }}"
+        <button type="button" role="radio" aria-checked="{{ 'true' if category.id == initial_tab else 'false' }}"
                 data-tab="{{ category.id }}">{{ category.tab }}</button>
         {%- endfor %}
       </div>
@@ -120,17 +126,17 @@
       </fieldset>
 
       <div class="block" id="block-city">
-        <label class="label" for="city" id="label-city">Місто</label>
+        <label class="label" for="city" id="label-city">{% if initial_tab == 'map' %}Район{% elif initial_tab == 'other' %}Місто або район{% else %}Місто{% endif %}</label>
         <div class="combo" id="combo-city">
-          <input class="input" id="city" name="city" placeholder="Наприклад, Чернігів"
+          <input class="input" id="city" name="city" placeholder="{% if initial_tab == 'map' %}Наприклад, Чернігівський район{% elif initial_tab == 'other' %}Наприклад, Чернігів або Чернігівський район{% else %}Наприклад, Чернігів{% endif %}"
                  autocomplete="off" role="combobox" aria-expanded="false"
                  aria-controls="city-list" aria-autocomplete="list"
                  lang="uk" inputmode="text" autocapitalize="words">
           <div class="combo-list scroller">
-            <ul class="combo-scroll scroller-view" id="city-list" role="listbox" aria-label="Міста"></ul>
+            <ul class="combo-scroll scroller-view" id="city-list" role="listbox" aria-label="{% if initial_tab == 'map' %}Райони{% elif initial_tab == 'other' %}Міста або райони{% else %}Міста{% endif %}"></ul>
           </div>
         </div>
-        <p class="err" id="err-city">Вкажіть, будь ласка, місто — без нього ми не знайдемо збій.</p>
+        <p class="err" id="err-city">{% if initial_tab == 'map' %}Вкажіть, будь ласка, район — без нього ми не знайдемо збій.{% elif initial_tab == 'other' %}Вкажіть, будь ласка, місто або район.{% else %}Вкажіть, будь ласка, місто — без нього ми не знайдемо збій.{% endif %}</p>
         <p class="hint" id="hint-city" hidden>Немає вашого населеного пункту? Впишіть свою назву.</p>
       </div>
 

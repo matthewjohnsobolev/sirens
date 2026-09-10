@@ -6,6 +6,7 @@ import time
 from functools import cache
 from logging.handlers import RotatingFileHandler
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 import sentry_sdk
@@ -300,16 +301,55 @@ def _report_to_sentry(report: dict[str, str]) -> bool:
         return False
 
 
+def _is_from_main_page() -> bool:
+    ref = request.referrer or ""
+    if not ref:
+        return False
+    try:
+        parsed_ref = urlparse(ref)
+        parsed_current = urlparse(request.url)
+        ref_host = parsed_ref.netloc.split(":")[0].lower()
+        current_host = (request.host or parsed_current.netloc).split(":")[0].lower()
+        site_host = urlparse(SITE_URL).netloc.split(":")[0].lower()
+        if (not ref_host or ref_host in (current_host, site_host)) and parsed_ref.path in ("/", ""):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _render_issue_form(**context: Any) -> str:
+    initial_tab = context.pop("initial_tab", None)
+    if not initial_tab:
+        tab_param = request.args.get("tab")
+        if tab_param in ("map", "alerts", "other"):
+            initial_tab = tab_param
+        elif _is_from_main_page():
+            initial_tab = "map"
+        else:
+            initial_tab = "alerts"
+
+    initial_cat = next(
+        (c for c in ISSUE_CATEGORIES if c["id"] == initial_tab), ISSUE_CATEGORIES[0]
+    )
+
     return render_template(
         "issue.html",
         categories=ISSUE_CATEGORIES,
         page_config=page_config(),
+        initial_tab=initial_tab,
+        initial_category=initial_cat,
         **context,
     )
 
 
 def issue() -> Any:
+    category_id = None
+    if request.method == "POST":
+        submitted_cat = request.form.get("category", "")
+        canon = CATEGORY_ALIASES.get(submitted_cat, submitted_cat)
+        category_id = next((c["id"] for c in ISSUE_CATEGORIES if c["name"] == canon), None)
+
     if request.method == "GET":
         return _render_issue_form()
 
@@ -323,7 +363,7 @@ def issue() -> Any:
     report, error = _clean_report_form(request.form)
     if error:
         log.info("Rejected issue report: %s", error)
-        return _render_issue_form(), 400
+        return _render_issue_form(initial_tab=category_id), 400
 
     log.info(
         "Issue report: category=%s option=%s time=%s city=%s district=%s",
@@ -335,9 +375,9 @@ def issue() -> Any:
     )
 
     if not _report_to_sentry(report):
-        return _render_issue_form(), 503
+        return _render_issue_form(initial_tab=category_id), 503
 
-    return _render_issue_form(success=True)
+    return _render_issue_form(success=True, initial_tab=category_id)
 
 
 def handle_not_found(error: Exception) -> tuple[str, int]:

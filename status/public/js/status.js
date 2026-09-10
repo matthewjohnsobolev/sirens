@@ -441,7 +441,27 @@
 
   window.setInterval(tick, TICK_MS);
 
-  // Вкладку могли лишити відкритою на ніч: щойно на неї повернулись,
-  // сторінка питає стан, не чекаючи наступного такту.
-  document.addEventListener('visibilitychange', tick);
+  // У режимі standalone утримуємо переходи між доменами застосунку
+  // (sirens.live, status.sirens.live) всередині вікна PWA без відкриття Mobile Safari.
+  var isStandalone = ('standalone' in window.navigator && window.navigator.standalone) ||
+                     (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if (isStandalone) {
+    document.addEventListener('click', function(e) {
+      var anchor = e.target && e.target.closest ? e.target.closest('a') : null;
+      if (!anchor || !anchor.href) return;
+      if (e.defaultPrevented) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+      try {
+        var url = new URL(anchor.href, window.location.href);
+        var isSirens = url.hostname === 'sirens.live' ||
+                       url.hostname.endsWith('.sirens.live') ||
+                       url.hostname === window.location.hostname;
+        if (isSirens && (url.protocol === 'http:' || url.protocol === 'https:')) {
+          e.preventDefault();
+          window.location.href = anchor.href;
+        }
+      } catch (_) {}
+    }, false);
+  }
 })();

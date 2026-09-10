@@ -587,6 +587,113 @@ def test_report_form_keeps_three_tabs(client):
     assert len(re.findall(r'role="radio"', html)) == 3
 
 
+def test_issue_defaults_to_alerts_tab_on_direct_link(client):
+    """Accessing /issue directly defaults to the alerts tab."""
+    html = client.get("/issue").get_data(as_text=True)
+
+    assert re.search(r'role="radio"[^>]*aria-checked="true"[^>]*data-tab="alerts"', html)
+    assert re.search(r'id="input-category"[^>]*value="Сповіщення"', html)
+    city_label = re.search(r'<label class="label"[^>]*id="label-city">([^<]*)</label>', html).group(1)
+    assert "Район" not in city_label
+    assert "Місто" in city_label
+
+
+def test_issue_opens_map_tab_when_referred_from_main_page(client):
+    """Navigating to /issue from the main page automatically opens the map tab."""
+    html = client.get("/issue", headers={"Referer": "http://localhost/"}).get_data(as_text=True)
+
+    assert re.search(r'role="radio"[^>]*aria-checked="true"[^>]*data-tab="map"', html)
+    assert re.search(r'id="input-category"[^>]*value="Мапа тривог"', html)
+    city_label = re.search(r'<label class="label"[^>]*id="label-city">([^<]*)</label>', html).group(1)
+    assert "Район" in city_label
+    assert "translate3d(100%, 0, 0)" in html
+
+
+def test_issue_honors_explicit_tab_query_param(client):
+    """The tab query parameter overrides the default tab."""
+    map_html = client.get("/issue?tab=map").get_data(as_text=True)
+    assert re.search(r'role="radio"[^>]*aria-checked="true"[^>]*data-tab="map"', map_html)
+
+    alerts_html = client.get("/issue?tab=alerts").get_data(as_text=True)
+    assert re.search(r'role="radio"[^>]*aria-checked="true"[^>]*data-tab="alerts"', alerts_html)
+
+
+def test_issue_defaults_to_alerts_when_referred_from_external_site(client):
+    """External referrers do not trigger the map tab."""
+    html = client.get("/issue", headers={"Referer": "https://t.me/sirens"}).get_data(as_text=True)
+    assert re.search(r'role="radio"[^>]*aria-checked="true"[^>]*data-tab="alerts"', html)
+
+
+def test_issue_ios_scrollbar_optimizations(app):
+    """Scrollbar includes momentum scrolling, clamping, and hardware acceleration for iOS."""
+    css = (Path(app.static_folder) / "css" / "issue.css").read_text(encoding="utf-8")
+    js = (Path(app.static_folder) / "js" / "issue.js").read_text(encoding="utf-8")
+
+    assert "-webkit-overflow-scrolling:touch" in css or "-webkit-overflow-scrolling: touch" in css
+    assert "translate3d" in css
+    assert "translate3d" in js
+    assert "Math.min(view.scrollTop, max)" in js
+
+
+def test_index_ios_pwa_and_status_bar(client, app):
+    """Index page configures iOS PWA with transparent status bar over the map."""
+    html = client.get("/").get_data(as_text=True)
+
+    assert '<meta name="apple-mobile-web-app-capable" content="yes">' in html
+    assert '<meta name="mobile-web-app-capable" content="yes">' in html
+    assert '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">' in html
+    assert '<meta name="apple-mobile-web-app-title" content="Сирени">' in html
+    assert 'viewport-fit=cover' in html
+    assert 'pwa.js' in html
+
+    main_css = (Path(app.static_folder) / "css" / "main.css").read_text(encoding="utf-8")
+    assert "top: 0;" in main_css or "top:0" in main_css
+
+
+def test_issue_ios_pwa_tags(client):
+    """Issue page includes iOS PWA meta tags."""
+    html = client.get("/issue").get_data(as_text=True)
+
+    assert '<meta name="apple-mobile-web-app-capable" content="yes">' in html
+    assert '<meta name="mobile-web-app-capable" content="yes">' in html
+    assert '<meta name="apple-mobile-web-app-status-bar-style" content="default">' in html
+    assert '<meta name="apple-mobile-web-app-title" content="Сирени">' in html
+    assert 'pwa.js' in html
+
+
+def test_manifest_scope_extensions_and_icons(app):
+    """Manifest includes scope_extensions for status.sirens.live and valid icon paths."""
+    import json
+    from PIL import Image
+
+    manifest_path = Path(app.static_folder) / "manifest.webmanifest"
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert data["display"] == "standalone"
+    assert data["scope"] == "/"
+    assert any(ext.get("origin") == "https://status.sirens.live" for ext in data.get("scope_extensions", []))
+
+    img_dir = Path(app.static_folder) / "img"
+    apple_icon = Image.open(img_dir / "apple-touch-icon.png")
+    assert apple_icon.size == (180, 180)
+
+    icon_192 = Image.open(img_dir / "icon-192.png")
+    assert icon_192.size == (192, 192)
+
+    icon_512 = Image.open(img_dir / "icon-512.png")
+    assert icon_512.size == (512, 512)
+
+
+def test_pwa_navigation_script(app):
+    """pwa.js intercepts navigation to status.sirens.live in standalone mode."""
+    js = (Path(app.static_folder) / "js" / "pwa.js").read_text(encoding="utf-8")
+
+    assert "isStandalone" in js
+    assert "status.sirens.live" in js
+    assert "window.location.href" in js
+    assert "preventDefault" in js
+
+
 def test_form_fields_are_named_the_way_the_server_reads_them(client, app):
     """Form input names match the keys expected by the server handler."""
     html = client.get("/issue").get_data(as_text=True)

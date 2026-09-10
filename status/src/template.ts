@@ -94,6 +94,12 @@ export function renderHtml(data: any, measurementId = ""): string {
 <meta name="description" content="Показуємо, чи надходять сповіщення в Telegram і чи працюють мапа тривог та API. Історія доступності за останні 24 години.">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#F4F4F4">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Сирени">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" sizes="180x180" href="https://sirens.live/static/img/apple-touch-icon.png">
 <link rel="canonical" href="https://status.sirens.live/">
 ${analyticsHead(measurementId, stateInfo.cls)}
 <meta property="og:title" content="Сирени — стан системи">

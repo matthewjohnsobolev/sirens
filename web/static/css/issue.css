@@ -267,6 +267,7 @@ body.tab-other .textarea{
   overflow-x:hidden;
   touch-action:pan-y;
   overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
 }
 .combo-option{
   display:flex;align-items:center;min-height:40px;
@@ -279,8 +280,17 @@ body.tab-other .textarea{
 .combo-option b{font-weight:600}
 
 .scroller{position:relative}
-.scroller.is-live .scroller-view{scrollbar-width:none}
-.scroller.is-live .scroller-view::-webkit-scrollbar{display:none}
+.scroller.is-live .scroller-view{
+  -ms-overflow-style:none;
+  scrollbar-width:none;
+}
+.scroller.is-live .scroller-view::-webkit-scrollbar{
+  display:none;
+  width:0;
+  height:0;
+  -webkit-appearance:none;
+  background:transparent;
+}
 
 .scroller-bar{
   position:absolute;top:5px;right:5px;bottom:5px;
@@ -292,16 +302,23 @@ body.tab-other .textarea{
   opacity:0;
   transition:opacity var(--motion-fade);
 }
-.combo-list .scroller-bar{top:4px;right:0;bottom:4px}
+.combo-list .scroller-bar{top:4px;right:0;bottom:4px;height:calc(100% - 8px)}
 .scroller.is-scrollable .scroller-bar{opacity:1}
 .scroller-thumb{
   position:absolute;top:0;left:0;width:10px;min-height:24px;
   border:3px solid transparent;
+  border-color:rgba(0,0,0,0);
+  -webkit-background-clip:padding-box;
   background:rgba(0,0,0,0.25);
   background-clip:padding-box;
   border-radius:5px;
   pointer-events:none;
   touch-action:none;
+  -webkit-transform:translate3d(0,0,0);
+  transform:translate3d(0,0,0);
+  -webkit-backface-visibility:hidden;
+  backface-visibility:hidden;
+  will-change:transform;
   transition:background-color var(--motion);
 }
 .scroller-thumb:hover,

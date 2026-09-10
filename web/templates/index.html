@@ -8,6 +8,11 @@
         <meta name="description" content="Показуємо, де зараз повітряна тривога чи загроза артобстрілу — по областях і районах України. Оновлюємо, щойно надходить офіційне повідомлення.">
         <meta name="robots" content="index, follow, max-image-preview:large">
         <meta name="theme-color" content="#FAFAF8">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="Сирени">
+        <meta name="format-detection" content="telephone=no">
         <link rel="canonical" href="{{ site_url }}/">
 
         {% include "_analytics.html" %}
@@ -64,6 +69,7 @@
         <script src="{{ static_url('js/cities.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/oblasts.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/map-ui.js') }}" defer></script>
+        <script src="{{ static_url('js/pwa.js') }}" defer></script>
         <script src="{{ static_url('js/analytics.js') }}" defer></script>
 
         <script type="application/ld+json">

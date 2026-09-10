@@ -668,8 +668,7 @@ def test_issue_ios_pwa_tags(client):
 def test_manifest_scope_extensions_and_icons(app):
     """Manifest includes scope_extensions for status.sirens.live and valid icon paths."""
     import json
-
-    from PIL import Image
+    import struct
 
     manifest_path = Path(app.static_folder) / "manifest.webmanifest"
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -681,15 +680,16 @@ def test_manifest_scope_extensions_and_icons(app):
         for ext in data.get("scope_extensions", [])
     )
 
+    def png_size(file_path: Path) -> tuple[int, int]:
+        with open(file_path, "rb") as f:
+            header = f.read(24)
+            assert header[:8] == b"\x89PNG\r\n\x1a\n"
+            return struct.unpack(">II", header[16:24])
+
     img_dir = Path(app.static_folder) / "img"
-    apple_icon = Image.open(img_dir / "apple-touch-icon.png")
-    assert apple_icon.size == (180, 180)
-
-    icon_192 = Image.open(img_dir / "icon-192.png")
-    assert icon_192.size == (192, 192)
-
-    icon_512 = Image.open(img_dir / "icon-512.png")
-    assert icon_512.size == (512, 512)
+    assert png_size(img_dir / "apple-touch-icon.png") == (180, 180)
+    assert png_size(img_dir / "icon-192.png") == (192, 192)
+    assert png_size(img_dir / "icon-512.png") == (512, 512)
 
 
 def test_pwa_navigation_script(app):

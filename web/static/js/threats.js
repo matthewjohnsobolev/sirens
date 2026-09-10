@@ -18,6 +18,7 @@ const SirensThreats = (function () {
 
     let data = null;
     let at = null;
+    let pending = null;
     const painters = [];
     const successListeners = [];
     const errorListeners = [];

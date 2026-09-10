@@ -10,7 +10,17 @@ from urllib.parse import urlparse
 
 import requests
 import sentry_sdk
-from flask import Flask, Response, current_app, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Flask,
+    Response,
+    current_app,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    url_for,
+)
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
@@ -136,6 +146,22 @@ def sitemap() -> Response:
         "</urlset>\n"
     )
     return Response(body, mimetype="application/xml")
+
+
+def apple_touch_icon() -> Response:
+    return send_from_directory(
+        current_app.static_folder,
+        "img/apple-touch-icon.png",
+        mimetype="image/png",
+    )
+
+
+def manifest() -> Response:
+    return send_from_directory(
+        current_app.static_folder,
+        "manifest.webmanifest",
+        mimetype="application/manifest+json",
+    )
 
 
 def _client_ip() -> str:
@@ -467,6 +493,12 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
     app.after_request(add_caching_headers)
     app.jinja_env.globals["static_url"] = static_url
 
+    app.add_url_rule("/apple-touch-icon.png", view_func=apple_touch_icon, methods=["GET"])
+    app.add_url_rule(
+        "/apple-touch-icon-precomposed.png", view_func=apple_touch_icon, methods=["GET"]
+    )
+    app.add_url_rule("/manifest.webmanifest", view_func=manifest, methods=["GET"])
+    app.add_url_rule("/manifest.json", view_func=manifest, methods=["GET"])
     app.add_url_rule("/", view_func=index)
     app.add_url_rule("/api", view_func=api, methods=["GET"])
     app.add_url_rule("/egg", view_func=egg, methods=["GET"])

@@ -199,6 +199,74 @@ function orderOblastStrokes() {
     for (const layer of layers) parent.appendChild(layer._path);
 }
 
+function attachOblastScrollbar(view) {
+    const host = view.parentElement;
+    if (!host || host.querySelector('.scroller-bar')) return null;
+
+    const bar = document.createElement('div');
+    bar.className = 'scroller-bar';
+    bar.setAttribute('aria-hidden', 'true');
+    const thumb = document.createElement('div');
+    thumb.className = 'scroller-thumb';
+    bar.appendChild(thumb);
+    host.appendChild(bar);
+    host.classList.add('is-live');
+
+    const range = () => view.scrollHeight - view.clientHeight;
+
+    function update() {
+        const max = range();
+        host.classList.toggle('is-scrollable', max > 1);
+        if (max <= 1) return;
+        const track = bar.clientHeight || view.clientHeight || (host.clientHeight ? host.clientHeight : 0);
+        if (track <= 0) return;
+        const height = Math.max(24, Math.round(track * view.clientHeight / view.scrollHeight));
+        const free = Math.max(0, track - height);
+        const clampedTop = Math.max(0, Math.min(view.scrollTop, max));
+        const y = max > 0 ? Math.round(free * clampedTop / max) : 0;
+        thumb.style.height = height + 'px';
+        thumb.style.webkitTransform = `translate3d(0, ${y}px, 0)`;
+        thumb.style.transform = `translate3d(0, ${y}px, 0)`;
+    }
+
+    let fromY = 0, fromTop = 0;
+
+    thumb.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        thumb.setPointerCapture(e.pointerId);
+        host.classList.add('is-dragging');
+        fromY = e.clientY;
+        fromTop = view.scrollTop;
+    });
+
+    thumb.addEventListener('pointermove', (e) => {
+        if (!host.classList.contains('is-dragging')) return;
+        const free = bar.clientHeight - thumb.offsetHeight;
+        if (free > 0) view.scrollTop = fromTop + (e.clientY - fromY) * range() / free;
+    });
+
+    const drop = () => host.classList.remove('is-dragging');
+    thumb.addEventListener('pointerup', drop);
+    thumb.addEventListener('pointercancel', drop);
+
+    bar.addEventListener('pointerdown', (e) => {
+        if (e.target === thumb) return;
+        e.stopPropagation();
+        const free = bar.clientHeight - thumb.offsetHeight;
+        if (free <= 0) return;
+        const at = e.clientY - bar.getBoundingClientRect().top - thumb.offsetHeight / 2;
+        view.scrollTop = Math.min(Math.max(at, 0), free) * range() / free;
+    });
+
+    view.addEventListener('scroll', update, { passive: true });
+    if (window.ResizeObserver) new ResizeObserver(update).observe(view);
+    update();
+    requestAnimationFrame(update);
+
+    return { update };
+}
+
 function getOblastPopupContent(oblastData) {
     const alert = (oblastData && oblastData.alert) || {};
     const tracked = alert.tracked_districts || [];
@@ -221,8 +289,8 @@ function getOblastPopupContent(oblastData) {
     }
 
     return `
-      <div class="container">
-          <div class="scrollable-content">${rows}
+      <div class="container scroller">
+          <div class="scrollable-content scroller-view">${rows}
           </div>
       </div>`;
 }
@@ -288,15 +356,28 @@ function buildOblasts(geoData) {
                 },
                 customOptions
             );
-            layer.on('popupopen', () => {
+            layer.on('popupopen', (e) => {
                 const data = oblastData(regionId);
                 if (window.track) window.track('region_popup_open', {
                     region_name: name,
                     threat_state: data ? oblastState(data) : 'idle'
                 });
+                const popupEl = (e && e.popup) ? e.popup.getElement() : null;
+                if (popupEl) {
+                    const view = popupEl.querySelector('.scrollable-content');
+                    if (view) attachOblastScrollbar(view);
+                }
             });
         }
     }).addTo(map);
+
+    map.on('popupopen', (e) => {
+        const popupEl = (e && e.popup) ? e.popup.getElement() : null;
+        if (popupEl) {
+            const view = popupEl.querySelector('.scrollable-content');
+            if (view) attachOblastScrollbar(view);
+        }
+    });
 
     ensureHatchDefs(map);
     applyZoomBand(map);

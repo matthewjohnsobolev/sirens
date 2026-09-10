@@ -692,6 +692,21 @@ def test_manifest_scope_extensions_and_icons(app):
     assert png_size(img_dir / "icon-512.png") == (512, 512)
 
 
+def test_apple_touch_icon_and_manifest_routes(client):
+    """Direct root paths serve apple-touch-icon and webmanifest with correct mimetypes."""
+    for path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+        resp = client.get(path)
+        assert resp.status_code == 200
+        assert resp.mimetype == "image/png"
+        assert resp.data[:8] == b"\x89PNG\r\n\x1a\n"
+
+    for path in ("/manifest.webmanifest", "/manifest.json"):
+        resp = client.get(path)
+        assert resp.status_code == 200
+        assert resp.mimetype == "application/manifest+json"
+        assert "Сирени" in resp.get_data(as_text=True)
+
+
 def test_pwa_navigation_script(app):
     """pwa.js intercepts navigation to status.sirens.live in standalone mode."""
     js = (Path(app.static_folder) / "js" / "pwa.js").read_text(encoding="utf-8")

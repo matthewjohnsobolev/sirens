@@ -10,7 +10,12 @@ function getBadgeClass(state: string): string {
 }
 
 function getStateInfo(headline: string) {
-    if (headline === 'Сповіщення не надходять') {
+    if (
+        headline === 'Сповіщення не надходять' ||
+        headline === 'Система не працює' ||
+        headline === 'Телеграм-канали не працюють' ||
+        headline === 'Мапа тривог не працює'
+    ) {
         return {
             cls: 'error',
             icon: '/img/icons/status-error.svg'
@@ -22,7 +27,7 @@ function getStateInfo(headline: string) {
             icon: '/img/icons/status-warning.svg'
         };
     }
-    if (headline === 'Планові роботи') {
+    if (headline === 'Планові роботи' || headline === 'Технічні роботи') {
         return {
             cls: 'mnt',
             icon: '/img/icons/status-mnt.svg'
@@ -82,7 +87,12 @@ export function renderHtml(data: any, measurementId = ""): string {
     `;
     }).join('');
 
-    const hasSpecificFailure = data.headline.includes('— ні') || data.headline === 'Сповіщення не надходять' || data.headline.includes('перебо');
+    const hasSpecificFailure = data.headline.includes('— ні') ||
+        data.headline === 'Сповіщення не надходять' ||
+        data.headline === 'Система не працює' ||
+        data.headline === 'Телеграм-канали не працюють' ||
+        data.headline === 'Мапа тривог не працює' ||
+        data.headline.includes('перебо');
     const formattedSubtitle = data.subtitle ? data.subtitle.replace(/(\b\d{1,2}:\d{2}\b)/g, '<time class="mono-time">$1</time>') : '';
 
     return `<!DOCTYPE html>

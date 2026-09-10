@@ -524,9 +524,11 @@
     background: var(--status-gray-bar);
 }
 
-.map-chip[data-state="minor"] .map-chip-dot  { background: var(--status-orange-bar); }
-.map-chip[data-state="down"] .map-chip-dot   { background: var(--status-red-bar); }
-.map-chip[data-state="nodata"] .map-chip-dot { background: var(--status-gray-bar); }
+.map-chip[data-state="ok"] .map-chip-dot      { background: var(--status-green-bar); }
+.map-chip[data-state="minor"] .map-chip-dot   { background: var(--status-orange-bar); }
+.map-chip[data-state="down"] .map-chip-dot    { background: var(--status-red-bar); }
+.map-chip[data-state="nodata"] .map-chip-dot  { background: var(--status-gray-bar); }
+.map-chip[data-state="offline"] .map-chip-dot { background: var(--status-gray-bar); }
 
 /* ── Атрибуція мапи ─────────────────────────────────────────────────── */
 

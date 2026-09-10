@@ -22,12 +22,13 @@
     // ціле коло нема чого.
     var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
 
-    // Телеметрію в KV кладе бот: за подіями і раз на 15 хвилин
-    // (TELEMETRY_PERIODIC_SYNC_INTERVAL в alerts/main.py). TTL у ключа
-    // немає, тож коли збір даних стає, час не зникає, а застигає. Поріг —
-    // потрійний запас від періоду: ловить зупинку, але не сварить за
-    // пропущений такт.
-    var STALE_MS = 45 * 60 * 1000;
+    // Відставання даних на бекенді вважається застиганням після 20 хвилин
+    var STALE_MS = 20 * 60 * 1000;
+
+    var isClientOnline = typeof navigator !== 'undefined' ? navigator.onLine !== false : true;
+    var showRestoredUntil = 0;
+    var restoredTimer = null;
+    var statusData = null;
 
     // indicator зі status.json → стан крапки, слово для скрінрідера й те,
     // чи має сервіс говорити вголос. Крапка каже стан кольором, тож слово
@@ -276,20 +277,54 @@
         chip.root.hidden = false;
     }
 
-    // Три випадки, коли є що сказати вголос: сервіс ліг, стан невідомий і
-    // — окремо — телеметрія застигла, хоча indicator ще каже, що все
-    // гаразд. Саме третій робить мапу мовчазно неправдивою, тож його
-    // сторожує код, а не читач.
-    function alarmFor(info, data, iso, at) {
+    function setClientOnline(online) {
+        if (!online) {
+            if (isClientOnline) {
+                isClientOnline = false;
+                showRestoredUntil = 0;
+                if (restoredTimer) {
+                    clearTimeout(restoredTimer);
+                    restoredTimer = null;
+                }
+                updateState();
+            }
+        } else {
+            if (!isClientOnline) {
+                isClientOnline = true;
+                showRestoredUntil = Date.now() + 4000;
+                if (restoredTimer) clearTimeout(restoredTimer);
+                restoredTimer = setTimeout(function () {
+                    restoredTimer = null;
+                    updateState();
+                }, 4000);
+                updateState();
+            }
+        }
+    }
+
+    // Каскад статусних плашок:
+    // 1. Пріоритет 1 (Проблема з інтернетом у клієнта): НЕМАЄ ЗВ'ЯЗКУ / ЗВ'ЯЗОК ВІДНОВЛЕНО
+    // 2. Пріоритет 2 (Застигання даних на бекенді): ДАНІ НЕ ОНОВЛЮЮТЬСЯ
+    function alarmFor(info) {
+        if (!isClientOnline) {
+            return { state: 'offline', text: 'НЕМАЄ ЗВ\'ЯЗКУ' };
+        }
+
+        if (Date.now() < showRestoredUntil) {
+            return { state: 'ok', text: 'ЗВ\'ЯЗОК ВІДНОВЛЕНО' };
+        }
+
+        var syncIso = telemetryAt(statusData);
+        if (isStale(syncIso)) {
+            return { state: 'down', text: 'ДАНІ НЕ ОНОВЛЮЮТЬСЯ' };
+        }
+
         if (info.loud) {
-            // Слова бере статус-сторінка: хай мапа й вона кажуть про збій
-            // однією фразою.
-            var headline = data && data.status ? data.status.headline : null;
+            var headline = statusData && statusData.status ? statusData.status.headline : null;
             return { state: info.state, text: headline || info.word };
         }
 
-        if (!isStale(iso)) return null;
-        return { state: 'minor', text: 'Дані не оновлюються з ' + at };
+        return null;
     }
 
     function isStale(iso) {
@@ -299,17 +334,16 @@
     }
 
     // Час пишеться, коли бот востаннє клав телеметрію в KV. Саме він і
-    // застигає, якщо збір даних став. Фолбека на page.updated_at тут бути
-    // не може: той завжди «щойно», тож у власному відмовному сценарії
-    // підміняв би застиглий час свіжим.
+    // застигає, якщо збір даних став.
     function telemetryAt(data) {
-        return data && data.telemetry ? data.telemetry.updated_at || null : null;
+        if (!data || !data.telemetry) return null;
+        return data.telemetry.synced_at || data.telemetry.last_source_sync_at || data.telemetry.updated_at || null;
     }
 
-    function formatTime(iso) {
-        if (!iso) return null;
-        var date = new Date(iso);
-        return isNaN(date.getTime()) ? null : kyivTime.format(date);
+    function updateState() {
+        var indicator = statusData && statusData.status ? statusData.status.indicator : null;
+        var info = STATES[indicator] || UNKNOWN;
+        render(info, alarmFor(info));
     }
 
     function poll() {
@@ -319,16 +353,16 @@
                 return response.json();
             })
             .then(function (data) {
-                var indicator = data && data.status ? data.status.indicator : null;
-                var info = STATES[indicator] || UNKNOWN;
-                var iso = telemetryAt(data);
-                var at = formatTime(iso);
-                render(info, alarmFor(info, data, iso, at));
+                setClientOnline(true);
+                statusData = data;
+                updateState();
             })
-            .catch(function () {
-                // Причина мовчить навмисне: читачеві важливо, що стан
-                // невідомий, а не яким кодом відповів апстрім.
-                render(UNKNOWN, alarmFor(UNKNOWN, null, null, null));
+            .catch(function (err) {
+                if (!navigator.onLine || (err && (err.name === 'TypeError' || err.name === 'AbortError' || String(err).indexOf('fetch') !== -1 || String(err).indexOf('NetworkError') !== -1))) {
+                    setClientOnline(false);
+                } else {
+                    updateState();
+                }
             });
     }
 
@@ -376,4 +410,18 @@
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden) poll();
     });
+
+    window.addEventListener('online', function () { setClientOnline(true); });
+    window.addEventListener('offline', function () { setClientOnline(false); });
+
+    if (window.SirensThreats) {
+        window.SirensThreats.onSuccess(function () {
+            setClientOnline(true);
+        });
+        window.SirensThreats.onError(function (err) {
+            if (!navigator.onLine || (err && (err.name === 'TypeError' || err.name === 'AbortError' || String(err).indexOf('fetch') !== -1 || String(err).indexOf('NetworkError') !== -1))) {
+                setClientOnline(false);
+            }
+        });
+    }
 })();

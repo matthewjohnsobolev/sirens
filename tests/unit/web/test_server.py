@@ -593,7 +593,9 @@ def test_issue_defaults_to_alerts_tab_on_direct_link(client):
 
     assert re.search(r'role="radio"[^>]*aria-checked="true"[^>]*data-tab="alerts"', html)
     assert re.search(r'id="input-category"[^>]*value="Сповіщення"', html)
-    city_label = re.search(r'<label class="label"[^>]*id="label-city">([^<]*)</label>', html).group(1)
+    city_label = re.search(r'<label class="label"[^>]*id="label-city">([^<]*)</label>', html).group(
+        1
+    )
     assert "Район" not in city_label
     assert "Місто" in city_label
 
@@ -604,7 +606,9 @@ def test_issue_opens_map_tab_when_referred_from_main_page(client):
 
     assert re.search(r'role="radio"[^>]*aria-checked="true"[^>]*data-tab="map"', html)
     assert re.search(r'id="input-category"[^>]*value="Мапа тривог"', html)
-    city_label = re.search(r'<label class="label"[^>]*id="label-city">([^<]*)</label>', html).group(1)
+    city_label = re.search(r'<label class="label"[^>]*id="label-city">([^<]*)</label>', html).group(
+        1
+    )
     assert "Район" in city_label
     assert "translate3d(100%, 0, 0)" in html
 
@@ -643,8 +647,8 @@ def test_index_ios_pwa_and_status_bar(client, app):
     assert '<meta name="mobile-web-app-capable" content="yes">' in html
     assert '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">' in html
     assert '<meta name="apple-mobile-web-app-title" content="Сирени">' in html
-    assert 'viewport-fit=cover' in html
-    assert 'pwa.js' in html
+    assert "viewport-fit=cover" in html
+    assert "pwa.js" in html
 
     main_css = (Path(app.static_folder) / "css" / "main.css").read_text(encoding="utf-8")
     assert "top: 0;" in main_css or "top:0" in main_css
@@ -658,12 +662,13 @@ def test_issue_ios_pwa_tags(client):
     assert '<meta name="mobile-web-app-capable" content="yes">' in html
     assert '<meta name="apple-mobile-web-app-status-bar-style" content="default">' in html
     assert '<meta name="apple-mobile-web-app-title" content="Сирени">' in html
-    assert 'pwa.js' in html
+    assert "pwa.js" in html
 
 
 def test_manifest_scope_extensions_and_icons(app):
     """Manifest includes scope_extensions for status.sirens.live and valid icon paths."""
     import json
+
     from PIL import Image
 
     manifest_path = Path(app.static_folder) / "manifest.webmanifest"
@@ -671,7 +676,10 @@ def test_manifest_scope_extensions_and_icons(app):
 
     assert data["display"] == "standalone"
     assert data["scope"] == "/"
-    assert any(ext.get("origin") == "https://status.sirens.live" for ext in data.get("scope_extensions", []))
+    assert any(
+        ext.get("origin") == "https://status.sirens.live"
+        for ext in data.get("scope_extensions", [])
+    )
 
     img_dir = Path(app.static_folder) / "img"
     apple_icon = Image.open(img_dir / "apple-touch-icon.png")

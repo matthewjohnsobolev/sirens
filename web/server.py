@@ -329,9 +329,7 @@ def _render_issue_form(**context: Any) -> str:
         else:
             initial_tab = "alerts"
 
-    initial_cat = next(
-        (c for c in ISSUE_CATEGORIES if c["id"] == initial_tab), ISSUE_CATEGORIES[0]
-    )
+    initial_cat = next((c for c in ISSUE_CATEGORIES if c["id"] == initial_tab), ISSUE_CATEGORIES[0])
 
     return render_template(
         "issue.html",

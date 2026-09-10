@@ -46,7 +46,10 @@
 
         <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
         <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
         <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+        <link rel="apple-touch-icon" sizes="167x167" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+        <link rel="apple-touch-icon" sizes="152x152" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
         <link rel="manifest" href="{{ static_url('manifest.webmanifest') }}">
         <link rel="stylesheet" href="{{ static_url('css/reset.css') }}">
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
@@ -128,6 +131,15 @@
         // Кнопки й плашку стану збирає map-ui.js: він виконується після
         // цього блока, тож мапа має бути доступна йому за іменем.
         window.sirensMap = map;
+        window.addEventListener('resize', function () {
+            map.invalidateSize();
+        });
+        window.addEventListener('orientationchange', function () {
+            setTimeout(function () { map.invalidateSize(); }, 200);
+        });
+        if (window.navigator.standalone) {
+            setTimeout(function () { map.invalidateSize(); }, 300);
+        }
 
         /* Підкладка — растрові тайли. Векторну тут тримали заради
            українських підписів: у растровому тайлі текст запечений у

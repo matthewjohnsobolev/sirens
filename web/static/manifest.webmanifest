@@ -3,10 +3,11 @@
   "short_name": "Сирени",
   "description": "Мапа повітряних тривог України в реальному часі: тривоги, загрози обстрілу та вибухи.",
   "start_url": "/",
+  "id": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
-  "theme_color": "#F4F4F4",
+  "theme_color": "#FAFAF8",
   "lang": "uk",
   "scope_extensions": [
     {
@@ -14,6 +15,12 @@
     }
   ],
   "icons": [
+    {
+      "src": "/static/img/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/static/img/icon-192.png",
       "sizes": "192x192",

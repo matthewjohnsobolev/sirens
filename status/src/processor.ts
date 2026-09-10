@@ -51,7 +51,7 @@ async function collectHealthchecks(specs: typeof COMPONENTS_SPEC, env: Env): Pro
         let live = "nodata";
         if (found.n_pings > 0) {
             const s = found.status?.toLowerCase();
-            live = s === "up" ? "ok" : s === "grace" ? "minor" : s === "down" ? "down" : s === "paused" ? "mnt" : "nodata";
+            live = s === "up" ? "ok" : (s === "grace" || s === "down") ? "down" : s === "paused" ? "mnt" : "nodata";
         }
 
         return [spec.key, {
@@ -184,6 +184,18 @@ export async function computeStatusData(env: Env) {
 
     const components = [];
     
+    const lastSyncStr = telemetry?.synced_at || telemetry?.last_source_sync_at || telemetry?.updated_at;
+    let isSourceStale = false;
+    if (lastSyncStr) {
+        const syncDate = new Date(lastSyncStr);
+        if (!isNaN(syncDate.getTime())) {
+            const staleMinutes = (now.getTime() - syncDate.getTime()) / 60000;
+            if (staleMinutes > 20) {
+                isSourceStale = true;
+            }
+        }
+    }
+
     let configStart: Date | null = null;
     if (env.STATUS_START_DATE) {
         const [y, m, d] = env.STATUS_START_DATE.split("-").map(Number);
@@ -378,6 +390,18 @@ export async function computeStatusData(env: Env) {
             }
         } else if (compState === "mnt") {
             compState = (probe.live && probe.live !== "mnt") ? probe.live : "ok";
+        } else if (spec.key === "source" && isSourceStale) {
+            compState = "down";
+            if (!outageSince && lastSyncStr) {
+                outageSince = new Date(lastSyncStr).toISOString();
+            }
+            if (hours.length > 0) {
+                hours[hours.length - 1].state = "down";
+                const updatedParts = formatHourParts(hours[hours.length - 1].date, "down", spec.key);
+                hours[hours.length - 1].timeText = updatedParts.timeText;
+                hours[hours.length - 1].statusText = updatedParts.statusText;
+                hours[hours.length - 1].title = updatedParts.fullTitle;
+            }
         }
 
         components.push({
@@ -386,15 +410,30 @@ export async function computeStatusData(env: Env) {
             desc: spec.desc,
             uptime: uptimePct,
             hours,
-            monitored: probe.present || Boolean(activeMaintenance) || compMntWindows.length > 0,
+            monitored: probe.present || Boolean(activeMaintenance) || compMntWindows.length > 0 || (spec.key === "source" && Boolean(lastSyncStr)),
             state: compState,
             outage_since: outageSince
         });
     }
 
     const monitored = components.filter(c => c.monitored);
-    let headline = "Сповіщення надходять";
-    let subtitle = "Розсилка в Telegram надходить як зазвичай.";
+
+    const compSource = components.find(c => c.key === "source");
+    const compBroadcast = components.find(c => c.key === "broadcast");
+    const compMap = components.find(c => c.key === "map");
+    const compApi = components.find(c => c.key === "api");
+
+    const isFail = (c: any) => Boolean(c && c.monitored && (c.state === "down" || c.state === "major" || c.state === "minor"));
+
+    const sourceFail = isFail(compSource);
+    const broadcastFail = isFail(compBroadcast);
+    const mapFail = isFail(compMap);
+    const apiFail = isFail(compApi);
+
+    const telegramAlive = !sourceFail && !broadcastFail;
+    const webAlive = !mapFail && !apiFail;
+
+    const hasMaintenance = Boolean(activeMaintenance) || monitored.some(c => c.state === "mnt");
 
     const formatSince = (dtStr: string | null) => {
         if (!dtStr) return "";
@@ -410,21 +449,11 @@ export async function computeStatusData(env: Env) {
         return ` з ${p.day} ${UK_MONTHS[p.month]}, ${hh}:${mm}`;
     };
 
-    const coreFailing = components.filter(c => (c.key === "source" || c.key === "broadcast") && ["down", "major", "minor"].includes(c.state) && c.monitored);
-    const auxFailing = components.filter(c => (c.key === "map" || c.key === "api") && ["down", "major", "minor"].includes(c.state) && c.monitored);
-
-    // Обидва кінці ланцюга без даних: ми не знаємо, чи проходить розсилка,
-    // і не маємо права стверджувати, що вона працює.
-    const coreKnown = components.filter(c => (c.key === "source" || c.key === "broadcast") && c.monitored);
-    const coreUnknown = !coreKnown.length || coreKnown.every(c => c.state === "nodata");
-
     let lastAlertDt: Date | null = null;
-    let lastAlertLocation: string | null = null;
     if (telemetry?.last_alert?.timestamp) {
         const parsed = new Date(telemetry.last_alert.timestamp);
         if (!isNaN(parsed.getTime())) {
             lastAlertDt = parsed;
-            lastAlertLocation = telemetry.last_alert.city_name || telemetry.last_alert.district_name || null;
         }
     } else if (telemetry?.last_broadcast_at) {
         const parsed = new Date(telemetry.last_broadcast_at);
@@ -433,47 +462,51 @@ export async function computeStatusData(env: Env) {
         }
     }
 
-    const hasMaintenance = Boolean(activeMaintenance) || monitored.some(c => c.state === "mnt");
+    let headline = "Усе працює";
+    let subtitle = "Розсилка в Telegram надходить як зазвичай.";
 
     if (hasMaintenance) {
-        headline = activeMaintenance?.headline || "Планові роботи";
+        headline = activeMaintenance?.headline || "Технічні роботи";
         subtitle = activeMaintenance?.subtitle || "Тривають планові технічні роботи.";
     } else if (!monitored.length || monitored.every(c => c.state === "nodata")) {
         headline = "Немає даних";
         subtitle = "";
-    } else if (coreFailing.length > 0) {
-        const dts = coreFailing.map(c => c.outage_since).filter(Boolean);
+    } else if (!telegramAlive && !webAlive) {
+        const allFailing = components.filter(c => isFail(c));
+        const dts = allFailing.map(c => c.outage_since).filter(Boolean);
         const earliest = dts.length ? dts.sort()[0] : null;
-        headline = "Сповіщення не надходять";
+        headline = "Система не працює";
         subtitle = `Не працюють${formatSince(earliest)}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
-    } else if (coreUnknown) {
-        headline = "Немає даних";
-        subtitle = "Ми не знаємо, чи проходить розсилка. Орієнтуйтесь на офіційний канал вашої області.";
-    } else if (auxFailing.length > 0) {
-        const keys = new Set(auxFailing.map(c => c.key));
-        const dts = auxFailing.map(c => c.outage_since).filter(Boolean);
+    } else if (!telegramAlive && webAlive) {
+        const tgFailing = [compSource, compBroadcast].filter(c => isFail(c));
+        const dts = tgFailing.map(c => c?.outage_since).filter(Boolean);
+        const earliest = dts.length ? dts.sort()[0] : null;
+        headline = "Телеграм-канали не працюють";
+        subtitle = `Не працюють${formatSince(earliest)}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
+    } else if (telegramAlive && !webAlive) {
+        const webFailing = [compMap, compApi].filter(c => isFail(c));
+        const dts = webFailing.map(c => c?.outage_since).filter(Boolean);
         const earliest = dts.length ? dts.sort()[0] : null;
         const timeStr = formatSince(earliest);
 
-        if (keys.has("map") && keys.has("api")) {
-            headline = "Сповіщення надходять, мапа й API — ні";
+        headline = "Мапа тривог не працює";
+        if (mapFail && apiFail) {
             subtitle = `Мапа та API недоступні${timeStr}. Розсилка в Telegram надходить як зазвичай.`;
-        } else if (keys.has("map")) {
-            headline = "Сповіщення надходять, мапа — ні";
+        } else if (mapFail) {
             subtitle = `Мапа недоступна${timeStr}. Розсилка в Telegram надходить як зазвичай.`;
         } else {
-            headline = "Сповіщення надходять, API — ні";
             subtitle = `API недоступний${timeStr}. Розсилка в Telegram надходить як зазвичай.`;
         }
     } else {
+        headline = "Усе працює";
         if (lastAlertDt && !isNaN(lastAlertDt.getTime())) {
             const p = getKyivParts(lastAlertDt);
             const dateStr = relativeDayLabel(p, nowKyiv) ?? `${p.day} ${UK_MONTHS[p.month]}`;
             const hh = p.hour.toString().padStart(2, '0');
             const mm = p.minute.toString().padStart(2, '0');
-            const locPhrase = formatLocationLocative(
+            const locPhrase = telemetry?.last_alert?.locative || formatLocationLocative(
                 telemetry?.last_alert?.district,
-                telemetry?.last_alert?.city_name || telemetry?.last_alert?.district_name,
+                telemetry?.last_alert?.city || telemetry?.last_alert?.city_name || telemetry?.last_alert?.district_name,
                 (telemetry?.last_alert as any)?.location_title
             );
             const locSuffix = locPhrase ? ` ${locPhrase}` : "";

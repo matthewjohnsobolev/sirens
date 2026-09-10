@@ -18,11 +18,24 @@ const SirensThreats = (function () {
 
     let data = null;
     let at = null;
-    let pending = null;
     const painters = [];
+    const successListeners = [];
+    const errorListeners = [];
 
     function paint() {
         for (const painter of painters) painter(data);
+    }
+
+    function notifySuccess() {
+        for (const fn of successListeners) {
+            try { fn(); } catch (_) {}
+        }
+    }
+
+    function notifyError(err) {
+        for (const fn of errorListeners) {
+            try { fn(err); } catch (_) {}
+        }
     }
 
     return {
@@ -44,6 +57,14 @@ const SirensThreats = (function () {
         onPaint(painter) {
             painters.push(painter);
             if (data) painter(data);
+        },
+
+        onSuccess(fn) {
+            successListeners.push(fn);
+        },
+
+        onError(fn) {
+            errorListeners.push(fn);
         },
 
         // Поки один запит іде, решта чекають на ту саму обіцянку: кнопку
@@ -74,7 +95,12 @@ const SirensThreats = (function () {
                     data = fresh;
                     at = new Date();
                     paint();
+                    notifySuccess();
                     return fresh;
+                })
+                .catch(err => {
+                    notifyError(err);
+                    throw err;
                 })
                 .finally(() => {
                     clearTimeout(cutoff);

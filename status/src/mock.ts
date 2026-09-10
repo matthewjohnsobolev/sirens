@@ -111,7 +111,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         };
     });
 
-    let headline = "Сповіщення надходять";
+    let headline = "Усе працює";
     const lastAlertHour = ((nowKyiv.hour - 4 + 24) % 24).toString().padStart(2, "0");
     const lastAlertMin = "12";
     let subtitle = `Останнє сповіщення ми надіслали сьогодні о ${lastAlertHour}:${lastAlertMin} у Білій Церкві. Відтоді тривог чи відбоїв не було.`;
@@ -121,37 +121,33 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
     if (normScenario === "unknown") {
         headline = "Немає даних";
         subtitle = "";
-    } else if (normScenario === "service_down") {
-        headline = "Сповіщення не надходять";
+    } else if (normScenario === "system_down") {
+        headline = "Система не працює";
         subtitle = `Не працюють ${outageTimeStr}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
-    } else if (normScenario === "map_api_down") {
-        headline = "Сповіщення надходять, мапа й API — ні";
-        subtitle = `Мапа та API недоступні ${outageTimeStr}. Розсилка в Telegram надходить як зазвичай.`;
-    } else if (normScenario === "map_down") {
-        headline = "Сповіщення надходять, мапа — ні";
+    } else if (normScenario === "service_down") {
+        headline = "Телеграм-канали не працюють";
+        subtitle = `Не працюють ${outageTimeStr}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
+    } else if (normScenario === "map_api_down" || normScenario === "map_down") {
+        headline = "Мапа тривог не працює";
         subtitle = `Мапа недоступна ${outageTimeStr}. Розсилка в Telegram надходить як зазвичай.`;
     } else if (normScenario === "mnt") {
-        headline = "Планові роботи";
+        headline = "Технічні роботи";
         subtitle = "Тривають планові технічні роботи.";
     }
 
     const mockLastAlertIso = new Date(now.getTime() - 4 * 3600 * 1000).toISOString();
     const telemetry = {
+        synced_at: now.toISOString(),
         last_broadcast_at: mockLastAlertIso,
         last_alert: {
             type: "air_raid_alert",
-            region: "kyiv_oblast",
+            oblast: "kyiv_oblast",
             district: "bilatserkva",
-            district_name: "Біла Церква",
-            city_name: "Біла Церква",
+            city: "Біла Церква",
+            locative: "у Білій Церкві",
             timestamp: mockLastAlertIso,
-            message_id: 12345,
-            message_link: "https://t.me/sirens_kyiv_obl/12345"
         },
-        last_source_message_at: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
-        active_alerts_count: 0,
-        source_connected: true,
-        updated_at: now.toISOString()
+        maintenance: null,
     };
 
     return {

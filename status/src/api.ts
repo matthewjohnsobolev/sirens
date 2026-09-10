@@ -44,12 +44,16 @@ export function uptimeRobotKey(env: Env, componentKey: string): string | undefin
 
 export interface TelemetryAlert {
     type: string;
-    region?: string;
+    level?: string | null;
+    oblast?: string;
     district?: string;
+    city?: string;
+    locative?: string;
+    timestamp: string;
+    region?: string;
     district_name?: string;
     city_name?: string;
     location_title?: string;
-    timestamp: string;
     message_id?: number | null;
     message_link?: string | null;
 }
@@ -74,18 +78,21 @@ export interface MaintenanceData {
     components?: string[];
     start_iso?: string;
     end_iso?: string;
+    by?: "auto" | "manual" | string;
     updated_at?: string;
     operator?: string;
     windows?: MaintenanceWindowData[];
 }
 
 export interface TelemetryData {
+    synced_at?: string | null;
     last_broadcast_at?: string | null;
     last_alert?: TelemetryAlert | null;
+    maintenance?: MaintenanceData | null;
+    last_source_sync_at?: string | null;
     last_source_message_at?: string | null;
     active_alerts_count?: number;
     source_connected?: boolean;
-    maintenance?: MaintenanceData | null;
     updated_at?: string;
 }
 

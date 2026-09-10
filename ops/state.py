@@ -902,6 +902,7 @@ def sync_maintenance_state(redis_conn=None) -> dict[str, Any]:
             "updated_at": str(now),
             "operator": active_win.get("operator", ""),
             "windows": json.dumps(recent_windows),
+            "by": "auto",
         }
         cf_payload = {
             "active": True,
@@ -911,8 +912,7 @@ def sync_maintenance_state(redis_conn=None) -> dict[str, Any]:
             "subtitle": note_val,
             "start_iso": active_win["start_iso"],
             "end_iso": active_win["end_iso"],
-            "updated_at": get_kyiv_now().isoformat(),
-            "operator": active_win.get("operator", ""),
+            "by": "auto",
             "windows": recent_windows,
         }
     else:
@@ -925,14 +925,14 @@ def sync_maintenance_state(redis_conn=None) -> dict[str, Any]:
             "updated_at": str(now),
             "operator": "",
             "windows": json.dumps(recent_windows),
+            "by": "auto",
         }
         cf_payload = {
             "active": False,
             "components": ["all"],
             "headline": "Планові роботи",
             "subtitle": "Тривають планові технічні роботи.",
-            "updated_at": get_kyiv_now().isoformat(),
-            "operator": "",
+            "by": "auto",
             "windows": recent_windows,
         }
 
@@ -1154,6 +1154,7 @@ def set_maintenance(
 
     import json
 
+    by_val = "manual" if operator_name not in ("auto", "cron", "schedule") else "auto"
     redis_data = {
         "active": "true" if active else "false",
         "components": json.dumps(comps_list),
@@ -1162,6 +1163,7 @@ def set_maintenance(
         "updated_at": now_epoch,
         "operator": operator_name,
         "windows": json.dumps(recent_windows),
+        "by": by_val,
     }
     client.hset("system:maintenance", mapping=redis_data)
 
@@ -1170,8 +1172,7 @@ def set_maintenance(
         "components": comps_list,
         "headline": "Планові роботи",
         "subtitle": subtitle_msg,
-        "updated_at": now_kyiv.isoformat(),
-        "operator": operator_name,
+        "by": by_val,
         "windows": recent_windows,
     }
 
@@ -1230,6 +1231,8 @@ def get_maintenance(redis_conn=None) -> dict[str, Any]:
         except Exception:
             windows = []
 
+    op_val = raw.get("operator", "")
+    by_val = raw.get("by") or ("auto" if op_val in ("auto", "cron", "schedule") else "manual")
     return {
         "active": is_active,
         "id": raw.get("id", ""),
@@ -1237,6 +1240,7 @@ def get_maintenance(redis_conn=None) -> dict[str, Any]:
         "headline": raw.get("headline", "Планові роботи"),
         "subtitle": raw.get("subtitle", "Тривають планові технічні роботи."),
         "updated_at": updated_epoch,
-        "operator": raw.get("operator", ""),
+        "operator": op_val,
+        "by": by_val,
         "windows": windows,
     }

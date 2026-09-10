@@ -8,6 +8,7 @@ import datetime
 import json
 import logging
 import re
+import time
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1091,32 +1092,6 @@ async def test_handler_marks_the_source_alive_before_both_early_exits(
 
 
 @pytest.mark.asyncio
-async def test_source_silence_seconds_is_none_without_a_mark():
-    assert await alerts_main._source_silence_seconds() is None
-
-
-def test_silence_is_reported_once_per_episode(caplog):
-    caplog.set_level(logging.INFO)
-    silence = alerts_main.SOURCE_SILENCE_THRESHOLD + 60
-
-    alerts_main._report_source_silence(silence)
-    alerts_main._report_source_silence(silence + 300)
-
-    assert caplog.text.count("No message from the source channel") == 1
-    assert alerts_main.source_silence_reported is True
-
-
-def test_returning_source_closes_the_episode(caplog):
-    caplog.set_level(logging.INFO)
-    alerts_main._report_source_silence(alerts_main.SOURCE_SILENCE_THRESHOLD + 60)
-    caplog.clear()
-
-    alerts_main._report_source_silence(10)
-
-    assert "The source channel is posting again" in caplog.text
-    assert alerts_main.source_silence_reported is False
-
-
 class _StopLoop(Exception):
     """Exit from the infinite loop on the second iteration."""
 
@@ -1134,51 +1109,71 @@ async def test_healthcheck_loop_keeps_watching_without_a_ping_url(monkeypatch, c
     """The loop continues running when healthchecks ping URL is absent."""
     caplog.set_level(logging.WARNING)
     monkeypatch.setattr(alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "")
-    alerts_main.last_source_message_at = 0.0
     mock_client = MagicMock()
     mock_client.is_connected.return_value = True
+    mock_client.get_messages = AsyncMock(return_value=[])
 
-    await _run_one_cycle(alerts_main._healthcheck_loop(mock_client))
+    await _run_one_cycle(alerts_main._healthcheck_loop(mock_client, primary_source=111111))
 
     assert "HEALTHCHECKS_ALERTS_SOURCE_PING_URL not set" in caplog.text
-    assert "No message from the source channel" in caplog.text
+    mock_client.get_messages.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_healthcheck_loop_pings_while_the_source_is_fresh(monkeypatch):
+async def test_healthcheck_loop_active_check_pings_ok(monkeypatch):
     monkeypatch.setattr(
         alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/test-uuid"
     )
     mock_client = MagicMock()
     mock_client.is_connected.return_value = True
+    mock_client.get_messages = AsyncMock(return_value=[MagicMock()])
 
-    with patch("alerts.main.time.time", return_value=1_700_000_000.0):
-        alerts_main.last_source_message_at = 1_700_000_000.0 - 60
-        with patch("alerts.main._ping_healthcheck") as mock_ping:
-            await _run_one_cycle(alerts_main._healthcheck_loop(mock_client))
-
-    assert mock_ping.call_args_list
-    assert all(call.args == () for call in mock_ping.call_args_list)
-
-
-@pytest.mark.asyncio
-async def test_healthcheck_loop_fails_the_check_on_silence(monkeypatch):
-    """Extended silence triggers an explicit /fail ping."""
-    monkeypatch.setattr(
-        alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/test-uuid"
-    )
-    mock_client = MagicMock()
-    mock_client.is_connected.return_value = True
-
-    with patch("alerts.main.time.time", return_value=1_700_000_000.0):
-        alerts_main.last_source_message_at = (
-            1_700_000_000.0 - alerts_main.SOURCE_SILENCE_THRESHOLD - 1
+    with patch("alerts.main._ping_healthcheck") as mock_ping:
+        await _run_one_cycle(
+            alerts_main._healthcheck_loop(
+                mock_client, primary_source=111111, fallback_source=222222
+            )
         )
-        with patch("alerts.main._ping_healthcheck") as mock_ping:
-            await _run_one_cycle(alerts_main._healthcheck_loop(mock_client))
 
-    assert mock_ping.call_args_list
-    assert all(call.args == ("/fail",) for call in mock_ping.call_args_list)
+    # In test environment, fallback is active in ALERT_BROADCAST_SOURCES, so active_source is 222222
+    mock_client.get_messages.assert_awaited_once_with(222222, limit=1)
+    mock_ping.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_loop_pings_fail_on_fatal_channel_error(monkeypatch, caplog):
+    from telethon.errors import ChannelPrivateError
+
+    caplog.set_level(logging.CRITICAL)
+    monkeypatch.setattr(
+        alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/test-uuid"
+    )
+    mock_client = MagicMock()
+    mock_client.is_connected.return_value = True
+    mock_client.get_messages = AsyncMock(side_effect=ChannelPrivateError(request=None))
+
+    with patch("alerts.main._ping_healthcheck") as mock_ping:
+        await _run_one_cycle(alerts_main._healthcheck_loop(mock_client, primary_source=111111))
+
+    assert "Critical error reading from active source channel" in caplog.text
+    mock_ping.assert_called_once_with("/fail")
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_loop_does_not_fail_on_transient_error(monkeypatch, caplog):
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(
+        alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/test-uuid"
+    )
+    mock_client = MagicMock()
+    mock_client.is_connected.return_value = True
+    mock_client.get_messages = AsyncMock(side_effect=ConnectionError("telegram dropped"))
+
+    with patch("alerts.main._ping_healthcheck") as mock_ping:
+        await _run_one_cycle(alerts_main._healthcheck_loop(mock_client, primary_source=111111))
+
+    assert "Transient connection error reading from active source channel" in caplog.text
+    mock_ping.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1249,44 +1244,21 @@ async def test_broadcast_watchdog_keeps_watching_without_a_ping_url(monkeypatch,
     await _run_one_cycle(alerts_main._broadcast_watchdog_loop(mock_client))
 
     assert "HEALTHCHECKS_ALERTS_BROADCAST_PING_URL not set" in caplog.text
-    assert "No alerts broadcasted" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_broadcast_watchdog_pings_while_broadcast_is_fresh(monkeypatch):
+async def test_broadcast_watchdog_pings_while_connected(monkeypatch):
     monkeypatch.setattr(
         alerts_main, "HEALTHCHECKS_ALERTS_BROADCAST_PING_URL", "https://hc-ping.com/tg"
     )
     mock_client = MagicMock()
     mock_client.is_connected.return_value = True
 
-    with patch("alerts.main.time.time", return_value=1_700_000_000.0):
-        alerts_main.last_broadcast_at = 1_700_000_000.0 - 60
-        with patch("alerts.main._ping_tg_healthcheck") as mock_ping:
-            await _run_one_cycle(alerts_main._broadcast_watchdog_loop(mock_client))
+    with patch("alerts.main._ping_tg_healthcheck") as mock_ping:
+        await _run_one_cycle(alerts_main._broadcast_watchdog_loop(mock_client))
 
     assert mock_ping.call_args_list
     assert all(call.args == () for call in mock_ping.call_args_list)
-
-
-@pytest.mark.asyncio
-async def test_broadcast_watchdog_fails_the_check_on_silence(monkeypatch):
-    """Broadcast silence triggers an explicit /fail ping."""
-    monkeypatch.setattr(
-        alerts_main, "HEALTHCHECKS_ALERTS_BROADCAST_PING_URL", "https://hc-ping.com/tg"
-    )
-    mock_client = MagicMock()
-    mock_client.is_connected.return_value = True
-
-    with patch("alerts.main.time.time", return_value=1_700_000_000.0):
-        alerts_main.last_broadcast_at = (
-            1_700_000_000.0 - alerts_main.BROADCAST_SILENCE_THRESHOLD - 1
-        )
-        with patch("alerts.main._ping_tg_healthcheck") as mock_ping:
-            await _run_one_cycle(alerts_main._broadcast_watchdog_loop(mock_client))
-
-    assert mock_ping.call_args_list
-    assert all(call.args == ("/fail",) for call in mock_ping.call_args_list)
 
 
 @pytest.mark.asyncio
@@ -1301,6 +1273,21 @@ async def test_broadcast_watchdog_skips_ping_when_disconnected(monkeypatch):
         await _run_one_cycle(alerts_main._broadcast_watchdog_loop(mock_client))
 
     mock_ping.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_watchdog_triggers_periodic_telemetry_sync():
+    mock_client = MagicMock()
+    mock_client.is_connected.return_value = True
+
+    alerts_main._last_periodic_sync = (
+        time.time() - alerts_main.TELEMETRY_PERIODIC_SYNC_INTERVAL - 10
+    )
+    with patch("alerts.main.push_telemetry_to_kv", new_callable=AsyncMock) as mock_push:
+        await _run_one_cycle(alerts_main._broadcast_watchdog_loop(mock_client))
+        await _drain_background_tasks()
+
+    mock_push.assert_awaited()
 
 
 @pytest.mark.asyncio
@@ -1357,7 +1344,7 @@ async def test_prime_starts_the_clock_from_now_as_a_last_resort(
         await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
 
     assert alerts_main.last_source_message_at == 1_700_000_000.0
-    assert "Starting the silence clock from now" in caplog.text
+    assert "The last primary source post date is unknown" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -1444,7 +1431,7 @@ async def test_prime_ignores_map_only_district_in_redis_and_falls_back_to_pg(
     sql = mock_conn.fetchrow.call_args[0][0]
     assert "WHERE channel_id IS NOT NULL" in sql
     assert alerts_main.last_alert_payload["district"] == "bilatserkva"
-    assert alerts_main.last_alert_payload["city_name"] == "Біла Церква"
+    assert alerts_main.last_alert_payload["city"] == "Біла Церква"
 
 
 @pytest.mark.asyncio
@@ -1467,8 +1454,8 @@ async def test_prime_pg_query_filters_only_broadcast_alerts(
     await alerts_main._prime_monitoring_state(SOURCE_CHANNEL)
 
     assert alerts_main.last_alert_payload["district"] == "kharkiv"
-    assert alerts_main.last_alert_payload["city_name"] == "Харків"
-    assert alerts_main.last_alert_payload["location_title"] == "у Харкові"
+    assert alerts_main.last_alert_payload["city"] == "Харків"
+    assert alerts_main.last_alert_payload["locative"] == "у Харкові"
 
 
 @pytest.mark.asyncio
@@ -1638,8 +1625,9 @@ async def test_send_alert_updates_telemetry_payload_and_redis(
 
     assert alerts_main.last_alert_payload is not None
     assert alerts_main.last_alert_payload["district"] == "bilatserkva"
-    assert alerts_main.last_alert_payload["city_name"] == "Біла Церква"
-    assert alerts_main.last_alert_payload["location_title"] == "у Білій Церкві"
+    assert alerts_main.last_alert_payload["city"] == "Біла Церква"
+    assert alerts_main.last_alert_payload["locative"] == "у Білій Церкві"
+    assert alerts_main.last_alert_payload["oblast"] == "kyiv_oblast"
     assert alerts_main.last_alert_payload["type"] == "air_raid_alert"
 
     redis_alert_calls = [
@@ -1650,7 +1638,7 @@ async def test_send_alert_updates_telemetry_payload_and_redis(
     assert len(redis_alert_calls) == 1
     saved_data = json.loads(redis_alert_calls[0].args[1])
     assert saved_data["district"] == "bilatserkva"
-    assert saved_data["city_name"] == "Біла Церква"
+    assert saved_data["city"] == "Біла Церква"
 
 
 @pytest.mark.asyncio
@@ -1909,15 +1897,13 @@ async def test_push_telemetry_to_kv_sends_correct_payload(monkeypatch, mock_redi
     monkeypatch.setattr(alerts_main, "CLOUDFLARE_API_TOKEN", "token_789")
 
     alerts_main.last_broadcast_at = 1700000000.0
-    alerts_main.last_source_message_at = 1699999000.0
     alerts_main.last_alert_payload = {
         "type": "air_raid_alert",
-        "region": "kyiv_oblast",
+        "oblast": "kyiv_oblast",
         "district": "bila_tserkva",
-        "district_name": "Білоцерківський район",
+        "city": "Біла Церква",
+        "locative": "у Білій Церкві",
         "timestamp": "2026-08-26T18:00:00+00:00",
-        "message_id": 123,
-        "message_link": "https://t.me/sirens_kyiv_obl/123",
     }
 
     mock_client = MagicMock()
@@ -1946,13 +1932,17 @@ async def test_push_telemetry_to_kv_sends_correct_payload(monkeypatch, mock_redi
         assert kwargs["headers"]["Content-Type"] == "application/json"
 
         body = json.loads(kwargs["data"])
+        assert "synced_at" in body
         assert body["last_alert"]["district"] == "bila_tserkva"
-        assert body["last_alert"]["district_name"] == "Білоцерківський район"
-        assert body["source_connected"] is True
+        assert body["last_alert"]["city"] == "Біла Церква"
+        assert body["last_alert"]["locative"] == "у Білій Церкві"
+        assert body["last_alert"]["oblast"] == "kyiv_oblast"
         assert body["maintenance"]["active"] is True
         assert body["maintenance"]["components"] == ["map"]
         assert body["maintenance"]["subtitle"] == "Work in progress"
-        assert "updated_at" in body
+        assert body["maintenance"]["by"] == "manual"
+        assert "updated_at" not in body["maintenance"]
+        assert "operator" not in body["maintenance"]
 
 
 @pytest.mark.asyncio
@@ -2318,87 +2308,96 @@ async def test_prime_monitoring_state_fetches_from_telegram_when_no_redis(mock_t
     assert alerts_main.last_fallback_message_at == mock_msg2.date.timestamp()
 
 
-def test_silence_reporting_for_primary_and_fallback(caplog):
-    caplog.set_level(logging.INFO)
-    threshold = alerts_main.SOURCE_SILENCE_THRESHOLD
+@pytest.mark.asyncio
+async def test_send_alert_flood_wait_over_60s_pings_fail(
+    mock_redis, mock_pg_pool, mock_telegram_client, caplog
+):
+    caplog.set_level(logging.ERROR)
+    mock_telegram_client.send_message.side_effect = FloodWaitError(request=None, capture=75)
 
-    alerts_main.primary_silence_reported = False
-    alerts_main.fallback_silence_reported = False
-    alerts_main.source_silence_reported = False
+    with patch("alerts.main._ping_tg_healthcheck") as mock_ping:
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert")
+        await _drain_background_tasks()
 
-    # 1. Primary is silent, but fallback is active
-    alerts_main._report_source_silence(
-        primary_silence=threshold + 10,
-        fallback_silence=100,
-        overall_silence=100,
-        has_fallback=True,
-    )
-    assert "Primary source silent" in caplog.text
-    assert "operating via fallback source" in caplog.text
-    assert alerts_main.primary_silence_reported is True
-
-    # 2. Fallback becomes silent, primary active
-    caplog.clear()
-    alerts_main.primary_silence_reported = False
-    alerts_main._report_source_silence(
-        primary_silence=100,
-        fallback_silence=threshold + 10,
-        overall_silence=100,
-        has_fallback=True,
-    )
-    assert "Fallback source channel silent" in caplog.text
-    assert alerts_main.fallback_silence_reported is True
-
-    # 3. Fallback recovers
-    caplog.clear()
-    alerts_main._report_source_silence(
-        primary_silence=100,
-        fallback_silence=50,
-        overall_silence=50,
-        has_fallback=True,
-    )
-    assert "Fallback source channel is posting again" in caplog.text
-    assert alerts_main.fallback_silence_reported is False
+    assert "FloodWaitError of 75 seconds" in caplog.text
+    mock_ping.assert_called_once_with("/fail")
 
 
 @pytest.mark.asyncio
-async def test_healthcheck_loop_pings_fallback_url(monkeypatch):
-    monkeypatch.setattr(
-        alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "https://hc-ping.com/primary"
-    )
-    monkeypatch.setattr(
-        alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_FALLBACK_PING_URL", "https://hc-ping.com/fallback"
-    )
-    mock_client = MagicMock()
-    mock_client.is_connected.return_value = True
+async def test_send_alert_flood_wait_under_60s_does_not_ping_fail(
+    mock_redis, mock_pg_pool, mock_telegram_client, caplog
+):
+    caplog.set_level(logging.ERROR)
+    mock_telegram_client.send_message.side_effect = FloodWaitError(request=None, capture=30)
 
-    alerts_main.last_source_message_at = 1_700_000_000.0
-    alerts_main.last_primary_message_at = 1_700_000_000.0
-    alerts_main.last_fallback_message_at = (
-        1_700_000_000.0 - alerts_main.SOURCE_SILENCE_THRESHOLD - 10
-    )
+    with patch("alerts.main._ping_tg_healthcheck") as mock_ping:
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert")
+        await _drain_background_tasks()
 
-    with (
-        patch("alerts.main.time.time", return_value=1_700_000_000.0),
-        patch("alerts.main._ping_healthcheck") as mock_primary_ping,
-        patch("alerts.main._ping_fb_healthcheck") as mock_fb_ping,
-    ):
-        await _run_one_cycle(alerts_main._healthcheck_loop(mock_client, has_fallback=True))
-
-    mock_primary_ping.assert_called_once_with()
-    mock_fb_ping.assert_called_once_with("/fail")
+    assert "FloodWaitError of 30 seconds" in caplog.text
+    mock_ping.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_push_telemetry_to_kv_includes_fallback_data(monkeypatch):
+async def test_send_alert_fatal_session_error_pings_fail(
+    mock_redis, mock_pg_pool, mock_telegram_client, caplog
+):
+    from telethon.errors import AuthKeyUnregisteredError
+
+    caplog.set_level(logging.ERROR)
+    mock_telegram_client.send_message.side_effect = AuthKeyUnregisteredError(request=None)
+
+    with patch("alerts.main._ping_tg_healthcheck") as mock_ping:
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert")
+        await _drain_background_tasks()
+
+    assert "Fatal session error sending alert to" in caplog.text
+    mock_ping.assert_called_once_with("/fail")
+
+
+@pytest.mark.asyncio
+async def test_push_telemetry_to_kv_retries_on_network_error(monkeypatch):
     monkeypatch.setattr(alerts_main, "CLOUDFLARE_ACCOUNT_ID", "acc_123")
     monkeypatch.setattr(alerts_main, "CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "ns_456")
     monkeypatch.setattr(alerts_main, "CLOUDFLARE_API_TOKEN", "token_789")
 
-    alerts_main.last_primary_message_at = 1_700_000_100.0
-    alerts_main.last_fallback_message_at = 1_700_000_200.0
-    alerts_main.last_source_message_at = 1_700_000_200.0
-    alerts_main.active_source_name = "fallback"
+    mock_res = MagicMock()
+    mock_res.raise_for_status = MagicMock()
+
+    attempts = 0
+
+    def mock_put_side_effect(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise ConnectionError("flaky network")
+        return mock_res
+
+    with (
+        patch("requests.put", side_effect=mock_put_side_effect),
+        patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+    ):
+        await alerts_main.push_telemetry_to_kv()
+
+    assert attempts == 3
+    assert mock_sleep.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_push_telemetry_to_kv_lean_payload(monkeypatch):
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_ACCOUNT_ID", "acc_123")
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "ns_456")
+    monkeypatch.setattr(alerts_main, "CLOUDFLARE_API_TOKEN", "token_789")
+
+    alerts_main.last_broadcast_at = 1_700_000_100.0
+    alerts_main.last_alert_payload = {
+        "type": "air_raid_alert",
+        "oblast": "odesa_oblast",
+        "district": "odesa",
+        "city": "Одеса",
+        "locative": "в Одесі",
+        "timestamp": "2026-08-26T18:00:00+00:00",
+    }
 
     mock_client = MagicMock()
     mock_client.is_connected.return_value = True
@@ -2409,11 +2408,11 @@ async def test_push_telemetry_to_kv_includes_fallback_data(monkeypatch):
 
     assert mock_put.called
     body = json.loads(mock_put.call_args.kwargs["data"])
-    assert body["active_source"] == "fallback"
-    assert body["primary_source_connected"] is True
-    assert body["fallback_source_connected"] is True
-    assert "last_primary_message_at" in body
-    assert "last_fallback_message_at" in body
+    assert "synced_at" in body
+    assert body["last_alert"]["locative"] == "в Одесі"
+    assert body["last_alert"]["oblast"] == "odesa_oblast"
+    assert body["last_alert"]["city"] == "Одеса"
+    assert body["last_broadcast_at"] is not None
 
 
 @pytest.mark.parametrize("sample", FALLBACK_SAMPLES, ids=lambda s: s.id)

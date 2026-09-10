@@ -26,8 +26,17 @@ from telethon import TelegramClient, events
 from telethon.errors import (
     AuthKeyDuplicatedError,
     AuthKeyNotFound,
+    AuthKeyUnregisteredError,
+    ChannelInvalidError,
+    ChannelPrivateError,
+    ChatAdminRequiredError,
+    ChatForbiddenError,
     FloodWaitError,
+    SessionPasswordNeededError,
     UnauthorizedError,
+    UserBannedInChannelError,
+    UserDeactivatedBanError,
+    UserDeactivatedError,
 )
 from telethon.tl.functions.channels import EditPhotoRequest
 from telethon.tl.types import (
@@ -94,10 +103,7 @@ last_fallback_message_at: float | None = None
 active_source_name: str = "primary"
 last_broadcast_at: float | None = None
 last_alert_payload: dict | None = None
-source_silence_reported: bool = False
-primary_silence_reported: bool = False
-fallback_silence_reported: bool = False
-broadcast_silence_reported: bool = False
+_last_periodic_sync: float = 0.0
 
 
 class AlertEvent(NamedTuple):
@@ -367,15 +373,11 @@ async def _record_alert_state(
         last_alert_payload = {
             "type": alert_type,
             "level": level,
-            "region": oblast_key,
+            "oblast": oblast_key,
             "district": district_key,
-            "district_name": loc_name,
-            "city_name": loc_name,
-            "location_title": loc_title,
+            "city": loc_name,
+            "locative": loc_title,
             "timestamp": now_utc_iso,
-            "message_id": message_id,
-            "message_link": message_link,
-            "source_type": source_type,
         }
 
         if redis_client:
@@ -602,6 +604,13 @@ async def send_alert(
                 log.info("Air raid alert cancellation sent to %s", display_name)
         else:
             log.info("%s sent to %s", alert_type.replace("_", " ").capitalize(), display_name)
+    except FloodWaitError as e:
+        log.exception("FloodWaitError of %d seconds sending alert to %s", e.seconds, display_name)
+        if e.seconds > 60:
+            await asyncio.to_thread(_ping_tg_healthcheck, "/fail")
+    except FATAL_SESSION_ERRORS as e:
+        log.exception("Fatal session error sending alert to %s: %s", display_name, e)
+        await asyncio.to_thread(_ping_tg_healthcheck, "/fail")
     except Exception:
         if alert_type == "air_raid_alert":
             log.exception("Failed to send air raid alert to %s", display_name)
@@ -911,56 +920,12 @@ async def push_telemetry_to_kv() -> None:
 
     try:
         now_dt = datetime.datetime.now(datetime.timezone.utc)
+        now_iso = now_dt.isoformat()
         last_bcast_iso = (
             datetime.datetime.fromtimestamp(last_broadcast_at, tz=datetime.timezone.utc).isoformat()
             if last_broadcast_at is not None
             else None
         )
-        last_src_iso = (
-            datetime.datetime.fromtimestamp(
-                last_source_message_at, tz=datetime.timezone.utc
-            ).isoformat()
-            if last_source_message_at is not None
-            else None
-        )
-        last_primary_iso = (
-            datetime.datetime.fromtimestamp(
-                last_primary_message_at, tz=datetime.timezone.utc
-            ).isoformat()
-            if last_primary_message_at is not None
-            else None
-        )
-        last_fallback_iso = (
-            datetime.datetime.fromtimestamp(
-                last_fallback_message_at, tz=datetime.timezone.utc
-            ).isoformat()
-            if last_fallback_message_at is not None
-            else None
-        )
-
-        active_count = 0
-        if redis_client:
-            try:
-                oblasts_seen = set()
-                for conf in DISTRICT_CONFIG.values():
-                    o_key = conf.get("oblast")
-                    if o_key and o_key not in oblasts_seen:
-                        oblasts_seen.add(o_key)
-                        cnt = await redis_client.scard(f"threat:alerts:active:{o_key}")
-                        active_count += int(cnt or 0)
-            except Exception:
-                pass
-
-        source_connected = False
-        if client:
-            try:
-                conn_val = client.is_connected()
-                if asyncio.iscoroutine(conn_val):
-                    source_connected = bool(await conn_val)
-                else:
-                    source_connected = bool(conn_val)
-            except Exception:
-                pass
 
         maintenance_data = None
         if redis_client:
@@ -972,30 +937,25 @@ async def push_telemetry_to_kv() -> None:
                         comps = json.loads(comps_raw) if comps_raw else ["all"]
                     except Exception:
                         comps = [comps_raw]
+                    op_val = raw_mnt.get("operator", "")
+                    by_val = raw_mnt.get("by") or (
+                        "auto" if op_val in ("auto", "cron", "schedule") else "manual"
+                    )
                     maintenance_data = {
                         "active": True,
                         "components": comps,
                         "headline": raw_mnt.get("headline", "Планові роботи"),
                         "subtitle": raw_mnt.get("subtitle", "Тривають планові технічні роботи."),
-                        "updated_at": raw_mnt.get("updated_at"),
-                        "operator": raw_mnt.get("operator"),
+                        "by": by_val,
                     }
             except Exception:
                 pass
 
         payload = {
-            "last_broadcast_at": last_bcast_iso,
+            "synced_at": now_iso,
             "last_alert": last_alert_payload,
-            "last_source_message_at": last_src_iso,
-            "last_primary_message_at": last_primary_iso,
-            "last_fallback_message_at": last_fallback_iso,
-            "active_source": active_source_name,
-            "active_alerts_count": active_count,
-            "source_connected": source_connected,
-            "primary_source_connected": source_connected,
-            "fallback_source_connected": source_connected,
+            "last_broadcast_at": last_bcast_iso,
             "maintenance": maintenance_data,
-            "updated_at": now_dt.isoformat(),
         }
 
         url = (
@@ -1007,18 +967,34 @@ async def push_telemetry_to_kv() -> None:
             "Content-Type": "application/json",
         }
 
-        def _do_put():
-            res = requests.put(url, data=json.dumps(payload), headers=headers, timeout=5)
-            res.raise_for_status()
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
 
-        await asyncio.to_thread(_do_put)
-        log.debug("Telemetry snapshot pushed to Cloudflare KV successfully")
+                def _do_put():
+                    res = requests.put(url, data=json.dumps(payload), headers=headers, timeout=5)
+                    res.raise_for_status()
+
+                await asyncio.to_thread(_do_put)
+                log.debug("Telemetry snapshot pushed to Cloudflare KV successfully")
+                break
+            except Exception as e:
+                if attempt < max_retries:
+                    log.warning(
+                        "Attempt %d/%d to push telemetry to Cloudflare KV failed: %s; retrying in 10s",
+                        attempt,
+                        max_retries,
+                        e,
+                    )
+                    await asyncio.sleep(10)
+                else:
+                    raise
     except Exception:
         log.warning("Failed to push telemetry snapshot to Cloudflare KV", exc_info=True)
 
 
 TELEMETRY_SYNC_DELAY = 2.0
-TELEMETRY_PERIODIC_SYNC_INTERVAL = 900
+TELEMETRY_PERIODIC_SYNC_INTERVAL = 600
 _telemetry_sync_task: asyncio.Task | None = None
 
 
@@ -1037,8 +1013,9 @@ def request_telemetry_sync(delay: float | None = None) -> asyncio.Task:
     If multiple state changes happen in quick succession (e.g. 35 districts in one post),
     only a single KV PUT request is executed after the burst settles.
     """
-    global _telemetry_sync_task
+    global _telemetry_sync_task, _last_periodic_sync
 
+    _last_periodic_sync = time.time()
     actual_delay = TELEMETRY_SYNC_DELAY if delay is None else delay
 
     if _telemetry_sync_task and not _telemetry_sync_task.done():
@@ -1184,14 +1161,11 @@ async def _prime_monitoring_state(primary_source: int, fallback_source: int | No
                     loc_title = location_locative(d_key) if d_key else ""
                     last_alert_payload = {
                         "type": row["type"],
-                        "region": row["oblast_key"],
+                        "oblast": row["oblast_key"],
                         "district": d_key,
-                        "district_name": loc_name,
-                        "city_name": loc_name,
-                        "location_title": loc_title,
+                        "city": loc_name,
+                        "locative": loc_title,
                         "timestamp": dt_iso,
-                        "message_id": row["message_id"],
-                        "message_link": row["message_link"],
                     }
         except Exception:
             log.warning("Failed to restore last_alert_info from PostgreSQL", exc_info=True)
@@ -1220,9 +1194,7 @@ async def _prime_monitoring_state(primary_source: int, fallback_source: int | No
             )
 
         if moment is None:
-            log.warning(
-                "Starting the silence clock from now: the last primary source post is unknown"
-            )
+            log.warning("The last primary source post date is unknown")
 
         await record_source_message(moment, source_type="primary")
 
@@ -1236,6 +1208,8 @@ async def _prime_monitoring_state(primary_source: int, fallback_source: int | No
         if moment_fb:
             await record_source_message(moment_fb, source_type="fallback")
 
+    global _last_periodic_sync
+    _last_periodic_sync = time.time()
     spawn_tracked_task(push_telemetry_to_kv(), "Initial telemetry sync on start")
 
 
@@ -1347,14 +1321,27 @@ def build_message_handler(
     return handle_incoming_message
 
 
-FATAL_SESSION_ERRORS = (AuthKeyDuplicatedError, AuthKeyNotFound, UnauthorizedError)
-TRANSIENT_CONNECTION_ERRORS = (OSError,)
+FATAL_SESSION_ERRORS = (
+    AuthKeyDuplicatedError,
+    AuthKeyNotFound,
+    AuthKeyUnregisteredError,
+    SessionPasswordNeededError,
+    UnauthorizedError,
+    UserDeactivatedBanError,
+    UserDeactivatedError,
+)
+FATAL_CHANNEL_ERRORS = (
+    ChannelInvalidError,
+    ChannelPrivateError,
+    ChatAdminRequiredError,
+    ChatForbiddenError,
+    UserBannedInChannelError,
+)
+FATAL_SOURCE_ERRORS = FATAL_SESSION_ERRORS + FATAL_CHANNEL_ERRORS
+TRANSIENT_CONNECTION_ERRORS = (OSError, asyncio.TimeoutError, ConnectionError)
 
 HEALTHCHECK_PING_INTERVAL = 60
 HEALTHCHECK_PING_TIMEOUT = 10
-
-SOURCE_SILENCE_THRESHOLD = int(1.5 * 3600)
-BROADCAST_SILENCE_THRESHOLD = 3 * 3600
 
 
 def _ping_url(base: str, suffix: str = "") -> None:
@@ -1378,163 +1365,78 @@ def _ping_tg_healthcheck(suffix: str = "") -> None:
     _ping_url(HEALTHCHECKS_ALERTS_BROADCAST_PING_URL, suffix)
 
 
-async def _primary_silence_seconds() -> float | None:
-    if last_primary_message_at is None:
-        return None
-    return max(0.0, time.time() - last_primary_message_at)
-
-
-async def _fallback_silence_seconds() -> float | None:
-    if last_fallback_message_at is None:
-        return None
-    return max(0.0, time.time() - last_fallback_message_at)
-
-
-async def _source_silence_seconds() -> float | None:
-    if last_source_message_at is None:
-        return None
-    return max(0.0, time.time() - last_source_message_at)
-
-
-async def _broadcast_silence_seconds() -> float | None:
-    if last_broadcast_at is None:
-        return None
-    return max(0.0, time.time() - last_broadcast_at)
-
-
-def _report_source_silence(
-    primary_silence: float | None,
-    fallback_silence: float | None = None,
-    overall_silence: float | None = None,
+async def _healthcheck_loop(
+    client: TelegramClient,
+    primary_source: int | None = None,
+    fallback_source: int | None = None,
     has_fallback: bool = True,
 ) -> None:
-    global source_silence_reported, primary_silence_reported, fallback_silence_reported
-
-    if overall_silence is None:
-        overall_silence = primary_silence
-
-    if overall_silence is None:
-        return
-
-    if overall_silence >= SOURCE_SILENCE_THRESHOLD:
-        if not source_silence_reported:
-            source_silence_reported = True
-            log.error(
-                "No message from the source channel for %.1f h; alerts are not reaching us",
-                overall_silence / 3600,
-            )
-    elif source_silence_reported:
-        source_silence_reported = False
-        log.info("The source channel is posting again")
-
-    if primary_silence is not None and primary_silence >= SOURCE_SILENCE_THRESHOLD:
-        if not primary_silence_reported:
-            primary_silence_reported = True
-            if (
-                has_fallback
-                and fallback_silence is not None
-                and fallback_silence < SOURCE_SILENCE_THRESHOLD
-            ):
-                log.warning(
-                    "Primary source silent for %.1f h; alerts operating via fallback source",
-                    primary_silence / 3600,
-                )
-            else:
-                log.error("Primary source channel silent for %.1f h", primary_silence / 3600)
-    elif (
-        primary_silence_reported
-        and primary_silence is not None
-        and primary_silence < SOURCE_SILENCE_THRESHOLD
-    ):
-        primary_silence_reported = False
-        log.info("Primary source channel is posting again")
-
-    if (
-        has_fallback
-        and fallback_silence is not None
-        and fallback_silence >= SOURCE_SILENCE_THRESHOLD
-    ):
-        if not fallback_silence_reported:
-            fallback_silence_reported = True
-            log.warning("Fallback source channel silent for %.1f h", fallback_silence / 3600)
-    elif (
-        fallback_silence_reported
-        and fallback_silence is not None
-        and fallback_silence < SOURCE_SILENCE_THRESHOLD
-    ):
-        fallback_silence_reported = False
-        log.info("Fallback source channel is posting again")
-
-
-def _report_broadcast_silence(silence: float | None) -> None:
-    global broadcast_silence_reported
-
-    if silence is None:
-        return
-
-    if silence >= BROADCAST_SILENCE_THRESHOLD:
-        if not broadcast_silence_reported:
-            broadcast_silence_reported = True
-            log.error(
-                "No alerts broadcasted to any network channel for %.1f h; outgoing pipeline may be stuck",
-                silence / 3600,
-            )
-    elif broadcast_silence_reported:
-        broadcast_silence_reported = False
-        log.info("Alerts broadcasting resumed")
-
-
-async def _healthcheck_loop(client: TelegramClient, has_fallback: bool = True) -> None:
+    """Active health check for the source channel, polled once every minute."""
     if not HEALTHCHECKS_ALERTS_SOURCE_PING_URL:
         log.warning("HEALTHCHECKS_ALERTS_SOURCE_PING_URL not set; skipping healthcheck pings")
 
+    active_source = (
+        fallback_source
+        if (fallback_source and "fallback" in ALERT_BROADCAST_SOURCES)
+        else primary_source
+    )
+
     while True:
         await asyncio.sleep(HEALTHCHECK_PING_INTERVAL)
-        p_silence = await _primary_silence_seconds()
-        fb_silence = await _fallback_silence_seconds()
-        overall_silence = await _source_silence_seconds()
-        _report_source_silence(p_silence, fb_silence, overall_silence, has_fallback=has_fallback)
 
-        if not client.is_connected():
+        if not client or not client.is_connected():
+            log.warning("Telegram client not connected; skipping source health check")
             continue
 
-        if overall_silence is not None and overall_silence >= SOURCE_SILENCE_THRESHOLD:
-            await asyncio.to_thread(_ping_healthcheck, "/fail")
+        if active_source is not None:
+            try:
+                await client.get_messages(active_source, limit=1)
+                await asyncio.to_thread(_ping_healthcheck)
+            except FATAL_SOURCE_ERRORS as e:
+                log.critical(
+                    "Critical error reading from active source channel %s: %s",
+                    active_source,
+                    e,
+                    exc_info=True,
+                )
+                await asyncio.to_thread(_ping_healthcheck, "/fail")
+            except TRANSIENT_CONNECTION_ERRORS as e:
+                log.warning(
+                    "Transient connection error reading from active source channel %s: %s",
+                    active_source,
+                    e,
+                )
+            except Exception as e:
+                log.warning(
+                    "Unexpected error reading from active source channel %s: %s",
+                    active_source,
+                    e,
+                    exc_info=True,
+                )
         else:
             await asyncio.to_thread(_ping_healthcheck)
-
-        if HEALTHCHECKS_ALERTS_SOURCE_FALLBACK_PING_URL and has_fallback:
-            if fb_silence is not None and fb_silence >= SOURCE_SILENCE_THRESHOLD:
-                await asyncio.to_thread(_ping_fb_healthcheck, "/fail")
-            else:
-                await asyncio.to_thread(_ping_fb_healthcheck)
 
 
 async def _broadcast_watchdog_loop(client: TelegramClient) -> None:
     """Monitors Telegram broadcast pipeline liveness and pings healthchecks."""
+    global _last_periodic_sync
+
     if not HEALTHCHECKS_ALERTS_BROADCAST_PING_URL:
         log.warning(
             "HEALTHCHECKS_ALERTS_BROADCAST_PING_URL not set; skipping broadcast health pings"
         )
 
-    last_periodic_sync = 0.0
-
     while True:
         await asyncio.sleep(HEALTHCHECK_PING_INTERVAL)
-        silence = await _broadcast_silence_seconds()
-        _report_broadcast_silence(silence)
 
-        if not client.is_connected():
-            continue
-
-        if silence is not None and silence >= BROADCAST_SILENCE_THRESHOLD:
-            await asyncio.to_thread(_ping_tg_healthcheck, "/fail")
-        else:
+        if client and client.is_connected():
             await asyncio.to_thread(_ping_tg_healthcheck)
+        else:
+            log.warning("Telegram client not connected; skipping broadcast health ping")
 
         now_ts = time.time()
-        if now_ts - last_periodic_sync >= TELEMETRY_PERIODIC_SYNC_INTERVAL:
-            last_periodic_sync = now_ts
+        if now_ts - _last_periodic_sync >= TELEMETRY_PERIODIC_SYNC_INTERVAL:
+            _last_periodic_sync = now_ts
             spawn_tracked_task(push_telemetry_to_kv(), "Periodic telemetry sync")
 
 
@@ -1600,7 +1502,12 @@ async def main():
 
             monitoring_tasks = [
                 asyncio.create_task(
-                    _healthcheck_loop(client, has_fallback=(fallback_source is not None))
+                    _healthcheck_loop(
+                        client,
+                        primary_source=primary_source,
+                        fallback_source=fallback_source,
+                        has_fallback=(fallback_source is not None),
+                    )
                 ),
                 asyncio.create_task(_broadcast_watchdog_loop(client)),
             ]

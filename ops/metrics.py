@@ -77,20 +77,20 @@ def get_message_metrics(pg_conn=None, pg_error=None) -> dict[str, Any]:
             cur.execute(
                 """
                 SELECT
-                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND datetime >= NOW() - INTERVAL '24 hours') AS broadcast_24h,
-                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND datetime >= NOW() - INTERVAL '24 hours' AND type = 'air_raid_alert') AS alert_24h,
-                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND datetime >= NOW() - INTERVAL '24 hours' AND type = 'air_raid_alert_cancelled') AS alert_cancel_24h,
-                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND datetime >= NOW() - INTERVAL '24 hours' AND type = 'threat_of_shelling') AS shelling_24h,
-                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND datetime >= NOW() - INTERVAL '24 hours' AND type = 'threat_of_shelling_cancelled') AS shelling_cancel_24h,
-                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND datetime >= NOW() - INTERVAL '24 hours' AND (message_link LIKE '%t.me/%' OR message_link LIKE '%telegram%')) AS auto_24h,
-                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND datetime >= NOW() - INTERVAL '24 hours' AND (message_link NOT LIKE '%t.me/%' AND (message_link NOT LIKE '%telegram%' OR message_link IS NULL))) AS manual_24h,
-                    COUNT(*) FILTER (WHERE channel_id IS NULL AND datetime >= NOW() - INTERVAL '24 hours') AS map_only_24h,
-                    COUNT(*) FILTER (WHERE datetime >= NOW() - INTERVAL '24 hours') AS total_events_24h,
-                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND date = CURRENT_DATE) AS broadcast_today,
-                    COUNT(*) FILTER (WHERE channel_id IS NULL AND date = CURRENT_DATE) AS map_only_today,
-                    COUNT(*) FILTER (WHERE date = CURRENT_DATE) AS total_events_today
+                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND recorded_at >= NOW() - INTERVAL '24 hours') AS broadcast_24h,
+                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND recorded_at >= NOW() - INTERVAL '24 hours' AND event_type = 'air_raid_alert') AS alert_24h,
+                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND recorded_at >= NOW() - INTERVAL '24 hours' AND event_type = 'air_raid_alert_cancelled') AS alert_cancel_24h,
+                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND recorded_at >= NOW() - INTERVAL '24 hours' AND event_type = 'threat_of_shelling') AS shelling_24h,
+                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND recorded_at >= NOW() - INTERVAL '24 hours' AND event_type = 'threat_of_shelling_cancelled') AS shelling_cancel_24h,
+                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND recorded_at >= NOW() - INTERVAL '24 hours' AND (source LIKE '%t.me/%' OR source LIKE '%telegram%')) AS auto_24h,
+                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND recorded_at >= NOW() - INTERVAL '24 hours' AND (source NOT LIKE '%t.me/%' AND (source NOT LIKE '%telegram%' OR source IS NULL))) AS manual_24h,
+                    COUNT(*) FILTER (WHERE channel_id IS NULL AND recorded_at >= NOW() - INTERVAL '24 hours') AS map_only_24h,
+                    COUNT(*) FILTER (WHERE recorded_at >= NOW() - INTERVAL '24 hours') AS total_events_24h,
+                    COUNT(*) FILTER (WHERE channel_id IS NOT NULL AND (recorded_at AT TIME ZONE 'Europe/Kyiv')::date = (NOW() AT TIME ZONE 'Europe/Kyiv')::date) AS broadcast_today,
+                    COUNT(*) FILTER (WHERE channel_id IS NULL AND (recorded_at AT TIME ZONE 'Europe/Kyiv')::date = (NOW() AT TIME ZONE 'Europe/Kyiv')::date) AS map_only_today,
+                    COUNT(*) FILTER (WHERE (recorded_at AT TIME ZONE 'Europe/Kyiv')::date = (NOW() AT TIME ZONE 'Europe/Kyiv')::date) AS total_events_today
                 FROM alert_history
-                WHERE datetime >= NOW() - INTERVAL '24 hours' OR date = CURRENT_DATE;
+                WHERE recorded_at >= NOW() - INTERVAL '24 hours' OR (recorded_at AT TIME ZONE 'Europe/Kyiv')::date = (NOW() AT TIME ZONE 'Europe/Kyiv')::date;
                 """
             )
             row = cur.fetchone()

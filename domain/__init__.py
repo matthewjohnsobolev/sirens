@@ -18,6 +18,7 @@ from domain.geo import (
     DISTRICT_CONFIG,
     DISTRICTS_BY_OBLAST,
     LOCATION_LOCATIVE,
+    OBLAST_NAMES,
     OBLAST_TRIGGERS,
     apostrophe_variants,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "DISTRICTS_BY_OBLAST",
     "LOCATION_LOCATIVE",
     "MESSAGES",
+    "OBLAST_NAMES",
     "OBLAST_TRIGGERS",
     "REGION_CONFIG",
     "SOURCE_KEYS",

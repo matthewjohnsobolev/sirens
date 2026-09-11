@@ -57,7 +57,27 @@ def test_issue_meta_tags(client):
 
 
 def test_api_route(client):
-    payload = {"kyiv": {"alert": {"status": True}}}
+    payload = {
+        "kyiv": {
+            "title": "м. Київ",
+            "districts": {
+                "kyiv": {
+                    "title": "м. Київ",
+                    "alert": {
+                        "status": True,
+                        "level": "red",
+                        "updated_at": 1741709000,
+                        "source": "https://t.me/kyiv_alert/12",
+                    },
+                    "shelling": {
+                        "status": False,
+                        "updated_at": None,
+                        "source": None,
+                    },
+                }
+            },
+        }
+    }
     with patch("web.server.get_all_threats_data", return_value=payload) as mock_data:
         response = client.get("/api")
 

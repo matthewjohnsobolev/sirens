@@ -1,3 +1,4 @@
+import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -231,12 +232,10 @@ def test_get_history():
     mock_cur.fetchall.return_value = [
         (
             1,
-            "2026-09-04 12:00:00",
-            "2026-09-04",
-            "12:00",
+            datetime.datetime(2026, 9, 4, 12, 0, 0),
             "bucha",
-            "kyiv_oblast",
             "air_raid_alert",
+            "yellow",
             -1001754447620,
             123,
             "manual:cli",
@@ -246,8 +245,11 @@ def test_get_history():
     # Filtered by district
     history = get_history(district_key="bucha", limit=5, pg_conn=mock_pg)
     assert len(history) == 1
+    assert history[0]["district"] == "bucha"
     assert history[0]["district_key"] == "bucha"
+    assert history[0]["event_type"] == "air_raid_alert"
     assert history[0]["type"] == "air_raid_alert"
+    assert history[0]["level"] == "yellow"
 
     # All districts (district_key=None)
     history_all = get_history(district_key=None, limit=5, pg_conn=mock_pg)

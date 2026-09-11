@@ -73,7 +73,7 @@ def test_ensure_pg_tables_creates_alert_history(mock_web_pg):
 
     sql = "\n".join(call.args[0] for call in mock_cursor.execute.call_args_list)
     assert "CREATE TABLE IF NOT EXISTS alert_history" in sql
-    for column in ("datetime", "date", "time", "district_key", "oblast_key", "type"):
+    for column in ("recorded_at", "event_type", "level", "district", "channel_id", "message_id", "source"):
         assert column in sql
     mock_conn.commit.assert_called_once()
 
@@ -84,12 +84,11 @@ def test_ensure_pg_tables_creates_subscribers(mock_web_pg):
     ensure_pg_tables()
 
     sql = "\n".join(call.args[0] for call in mock_cursor.execute.call_args_list)
-    assert "CREATE TABLE IF NOT EXISTS subscribers" in sql
-    for column in ("channel_key", "channel_id", "subscribers", "date", "time"):
+    assert "CREATE TABLE IF NOT EXISTS subscriber_snapshots" in sql
+    for column in ("channel", "channel_id", "subscriber_count", "collected_at"):
         assert column in sql
-    assert "UNIQUE (channel_key, time)" in sql
-    assert "CREATE INDEX IF NOT EXISTS subscribers_date_idx" in sql
-    assert "CREATE INDEX IF NOT EXISTS subscribers_time_idx" in sql
+    assert "PRIMARY KEY (channel_id, collected_at)" in sql
+    assert "CREATE INDEX IF NOT EXISTS idx_subscriber_snapshots_collected_at" in sql
 
 
 def test_ensure_pg_tables_leaves_issue_reports_to_sentry(mock_web_pg):
@@ -305,9 +304,8 @@ async def test_update_alert_status_writes_redis_and_history(
     mock_cursor.execute.assert_called_once()
     sql, params = mock_cursor.execute.call_args.args
     assert "INSERT INTO alert_history" in sql
-    assert params[3] == "kyiv"
-    assert params[4] == "kyiv"
-    assert params[5] == expected_event
+    assert params[1] == "kyiv"
+    assert params[2] == expected_event
     mock_conn.commit.assert_called_once()
 
 
@@ -323,9 +321,9 @@ async def test_update_alert_status_stores_broadcast_link(mock_web_redis, mock_we
         assert calls[0].kwargs["mapping"]["source"] == link
 
     _, params = mock_cursor.execute.call_args.args
-    assert params[6] == KYIV_CHANNEL
-    assert params[7] == 512
-    assert params[8] == link
+    assert params[4] == KYIV_CHANNEL
+    assert params[5] == 512
+    assert params[6] == link
 
 
 @pytest.mark.asyncio
@@ -342,8 +340,9 @@ async def test_update_alert_status_falls_back_to_default_source(mock_web_redis, 
     assert calls[0].kwargs["mapping"]["source"] == "telegram"
 
     _, params = mock_cursor.execute.call_args.args
-    assert params[7] is None
-    assert params[8] is None
+    assert params[4] == KYIV_CHANNEL
+    assert params[5] is None
+    assert params[6] == "telegram"
 
 
 @pytest.mark.asyncio
@@ -418,16 +417,19 @@ async def test_update_alert_status_ignores_unmapped_channels(
 def test_rehydrate_state_from_db(mock_web_pg, mock_web_redis):
     mock_conn, mock_cursor = mock_web_pg
     now = datetime.datetime.now()
+    now_1400 = now.replace(hour=14, minute=0, second=0)
+    now_1300 = now.replace(hour=13, minute=0, second=0)
+    now_1200 = now.replace(hour=12, minute=0, second=0)
+    now_1100 = now.replace(hour=11, minute=0, second=0)
     mock_cursor.fetchall.return_value = [
-        ("kyiv", "kyiv", "air_raid_alert", "14:00", now, "https://t.me/kyiv_alert/42"),
-        ("lviv", "lviv_oblast", "air_raid_alert_cancelled", "13:00", now, None),
-        (None, "odesa_oblast", "start", "12:00", now, None),
+        ("kyiv", "air_raid_alert", None, now_1400, "https://t.me/kyiv_alert/42"),
+        ("lviv", "air_raid_alert_cancelled", None, now_1300, None),
+        ("odesa", "air_raid_alert", None, now_1200, None),
         (
             "nikopol",
-            "dnipropetrovsk_oblast",
             "threat_of_shelling",
-            "11:00",
-            now,
+            None,
+            now_1100,
             "https://t.me/nikopol_alert/7",
         ),
     ]
@@ -505,54 +507,47 @@ class _FakePipeline:
 @pytest.fixture
 def threats_store(mock_web_redis):
     store = {
-        "threat:alerts:kyiv": {
+        "threat:alerts:city:kyiv": {
             "status": "true",
             "time": "10:00",
-            "source": "telegram",
+            "source": "https://t.me/kyiv_alert/123",
             "updated_at": "1000",
+            "level": "red",
         },
-        "threat:alerts:dnipropetrovsk_oblast": {
+        "threat:alerts:city:bucha": {
             "status": "true",
             "time": "11:00",
-            "source": "tg-dnipro",
-            "updated_at": "1000",
+            "source": "https://t.me/bucha_alert/77",
+            "updated_at": "1741708800",
+            "level": "yellow",
         },
-        "threat:alerts:kherson_oblast": {
+        "threat:alerts:city:boryspil": {
             "status": "true",
             "time": "12:00",
-            "source": "tg-kherson",
-            "updated_at": "1000",
+            "source": "https://t.me/boryspil_alert/12",
+            "updated_at": "1741708900",
+            "level": "red",
         },
-        "threat:alerts:lviv_oblast": {
+        "threat:alerts:city:fastiv": {
             "status": "false",
             "time": "09:00",
-            "source": "tg-lviv",
-            "updated_at": "1000",
-        },
-        "threat:explosions:dnipropetrovsk_oblast": {
-            "status": "true",
-            "time": "11:30",
-            "source": "ex-dnipro",
-            "updated_at": "1000",
+            "source": "https://t.me/fastiv_alert/88",
+            "updated_at": "1741709500",
         },
         "threat:shellings:nikopol": {
             "status": "true",
             "time": "11:45",
-            "source": "sh-nikopol",
-            "updated_at": "1000",
+            "source": "https://t.me/nikopol_alert/512",
+            "updated_at": "1741709000",
         },
         "threat:shellings:kherson": {
             "status": "false",
             "time": "12:15",
-            "source": "sh-kherson",
+            "source": "telegram",
             "updated_at": "1000",
         },
     }
-    sets = {
-        "threat:alerts:active:kyiv": {"kyiv"},
-        "threat:alerts:active:dnipropetrovsk_oblast": {"nikopol"},
-    }
-    pipeline = _FakePipeline(store, sets)
+    pipeline = _FakePipeline(store, {})
     mock_web_redis.pipeline.return_value = pipeline
     return pipeline
 
@@ -567,221 +562,146 @@ def test_get_all_threats_data_raises_and_logs_when_redis_is_down(threats_store, 
     assert "Failed to read threat data from Redis" in caplog.text
 
 
-def test_get_all_threats_data_queries_every_table_and_oblast(threats_store):
+def test_get_all_threats_data_queries_all_districts(threats_store):
     get_all_threats_data()
 
     keys = [k for _, k in threats_store.operations]
-    for table in ("alerts", "explosions", "shellings"):
-        assert f"threat:{table}:kyiv" in keys
+    assert "threat:alerts:city:kyiv" in keys
+    assert "threat:shellings:kyiv" in keys
+    assert "threat:alerts:city:bucha" in keys
+    assert "threat:shellings:bucha" in keys
 
 
-def test_get_all_threats_data_normalises_status(threats_store):
+def test_get_all_threats_data_schema_and_types(threats_store):
     result = get_all_threats_data()
 
-    assert result["kyiv"]["alert"]["status"] is True
-    assert result["kyiv"]["alert"]["time"] == "10:00"
-    assert result["kyiv"]["alert"]["updated_at"] == 1000
-    assert result["lviv_oblast"]["alert"]["status"] is False
+    assert result["kyiv_oblast"]["title"] == "Київська область"
+    bucha = result["kyiv_oblast"]["districts"]["bucha"]
+    assert bucha["title"] == "Бучанський район"
+    assert bucha["alert"]["status"] is True
+    assert bucha["alert"]["level"] == "yellow"
+    assert bucha["alert"]["updated_at"] == 1741708800
+    assert bucha["alert"]["source"] == "https://t.me/bucha_alert/77"
+    assert bucha["shelling"]["status"] is False
+    assert bucha["shelling"]["updated_at"] is None
+    assert bucha["shelling"]["source"] is None
+
+    boryspil = result["kyiv_oblast"]["districts"]["boryspil"]
+    assert boryspil["title"] == "Бориспільський район"
+    assert boryspil["alert"]["status"] is True
+    assert boryspil["alert"]["level"] == "red"
+    assert boryspil["alert"]["updated_at"] == 1741708900
+    assert boryspil["alert"]["source"] == "https://t.me/boryspil_alert/12"
+    assert boryspil["shelling"]["status"] is False
+    assert boryspil["shelling"]["updated_at"] is None
+    assert boryspil["shelling"]["source"] is None
+
+    assert result["dnipropetrovsk_oblast"]["title"] == "Дніпропетровська область"
+    nikopol = result["dnipropetrovsk_oblast"]["districts"]["nikopol"]
+    assert nikopol["title"] == "Нікопольський район"
+    assert nikopol["alert"]["status"] is False
+    assert nikopol["alert"]["level"] is None
+    assert nikopol["alert"]["updated_at"] is None
+    assert nikopol["alert"]["source"] is None
+    assert nikopol["shelling"]["status"] is True
+    assert nikopol["shelling"]["updated_at"] == 1741709000
+    assert nikopol["shelling"]["source"] == "https://t.me/nikopol_alert/512"
+
+    fastiv = result["kyiv_oblast"]["districts"]["fastiv"]
+    assert fastiv["title"] == "Фастівський район"
+    assert fastiv["alert"]["status"] is False
+    assert fastiv["alert"]["level"] is None
+    assert fastiv["alert"]["updated_at"] == 1741709500
+    assert fastiv["alert"]["source"] == "https://t.me/fastiv_alert/88"
+    assert fastiv["shelling"]["status"] is False
+    assert fastiv["shelling"]["updated_at"] is None
+    assert fastiv["shelling"]["source"] is None
+
+    kherson = result["kherson_oblast"]["districts"]["kherson"]
+    assert kherson["shelling"]["status"] is False
+    assert kherson["shelling"]["updated_at"] == 1000
+    assert kherson["shelling"]["source"] is None
+
+    assert result["kyiv"]["title"] == "м. Київ"
+    kyiv = result["kyiv"]["districts"]["kyiv"]
+    assert kyiv["title"] == "м. Київ"
+    assert kyiv["alert"]["status"] is True
+    assert kyiv["alert"]["level"] == "red"
+    assert kyiv["alert"]["updated_at"] == 1000
+    assert kyiv["alert"]["source"] == "https://t.me/kyiv_alert/123"
 
 
-def test_get_all_threats_data_defaults_missing_keys(threats_store):
+def test_get_all_threats_data_defaults_empty_and_missing_keys(threats_store):
     result = get_all_threats_data()
 
-    assert result["crimea"]["alert"]["status"] is False
-    assert result["crimea"]["alert"]["updated_at"] == 0
-    assert result["crimea"]["explosion"]["status"] is False
-    assert result["crimea"]["explosion"]["updated_at"] == 0
+    assert result["crimea"] == {"title": "Автономна Республіка Крим", "districts": {}}
+    assert result["sevastopol"] == {"title": "м. Севастополь", "districts": {}}
+    assert result["donetsk_oblast"] == {"title": "Донецька область", "districts": {}}
+    assert result["luhansk_oblast"] == {"title": "Луганська область", "districts": {}}
 
 
-@pytest.mark.parametrize(
-    "city, parent_oblast",
-    [
-        ("nikopol", "dnipropetrovsk_oblast"),
-        ("kherson", "kherson_oblast"),
-    ],
-)
-def test_get_all_threats_data_maps_cities_to_parent_oblast(threats_store, city, parent_oblast):
-    result = get_all_threats_data()
+def test_get_all_threats_data_covers_every_oblast_and_district(mock_web_redis):
+    from web.db import ALL_OBLASTS
 
-    assert result[city]["alert"] == result[parent_oblast]["alert"]
-    assert result[city]["explosion"] == result[parent_oblast]["explosion"]
-
-
-def test_get_all_threats_data_aggregates_shelling(threats_store):
-    result = get_all_threats_data()
-
-    assert result["nikopol"]["shelling"]["status"] is True
-    assert result["kherson"]["shelling"]["status"] is False
-    assert result["dnipropetrovsk_oblast"]["shelling"]["status"] is True
-    assert result["kyiv"]["shelling"]["status"] is False
-
-
-def test_get_all_threats_data_coverage_partial(mock_web_redis):
-    store = {
-        "threat:alerts:city:bucha": {"status": "true", "time": "12:00", "updated_at": "100"},
-    }
-    sets = {
-        "threat:alerts:active:kyiv_oblast": {"bucha"},
-    }
-    mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
-    result = get_all_threats_data()
-
-    kyiv_obl = result["kyiv_oblast"]
-    assert kyiv_obl["alert"]["status"] is True
-    assert kyiv_obl["alert"]["coverage"] == "partial"
-    assert kyiv_obl["alert"]["active_districts"] == ["bucha"]
-    assert set(kyiv_obl["alert"]["tracked_districts"]) == set(DISTRICTS_BY_OBLAST["kyiv_oblast"])
-    assert "bucha" in kyiv_obl["districts"]
-    assert kyiv_obl["districts"]["bucha"]["alert"]["status"] is True
-
-
-def test_get_all_threats_data_coverage_full(mock_web_redis):
-    store = {}
-    sets = {
-        "threat:alerts:active:volyn_oblast": set(DISTRICTS_BY_OBLAST["volyn_oblast"]),
-        "threat:alerts:active:lviv_oblast": set(DISTRICTS_BY_OBLAST["lviv_oblast"]),
-    }
-    mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
-    result = get_all_threats_data()
-
-    assert result["volyn_oblast"]["alert"]["coverage"] == "full"
-    assert result["lviv_oblast"]["alert"]["coverage"] == "full"
-    assert result["crimea"]["alert"]["coverage"] == "none"
-    assert result["crimea"]["alert"]["active_districts"] == []
-    assert result["crimea"]["alert"]["tracked_districts"] == []
-
-
-def test_get_all_threats_data_carries_district_names(mock_web_redis):
-    """Oblast popups label items using district names from /api."""
     mock_web_redis.pipeline.return_value = _FakePipeline({}, {})
     result = get_all_threats_data()
 
-    districts = result["kyiv_oblast"]["districts"]
-    assert districts["bucha"]["name"] == "Бучанський район"
-    assert districts["vyshhorod"]["name"] == "Вишгородський район"
-    assert all(entry["name"] == DISTRICT_CONFIG[key]["name"] for key, entry in districts.items())
-
-
-def test_get_all_threats_data_covers_every_district(mock_web_redis):
-    """The map tracks all districts, not just those with broadcast channels."""
-    mock_web_redis.pipeline.return_value = _FakePipeline({}, {})
-    result = get_all_threats_data()
-
-    tracked = {key for oblast in DISTRICTS_BY_OBLAST for key in result[oblast]["districts"]}
-    assert tracked == set(DISTRICT_CONFIG)
-    assert set(REGION_CONFIG) < tracked
-
-
-def test_get_all_threats_data_filters_untracked_from_active_districts(mock_web_redis):
-    store = {}
-    sets = {
-        "threat:alerts:active:kyiv_oblast": {"bucha", "nonexistent_district"},
+    assert set(result.keys()) == set(ALL_OBLASTS)
+    tracked_districts = {
+        d_key for obl in result.values() for d_key in obl["districts"].keys()
     }
-    mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
-    result = get_all_threats_data()
-
-    assert result["kyiv_oblast"]["alert"]["active_districts"] == ["bucha"]
-    assert result["kyiv_oblast"]["alert"]["coverage"] == "partial"
-
-
-def test_aggregate_shelling_selects_latest():
-    from web.db import DEFAULT_THREAT, _aggregate_shelling
-
-    districts_empty = {}
-    assert _aggregate_shelling(districts_empty) == DEFAULT_THREAT
-
-    districts_no_active = {
-        "d1": {"shelling": {"status": False, "time": "10:00", "updated_at": 50}},
-    }
-    assert _aggregate_shelling(districts_no_active) == DEFAULT_THREAT
-
-    districts_multi = {
-        "d1": {"shelling": {"status": True, "time": "10:00", "source": "s1", "updated_at": 100}},
-        "d2": {"shelling": {"status": True, "time": "11:00", "source": "s2", "updated_at": 200}},
-        "d3": {"shelling": {"status": False, "time": "12:00", "source": "s3", "updated_at": 300}},
-    }
-    agg = _aggregate_shelling(districts_multi)
-    assert agg["status"] is True
-    assert agg["time"] == "11:00"
-    assert agg["source"] == "s2"
-    assert agg["updated_at"] == 200
+    assert tracked_districts == set(DISTRICT_CONFIG.keys())
+    for obl in result.values():
+        assert isinstance(obl["title"], str) and len(obl["title"]) > 0
+        for d in obl["districts"].values():
+            assert isinstance(d["title"], str) and len(d["title"]) > 0
 
 
-def test_get_all_threats_data_two_level_alerts(mock_web_redis):
+def test_get_all_threats_data_ignores_shelling_type_in_city_alerts(mock_web_redis):
     store = {
-        "threat:alerts:city:bucha": {
+        "threat:alerts:city:nikopol": {
             "status": "true",
-            "time": "12:00",
-            "level": "yellow",
-            "type": "air_raid_alert",
-            "updated_at": "100",
-        },
-        "threat:alerts:city:boryspil": {
-            "status": "true",
-            "time": "12:05",
-            "type": "air_raid_alert:red",
-            "updated_at": "110",
-        },
-        "threat:alerts:city:fastiv": {
-            "status": "false",
-            "time": "11:30",
-            "type": "air_raid_alert_cancelled",
-            "updated_at": "90",
-        },
-    }
-    sets = {
-        "threat:alerts:active:kyiv_oblast": {"bucha", "boryspil"},
-    }
-    mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
-    result = get_all_threats_data()
-
-    kyiv_obl = result["kyiv_oblast"]
-    assert kyiv_obl["alert"]["status"] is True
-    assert kyiv_obl["alert"]["level"] == "red"
-    assert kyiv_obl["alert"]["type"] == "air_raid_alert:red"
-    assert kyiv_obl["alert"]["coverage"] == "partial"
-
-    districts = kyiv_obl["districts"]
-    assert districts["bucha"]["alert"]["status"] is True
-    assert districts["bucha"]["alert"]["level"] == "yellow"
-    assert districts["bucha"]["alert"]["type"] == "air_raid_alert:yellow"
-
-    assert districts["boryspil"]["alert"]["status"] is True
-    assert districts["boryspil"]["alert"]["level"] == "red"
-    assert districts["boryspil"]["alert"]["type"] == "air_raid_alert:red"
-
-    assert districts["fastiv"]["alert"]["status"] is False
-    assert districts["fastiv"]["alert"]["type"] == "air_raid_alert_cancelled"
-
-
-def test_get_all_threats_data_yellow_only_oblast(mock_web_redis):
-    store = {
-        "threat:alerts:city:bucha": {
-            "status": "true",
-            "time": "12:00",
-            "level": "yellow",
-            "type": "air_raid_alert",
+            "type": "threat_of_shelling",
             "updated_at": "100",
         },
     }
-    sets = {
-        "threat:alerts:active:kyiv_oblast": {"bucha"},
-    }
-    mock_web_redis.pipeline.return_value = _FakePipeline(store, sets)
+    mock_web_redis.pipeline.return_value = _FakePipeline(store, {})
     result = get_all_threats_data()
 
-    kyiv_obl = result["kyiv_oblast"]
-    assert kyiv_obl["alert"]["status"] is True
-    assert kyiv_obl["alert"]["level"] == "yellow"
-    assert kyiv_obl["alert"]["type"] == "air_raid_alert:yellow"
+    assert result["dnipropetrovsk_oblast"]["districts"]["nikopol"]["alert"]["status"] is False
+    assert result["dnipropetrovsk_oblast"]["districts"]["nikopol"]["alert"]["level"] is None
+
+
+def test_clean_helpers():
+    from web.db import _clean_source, _clean_updated_at, _resolve_alert_level
+
+    assert _clean_source(None) is None
+    assert _clean_source("") is None
+    assert _clean_source("None") is None
+    assert _clean_source("telegram") is None
+    assert _clean_source("https://t.me/test/1") == "https://t.me/test/1"
+
+    assert _clean_updated_at(None) is None
+    assert _clean_updated_at("invalid") is None
+    assert _clean_updated_at(0) is None
+    assert _clean_updated_at(-5) is None
+    assert _clean_updated_at("1741708800") == 1741708800
+    assert _clean_updated_at("1741708800.0") == 1741708800
+
+    assert _resolve_alert_level({"level": "yellow"}) == "yellow"
+    assert _resolve_alert_level({"level": "red"}) == "red"
+    assert _resolve_alert_level({"type": "air_raid_alert:yellow"}) == "yellow"
+    assert _resolve_alert_level({"type": "air_raid_alert:red"}) == "red"
+    assert _resolve_alert_level({"type": "air_raid_alert"}) == "red"
+    assert _resolve_alert_level({}) == "red"
 
 
 def test_rehydrate_state_from_db_with_two_level_alerts(mock_web_pg, mock_web_redis):
     _, mock_cursor = mock_web_pg
     now = datetime.datetime.now()
     mock_cursor.fetchall.return_value = [
-        ("bucha", "kyiv_oblast", "air_raid_alert:yellow", "14:00", now, None),
-        ("boryspil", "kyiv_oblast", "air_raid_alert:red", "14:05", now, None),
+        ("bucha", "air_raid_alert", "yellow", now, None),
+        ("boryspil", "air_raid_alert", "red", now, None),
     ]
 
     pipeline = MagicMock()

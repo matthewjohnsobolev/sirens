@@ -366,9 +366,9 @@ async def test_send_alert_stores_the_broadcast_message_link(
         assert calls[0].kwargs["mapping"]["source"] == link
 
     _, *params = mock_conn.execute.call_args.args
-    assert params[6] == CHANNEL_ID
-    assert params[7] == 321
-    assert params[8] == link
+    assert params[4] == CHANNEL_ID
+    assert params[5] == 321
+    assert params[6] == link
 
 
 @pytest.mark.asyncio
@@ -460,9 +460,8 @@ async def test_send_alert_writes_state_history_and_broadcasts(
     mock_conn.execute.assert_awaited_once()
     sql, *params = mock_conn.execute.call_args.args
     assert "INSERT INTO alert_history" in sql
-    assert params[3] == region
-    assert params[4] == oblast
-    assert params[5] == alert_type
+    assert params[1] == region
+    assert params[2] == alert_type
 
     mock_telegram_client.send_message.assert_awaited_once_with(CHANNEL_ID, MESSAGES[alert_type])
 
@@ -1417,12 +1416,12 @@ async def test_prime_ignores_map_only_district_in_redis_and_falls_back_to_pg(
 
     posted_dt = datetime.datetime(2026, 8, 27, 10, 0, tzinfo=datetime.timezone.utc)
     mock_conn.fetchrow.return_value = {
-        "datetime": posted_dt,
-        "district_key": "bilatserkva",
-        "oblast_key": "kyiv_oblast",
-        "type": "air_raid_alert",
+        "recorded_at": posted_dt,
+        "district": "bilatserkva",
+        "event_type": "air_raid_alert",
+        "level": None,
         "message_id": 555,
-        "message_link": "https://t.me/sirens_bc/555",
+        "source": "https://t.me/sirens_bc/555",
     }
 
     alerts_main.last_alert_payload = None
@@ -1442,12 +1441,12 @@ async def test_prime_pg_query_filters_only_broadcast_alerts(
     mock_redis.get.return_value = None
     posted_dt = datetime.datetime(2026, 8, 27, 11, 0)
     mock_conn.fetchrow.return_value = {
-        "datetime": posted_dt,
-        "district_key": "kharkiv",
-        "oblast_key": "kharkiv_oblast",
-        "type": "air_raid_alert_cancelled",
+        "recorded_at": posted_dt,
+        "district": "kharkiv",
+        "event_type": "air_raid_alert_cancelled",
+        "level": None,
         "message_id": 777,
-        "message_link": "https://t.me/sirens_kh/777",
+        "source": "https://t.me/sirens_kh/777",
     }
 
     alerts_main.last_alert_payload = None
@@ -1553,10 +1552,12 @@ async def test_record_map_only_alert_writes_state_without_broadcasting(
     mock_redis.sadd.assert_awaited_once_with("threat:alerts:active:kyiv_oblast", "vyshhorod")
 
     _, *params = mock_conn.execute.call_args.args
-    assert params[3:6] == ["vyshhorod", "kyiv_oblast", "air_raid_alert"]
-    assert params[6] is None
-    assert params[7] == SOURCE_MESSAGE_ID
-    assert params[8] == SOURCE_LINK
+    assert params[1] == "vyshhorod"
+    assert params[2] == "air_raid_alert"
+    assert params[3] is None  # level
+    assert params[4] is None  # channel_id
+    assert params[5] == SOURCE_MESSAGE_ID
+    assert params[6] == SOURCE_LINK
 
     assert not any(
         call.args and call.args[0] == alerts_main.LAST_ALERT_INFO_KEY
@@ -2555,10 +2556,11 @@ async def test_alert_history_and_threat_hash_record_base_type(
         await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert", level=level)
         await _drain_background_tasks()
 
-    # DB record has base type
+    # DB record has base type and level
     mock_conn.execute.assert_awaited_once()
     sql, *params = mock_conn.execute.call_args.args
-    assert params[5] == "air_raid_alert"
+    assert params[2] == "air_raid_alert"
+    assert params[3] == level
 
     # Redis threat hash has base type
     city_call = [

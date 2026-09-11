@@ -16,6 +16,7 @@ from config import DATABASE_URL, REDIS_URL
 from domain import (
     DISTRICT_CONFIG,
     DISTRICTS_BY_OBLAST,
+    OBLAST_NAMES,
     real_channels,
     test_channels,
 )
@@ -51,95 +52,209 @@ def ensure_pg_tables() -> None:
                 cur.execute("SELECT pg_advisory_xact_lock(%s)", (SCHEMA_LOCK_KEY,))
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS alert_history (
-                        id SERIAL PRIMARY KEY,
-                        datetime TIMESTAMP NOT NULL,
-                        date DATE NOT NULL,
-                        time TEXT NOT NULL,
-                        district_key TEXT,
-                        oblast_key TEXT,
-                        type TEXT NOT NULL,
+                        id BIGSERIAL PRIMARY KEY,
+                        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        event_type VARCHAR(32) NOT NULL,
+                        level VARCHAR(10),
+                        district TEXT NOT NULL,
                         channel_id BIGINT,
                         message_id BIGINT,
-                        message_link TEXT
+                        source TEXT
                     )
                 """)
                 cur.execute("""
                     DO $$
                     BEGIN
+                        -- Migrate alert_history to new schema
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'alert_history' AND column_name = 'district_key'
+                            WHERE table_name = 'alert_history' AND column_name = 'recorded_at'
                         ) THEN
-                            ALTER TABLE alert_history ADD COLUMN district_key TEXT;
+                            ALTER TABLE alert_history ADD COLUMN recorded_at TIMESTAMPTZ;
+                            IF EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name = 'alert_history' AND column_name = 'datetime'
+                            ) THEN
+                                UPDATE alert_history SET recorded_at = datetime AT TIME ZONE 'Europe/Kyiv'
+                                WHERE recorded_at IS NULL AND datetime IS NOT NULL;
+                            END IF;
+                            UPDATE alert_history SET recorded_at = NOW() WHERE recorded_at IS NULL;
+                            ALTER TABLE alert_history ALTER COLUMN recorded_at SET NOT NULL;
                         END IF;
+
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'alert_history' AND column_name = 'oblast_key'
+                            WHERE table_name = 'alert_history' AND column_name = 'event_type'
                         ) THEN
-                            ALTER TABLE alert_history ADD COLUMN oblast_key TEXT;
+                            ALTER TABLE alert_history ADD COLUMN event_type VARCHAR(32);
+                            IF EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name = 'alert_history' AND column_name = 'type'
+                            ) THEN
+                                UPDATE alert_history
+                                SET event_type = SPLIT_PART(type, ':', 1)
+                                WHERE event_type IS NULL AND type IS NOT NULL;
+                            END IF;
+                            UPDATE alert_history SET event_type = 'air_raid_alert' WHERE event_type IS NULL;
+                            ALTER TABLE alert_history ALTER COLUMN event_type SET NOT NULL;
                         END IF;
+
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'alert_history' AND column_name = 'time'
+                            WHERE table_name = 'alert_history' AND column_name = 'level'
                         ) THEN
-                            ALTER TABLE alert_history ADD COLUMN time TEXT;
+                            ALTER TABLE alert_history ADD COLUMN level VARCHAR(10);
+                            IF EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name = 'alert_history' AND column_name = 'type'
+                            ) THEN
+                                UPDATE alert_history
+                                SET level = CASE
+                                    WHEN type LIKE '%:yellow' OR type LIKE 'yellow_%' THEN 'yellow'
+                                    WHEN type LIKE '%:red' OR type LIKE 'red_%' THEN 'red'
+                                    WHEN event_type = 'air_raid_alert' THEN 'red'
+                                    ELSE NULL
+                                END
+                                WHERE level IS NULL;
+                            END IF;
                         END IF;
+
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'alert_history' AND column_name = 'date'
+                            WHERE table_name = 'alert_history' AND column_name = 'district'
                         ) THEN
-                            ALTER TABLE alert_history ADD COLUMN date DATE;
+                            ALTER TABLE alert_history ADD COLUMN district TEXT;
+                            IF EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name = 'alert_history' AND column_name = 'district_key'
+                            ) THEN
+                                UPDATE alert_history SET district = district_key WHERE district IS NULL AND district_key IS NOT NULL;
+                            END IF;
+                            UPDATE alert_history SET district = 'unknown' WHERE district IS NULL;
+                            ALTER TABLE alert_history ALTER COLUMN district SET NOT NULL;
                         END IF;
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'alert_history' AND column_name = 'datetime'
-                        ) THEN
-                            ALTER TABLE alert_history ADD COLUMN datetime TIMESTAMP;
-                        END IF;
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'alert_history' AND column_name = 'type'
-                        ) THEN
-                            ALTER TABLE alert_history ADD COLUMN type TEXT;
-                        END IF;
-                        IF EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'alert_history' AND column_name = 'oblast'
-                        ) THEN
-                            ALTER TABLE alert_history DROP COLUMN oblast;
-                        END IF;
+
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.columns
                             WHERE table_name = 'alert_history' AND column_name = 'channel_id'
                         ) THEN
                             ALTER TABLE alert_history ADD COLUMN channel_id BIGINT;
                         END IF;
+
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.columns
                             WHERE table_name = 'alert_history' AND column_name = 'message_id'
                         ) THEN
                             ALTER TABLE alert_history ADD COLUMN message_id BIGINT;
                         END IF;
+
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'alert_history' AND column_name = 'message_link'
+                            WHERE table_name = 'alert_history' AND column_name = 'source'
                         ) THEN
-                            ALTER TABLE alert_history ADD COLUMN message_link TEXT;
+                            ALTER TABLE alert_history ADD COLUMN source TEXT;
+                            IF EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name = 'alert_history' AND column_name = 'message_link'
+                            ) THEN
+                                UPDATE alert_history SET source = message_link WHERE source IS NULL AND message_link IS NOT NULL;
+                            END IF;
                         END IF;
+
+                        -- Drop legacy columns if present
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'datetime') THEN
+                            ALTER TABLE alert_history DROP COLUMN datetime;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'date') THEN
+                            ALTER TABLE alert_history DROP COLUMN date;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'time') THEN
+                            ALTER TABLE alert_history DROP COLUMN time;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'type') THEN
+                            ALTER TABLE alert_history DROP COLUMN type;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'district_key') THEN
+                            ALTER TABLE alert_history DROP COLUMN district_key;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'oblast_key') THEN
+                            ALTER TABLE alert_history DROP COLUMN oblast_key;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'oblast') THEN
+                            ALTER TABLE alert_history DROP COLUMN oblast;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'message_link') THEN
+                            ALTER TABLE alert_history DROP COLUMN message_link;
+                        END IF;
+
+                        -- Normalize event_type and level to satisfy constraints
+                        UPDATE alert_history
+                        SET event_type = SPLIT_PART(event_type, ':', 1)
+                        WHERE event_type LIKE '%:%';
+
+                        UPDATE alert_history
+                        SET event_type = 'air_raid_alert'
+                        WHERE event_type NOT IN (
+                            'air_raid_alert',
+                            'air_raid_alert_cancelled',
+                            'threat_of_shelling',
+                            'threat_of_shelling_cancelled'
+                        );
+
+                        UPDATE alert_history
+                        SET level = NULL
+                        WHERE level IS NOT NULL AND level NOT IN ('yellow', 'red');
+
+                        -- Constraints
+                        ALTER TABLE alert_history DROP CONSTRAINT IF EXISTS chk_event_type;
+                        ALTER TABLE alert_history ADD CONSTRAINT chk_event_type CHECK (
+                            event_type IN (
+                                'air_raid_alert',
+                                'air_raid_alert_cancelled',
+                                'threat_of_shelling',
+                                'threat_of_shelling_cancelled'
+                            )
+                        );
+
+                        ALTER TABLE alert_history DROP CONSTRAINT IF EXISTS chk_level;
+                        ALTER TABLE alert_history ADD CONSTRAINT chk_level CHECK (
+                            level IN ('yellow', 'red') OR level IS NULL
+                        );
                     END $$;
                 """)
+                cur.execute("DROP INDEX IF EXISTS alert_history_district_dt_idx")
+                cur.execute("DROP INDEX IF EXISTS alert_history_oblast_dt_idx")
+                cur.execute("DROP INDEX IF EXISTS alert_history_datetime_idx")
                 cur.execute(
-                    "CREATE INDEX IF NOT EXISTS alert_history_district_dt_idx ON alert_history (district_key, datetime DESC)"
+                    "CREATE INDEX IF NOT EXISTS idx_alert_history_district_recorded ON alert_history (district, recorded_at DESC)"
                 )
                 cur.execute(
-                    "CREATE INDEX IF NOT EXISTS alert_history_oblast_dt_idx ON alert_history (oblast_key, datetime DESC)"
+                    "CREATE INDEX IF NOT EXISTS idx_alert_history_recorded_at ON alert_history (recorded_at DESC)"
                 )
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS subscriber_snapshots (
+                        channel_id BIGINT NOT NULL,
+                        channel TEXT NOT NULL,
+                        collected_at TIMESTAMPTZ NOT NULL,
+                        subscriber_count INTEGER NOT NULL CHECK (subscriber_count >= 0),
+                        PRIMARY KEY (channel_id, collected_at)
+                    )
+                """)
                 cur.execute(
-                    "CREATE INDEX IF NOT EXISTS alert_history_datetime_idx ON alert_history (datetime DESC)"
+                    "CREATE INDEX IF NOT EXISTS idx_subscriber_snapshots_collected_at ON subscriber_snapshots (collected_at DESC)"
                 )
                 cur.execute("""
                     DO $$
                     BEGIN
+                        -- Rename channel_code to channel if it exists in subscriber_snapshots
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'subscriber_snapshots' AND column_name = 'channel_code'
+                        ) THEN
+                            ALTER TABLE subscriber_snapshots RENAME COLUMN channel_code TO channel;
+                        END IF;
+
+                        -- If channel_stats exists, rename to subscribers for migration
                         IF EXISTS (
                             SELECT 1 FROM information_schema.tables
                             WHERE table_name = 'channel_stats'
@@ -149,84 +264,34 @@ def ensure_pg_tables() -> None:
                         ) THEN
                             ALTER TABLE channel_stats RENAME TO subscribers;
                         END IF;
-                    END $$;
-                """)
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS subscribers (
-                        id SERIAL PRIMARY KEY,
-                        channel_key TEXT NOT NULL,
-                        channel_id BIGINT NOT NULL,
-                        subscribers INTEGER NOT NULL,
-                        date DATE NOT NULL,
-                        time TIMESTAMP NOT NULL,
-                        UNIQUE (channel_key, time)
-                    )
-                """)
-                cur.execute("""
-                    DO $$
-                    BEGIN
+
+                        -- If subscribers is a base table (legacy), migrate data to subscriber_snapshots
                         IF EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'subscribers' AND column_name = 'participants'
-                        ) AND NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'subscribers' AND column_name = 'subscribers'
+                            SELECT 1 FROM information_schema.tables
+                            WHERE table_name = 'subscribers' AND table_type = 'BASE TABLE'
                         ) THEN
-                            ALTER TABLE subscribers RENAME COLUMN participants TO subscribers;
+                            INSERT INTO subscriber_snapshots (channel_id, channel, collected_at, subscriber_count)
+                            SELECT
+                                channel_id,
+                                COALESCE(channel_key, ''),
+                                COALESCE(time, (date::text || ' 00:00:00')::timestamp) AT TIME ZONE 'Europe/Kyiv',
+                                GREATEST(COALESCE(subscribers, 0), 0)
+                            FROM subscribers
+                            WHERE channel_id IS NOT NULL
+                            ON CONFLICT (channel_id, collected_at) DO UPDATE
+                                SET subscriber_count = EXCLUDED.subscriber_count,
+                                    channel = EXCLUDED.channel;
+                            DROP TABLE subscribers CASCADE;
                         END IF;
+                        -- Drop view if it was created previously
                         IF EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'subscribers' AND column_name = 'collected_at'
-                        ) AND NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'subscribers' AND column_name = 'time'
+                            SELECT 1 FROM information_schema.views
+                            WHERE table_name = 'subscribers'
                         ) THEN
-                            ALTER TABLE subscribers RENAME COLUMN collected_at TO time;
-                        END IF;
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'subscribers' AND column_name = 'time'
-                        ) THEN
-                            ALTER TABLE subscribers ADD COLUMN time TIMESTAMP;
-                        END IF;
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'subscribers' AND column_name = 'channel_key'
-                        ) THEN
-                            ALTER TABLE subscribers ADD COLUMN channel_key TEXT;
-                        END IF;
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'subscribers' AND column_name = 'channel_id'
-                        ) THEN
-                            ALTER TABLE subscribers ADD COLUMN channel_id BIGINT;
-                        END IF;
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'subscribers' AND column_name = 'subscribers'
-                        ) THEN
-                            ALTER TABLE subscribers ADD COLUMN subscribers INTEGER;
-                        END IF;
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'subscribers' AND column_name = 'date'
-                        ) THEN
-                            ALTER TABLE subscribers ADD COLUMN date DATE;
-                        END IF;
-                        ALTER TABLE subscribers DROP CONSTRAINT IF EXISTS subscribers_channel_key_date_key;
-                        ALTER TABLE subscribers DROP CONSTRAINT IF EXISTS subscribers_channel_key_collected_at_key;
-                        ALTER TABLE subscribers DROP CONSTRAINT IF EXISTS channel_stats_channel_key_date_key;
-                        IF NOT EXISTS (
-                            SELECT 1 FROM pg_constraint
-                            WHERE conname = 'subscribers_channel_key_time_key'
-                              AND conrelid = 'subscribers'::regclass
-                        ) THEN
-                            ALTER TABLE subscribers ADD CONSTRAINT subscribers_channel_key_time_key UNIQUE (channel_key, time);
+                            DROP VIEW subscribers CASCADE;
                         END IF;
                     END $$;
                 """)
-                cur.execute("CREATE INDEX IF NOT EXISTS subscribers_date_idx ON subscribers (date)")
-                cur.execute("CREATE INDEX IF NOT EXISTS subscribers_time_idx ON subscribers (time)")
             conn.commit()
     except Exception:
         log.exception("Failed to ensure the database schema exists")
@@ -347,6 +412,7 @@ async def update_alert_status(
     status: str,
     message_id: int | None = None,
     message_link: str | None = None,
+    level: str | None = None,
 ) -> None:
     district_key = get_region_by_channel_id(channel_id)
     if not district_key or district_key not in DISTRICT_CONFIG:
@@ -354,23 +420,29 @@ async def update_alert_status(
 
     oblast_key = DISTRICT_CONFIG[district_key]["oblast"]
 
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.timezone.utc)
     current_time = now.strftime("%H:%M")
     now_epoch = str(int(time.time()))
     source = message_link or DEFAULT_SOURCE
 
     event_type = None
     is_active: bool | None = None
-    if status in ("Повітряна тривога", "air_raid_alert"):
+    status_str = str(status)
+    if ":" in status_str and not level:
+        base_st, lvl_part = status_str.split(":", 1)
+        status_str = base_st
+        level = lvl_part
+
+    if status_str in ("Повітряна тривога", "air_raid_alert"):
         is_active = True
         event_type = "air_raid_alert"
-    elif status in ("Відбій повітряної тривоги", "air_raid_alert_cancelled"):
+    elif status_str in ("Відбій повітряної тривоги", "air_raid_alert_cancelled"):
         is_active = False
         event_type = "air_raid_alert_cancelled"
-    elif status in ("Загроза артилерійського обстрілу", "threat_of_shelling"):
+    elif status_str in ("Загроза артилерійського обстрілу", "threat_of_shelling"):
         is_active = True
         event_type = "threat_of_shelling"
-    elif status in ("Відбій загрози артобстрілу", "threat_of_shelling_cancelled"):
+    elif status_str in ("Відбій загрози артобстрілу", "threat_of_shelling_cancelled"):
         is_active = False
         event_type = "threat_of_shelling_cancelled"
 
@@ -393,6 +465,10 @@ async def update_alert_status(
             updates["source"] = source
             if event_type:
                 updates["type"] = event_type
+            if is_active and level:
+                updates["level"] = level
+            elif not is_active:
+                redis_client.hdel(city_key, "level")
 
         redis_client.hset(city_key, mapping=updates)
 
@@ -425,19 +501,17 @@ async def update_alert_status(
                 with conn.cursor() as cur:
                     cur.execute(
                         """INSERT INTO alert_history
-                           (datetime, date, time, district_key, oblast_key, type,
-                            channel_id, message_id, message_link)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                           (recorded_at, district, event_type, level,
+                            channel_id, message_id, source)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
                         (
                             now,
-                            now.date(),
-                            current_time,
                             district_key,
-                            oblast_key,
                             event_type,
+                            level if event_type == "air_raid_alert" else None,
                             channel_id,
                             message_id,
-                            message_link,
+                            source,
                         ),
                     )
                 conn.commit()
@@ -451,16 +525,15 @@ def rehydrate_state_from_db() -> None:
         with get_pg_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT DISTINCT ON (district_key)
-                        COALESCE(district_key, '') as district_key,
-                        COALESCE(oblast_key, '') as oblast_key,
-                        type,
-                        time,
-                        datetime,
-                        message_link
+                    SELECT DISTINCT ON (district)
+                        COALESCE(district, '') as district,
+                        event_type,
+                        level,
+                        recorded_at,
+                        source
                     FROM alert_history
-                    WHERE district_key IS NOT NULL
-                    ORDER BY district_key, datetime DESC
+                    WHERE district IS NOT NULL
+                    ORDER BY district, recorded_at DESC
                 """)
                 rows = cur.fetchall()
     except Exception:
@@ -473,27 +546,25 @@ def rehydrate_state_from_db() -> None:
 
     pipeline = redis_client.pipeline()
     for row in rows:
-        d_key, o_key, alert_type, alert_time, dt, message_link = row
+        d_key, alert_type, alert_level, dt, message_link = row
         source = message_link or DEFAULT_SOURCE
-        if not d_key and o_key:
-            d_key = o_key
-        if not o_key and d_key in DISTRICT_CONFIG:
-            o_key = DISTRICT_CONFIG[d_key]["oblast"]
+        o_key = DISTRICT_CONFIG.get(d_key, {}).get("oblast", d_key)
+        alert_time = dt.strftime("%H:%M") if (dt and hasattr(dt, "strftime")) else "None"
+        dt_epoch = (
+            str(int(dt.timestamp()))
+            if (dt and hasattr(dt, "timestamp"))
+            else str(int(time.time()))
+        )
 
         if "shelling" in str(alert_type).lower():
             is_active = str(alert_type).lower() in ("threat_of_shelling", "1", "true")
             st_str = "true" if is_active else "false"
             if d_key:
-                dt_epoch = (
-                    str(int(dt.timestamp()))
-                    if (dt and hasattr(dt, "timestamp"))
-                    else str(int(time.time()))
-                )
                 pipeline.hset(
                     f"threat:shellings:{d_key}",
                     mapping={
                         "status": st_str,
-                        "time": alert_time or (dt.strftime("%H:%M") if dt else "None"),
+                        "time": alert_time,
                         "source": source,
                         "updated_at": dt_epoch,
                     },
@@ -505,21 +576,17 @@ def rehydrate_state_from_db() -> None:
             ) or alert_str in ("start", "1", "true")
             st_str = "true" if is_active else "false"
 
-            level = None
-            if ":" in str(alert_type):
-                level = str(alert_type).split(":", 1)[1]
-            elif is_active:
-                level = "red"
+            level = alert_level
+            if not level:
+                if ":" in str(alert_type):
+                    level = str(alert_type).split(":", 1)[1]
+                elif is_active:
+                    level = "red"
 
             if d_key:
-                dt_epoch = (
-                    str(int(dt.timestamp()))
-                    if (dt and hasattr(dt, "timestamp"))
-                    else str(int(time.time()))
-                )
                 city_mapping = {
                     "status": st_str,
-                    "time": alert_time or (dt.strftime("%H:%M") if dt else "None"),
+                    "time": alert_time,
                     "source": source,
                     "type": alert_type
                     or ("air_raid_alert" if is_active else "air_raid_alert_cancelled"),
@@ -539,205 +606,99 @@ def rehydrate_state_from_db() -> None:
     log.info("Redis state rehydrated successfully from PostgreSQL (%d records)", len(rows))
 
 
-DEFAULT_THREAT: dict[str, Any] = {
-    "status": False,
-    "time": "None",
-    "source": "None",
-    "updated_at": 0,
-}
+def _clean_source(source_val: Any) -> str | None:
+    if not source_val:
+        return None
+    s = str(source_val).strip()
+    if s in ("None", "telegram", ""):
+        return None
+    return s
 
 
-def _aggregate_shelling(districts: dict[str, Any]) -> dict[str, Any]:
-    active_shellings = [
-        d["shelling"]
-        for d in districts.values()
-        if d.get("shelling") and d["shelling"].get("status")
-    ]
-    if not active_shellings:
-        return DEFAULT_THREAT.copy()
+def _clean_updated_at(val: Any) -> int | None:
+    try:
+        ts = int(float(val))
+        return ts if ts > 0 else None
+    except (ValueError, TypeError):
+        return None
 
-    latest = max(active_shellings, key=lambda s: s.get("updated_at", 0))
-    return {
-        "status": True,
-        "time": latest.get("time", "None"),
-        "source": latest.get("source", "None"),
-        "updated_at": latest.get("updated_at", 0),
-    }
+
+def _resolve_alert_level(data: dict[str, Any]) -> str:
+    lvl = data.get("level")
+    if lvl in ("yellow", "red"):
+        return str(lvl)
+    alert_type = str(data.get("type", ""))
+    if ":" in alert_type:
+        candidate = alert_type.split(":", 1)[1]
+        if candidate in ("yellow", "red"):
+            return candidate
+    return "red"
+
+
+ALL_OBLASTS = list(OBLAST_NAMES.keys())
 
 
 def get_all_threats_data() -> dict[str, Any]:
-    tables = ["alerts", "explosions", "shellings"]
-    oblasts = [
-        "cherkasy_oblast",
-        "chernihiv_oblast",
-        "chernivtsi_oblast",
-        "crimea",
-        "dnipropetrovsk_oblast",
-        "donetsk_oblast",
-        "ivanofrankivsk_oblast",
-        "kharkiv_oblast",
-        "kherson_oblast",
-        "khmelnytskyi_oblast",
-        "kirovohrad_oblast",
-        "kyiv",
-        "kyiv_oblast",
-        "luhansk_oblast",
-        "lviv_oblast",
-        "mykolaiv_oblast",
-        "odesa_oblast",
-        "poltava_oblast",
-        "rivne_oblast",
-        "sevastopol",
-        "sumy_oblast",
-        "ternopil_oblast",
-        "vinnytsia_oblast",
-        "volyn_oblast",
-        "zakarpattia_oblast",
-        "zaporizhzhia_oblast",
-        "zhytomyr_oblast",
-    ]
-
     districts = list(DISTRICT_CONFIG.keys())
-
-    keys_order = []
 
     try:
         pipeline = redis_client.pipeline()
-
-        for table in tables:
-            for oblast in oblasts:
-                key = f"threat:{table}:{oblast}"
-                pipeline.hgetall(key)
-                keys_order.append((table, oblast))
-
         for district in districts:
             pipeline.hgetall(f"threat:alerts:city:{district}")
-            keys_order.append(("city_alerts", district))
-
         for district in districts:
             pipeline.hgetall(f"threat:shellings:{district}")
-            keys_order.append(("city_shellings", district))
-
-        for oblast in oblasts:
-            pipeline.smembers(f"threat:alerts:active:{oblast}")
-            keys_order.append(("active_districts", oblast))
-
         results = pipeline.execute()
     except Exception:
         log.exception("Failed to read threat data from Redis; /api cannot be served")
         raise
 
-    raw_data: dict[str, dict[str, Any]] = {
-        "alerts": {},
-        "explosions": {},
-        "shellings": {},
-        "city_alerts": {},
-        "city_shellings": {},
-        "active_districts": {},
-    }
+    n = len(districts)
+    alerts_results = results[:n]
+    shellings_results = results[n:]
 
-    for (category, target), data in zip(keys_order, results, strict=False):
-        if category == "active_districts":
-            raw_data["active_districts"][target] = list(data) if data else []
-        elif not data:
-            entry = DEFAULT_THREAT.copy()
-            if category == "city_alerts":
-                entry["type"] = "None"
-            raw_data[category][target] = entry
+    district_map: dict[str, dict[str, Any]] = {}
+    for district, alert_raw, shelling_raw in zip(districts, alerts_results, shellings_results, strict=False):
+        alert_raw = alert_raw or {}
+        shelling_raw = shelling_raw or {}
+
+        alert_type = alert_raw.get("type", "")
+        if alert_type.endswith("_cancelled") or alert_type in (
+            "threat_of_shelling",
+            "threat_of_shelling_cancelled",
+        ):
+            alert_active = False
         else:
-            raw_status = data.get("status", False)
-            try:
-                updated_at_val = int(data.get("updated_at", 0))
-            except (ValueError, TypeError):
-                updated_at_val = 0
+            alert_active = _normalize_status(alert_raw.get("status", False))
 
-            entry = {
-                "status": _normalize_status(raw_status),
-                "time": data.get("time", "None"),
-                "source": data.get("source", "None"),
-                "updated_at": updated_at_val,
-            }
-            if category == "city_alerts":
-                alert_type = data.get("type", "")
-                level_val = data.get("level")
-                if alert_type in ("threat_of_shelling", "threat_of_shelling_cancelled"):
-                    entry["status"] = False
-                    entry["type"] = alert_type
-                else:
-                    if entry["status"]:
-                        lvl = (
-                            level_val
-                            if (level_val and level_val != "")
-                            else (alert_type.split(":")[1] if ":" in str(alert_type) else "red")
-                        )
-                        entry["level"] = lvl
-                        entry["type"] = f"air_raid_alert:{lvl}"
-                    else:
-                        entry["type"] = alert_type or "air_raid_alert_cancelled"
-            raw_data[category][target] = entry
+        alert_dict = {
+            "status": alert_active,
+            "level": _resolve_alert_level(alert_raw) if alert_active else None,
+            "updated_at": _clean_updated_at(alert_raw.get("updated_at")),
+            "source": _clean_source(alert_raw.get("source")),
+        }
+
+        shelling_active = _normalize_status(shelling_raw.get("status", False))
+        shelling_dict = {
+            "status": shelling_active,
+            "updated_at": _clean_updated_at(shelling_raw.get("updated_at")),
+            "source": _clean_source(shelling_raw.get("source")),
+        }
+
+        district_map[district] = {
+            "title": DISTRICT_CONFIG[district]["name"],
+            "alert": alert_dict,
+            "shelling": shelling_dict,
+        }
 
     result: dict[str, Any] = {}
-
-    def build_oblast_entry(oblast: str) -> dict[str, Any]:
-        tracked = DISTRICTS_BY_OBLAST.get(oblast, [])
-        active = [d for d in raw_data["active_districts"].get(oblast, []) if d in tracked]
-
-        oblast_alert = raw_data["alerts"].get(oblast, DEFAULT_THREAT).copy()
-        oblast_alert["active_districts"] = active
-        oblast_alert["tracked_districts"] = tracked
-        if active:
-            oblast_alert["status"] = True
-            oblast_alert["coverage"] = "full" if len(active) >= len(tracked) else "partial"
-
-            active_levels = set()
-            for d in active:
-                d_alert = raw_data["city_alerts"].get(d, {})
-                if d_alert.get("status"):
-                    lvl = d_alert.get("level")
-                    if not lvl and ":" in str(d_alert.get("type", "")):
-                        lvl = str(d_alert.get("type", "")).split(":")[1]
-                    if lvl:
-                        active_levels.add(lvl)
-
-            if "red" in active_levels:
-                obl_lvl = "red"
-            elif "yellow" in active_levels:
-                obl_lvl = "yellow"
-            else:
-                raw_lvl = raw_data["alerts"].get(oblast, {}).get("level")
-                obl_lvl = raw_lvl if (raw_lvl and raw_lvl != "") else "red"
-
-            oblast_alert["level"] = obl_lvl
-            oblast_alert["type"] = f"air_raid_alert:{obl_lvl}"
-        else:
-            oblast_alert["coverage"] = "none"
-            oblast_alert["type"] = "air_raid_alert_cancelled"
-
-        districts_map = {
-            d: {
-                "name": DISTRICT_CONFIG[d]["name"],
-                "alert": raw_data["city_alerts"].get(d, DEFAULT_THREAT),
-                "shelling": raw_data["city_shellings"].get(d, DEFAULT_THREAT),
-            }
-            for d in tracked
+    for oblast in ALL_OBLASTS:
+        oblast_districts = DISTRICTS_BY_OBLAST.get(oblast, [])
+        districts_dict = {
+            d: district_map[d] for d in oblast_districts if d in district_map
         }
-
-        return {
-            "alert": oblast_alert,
-            "explosion": raw_data["explosions"].get(oblast, DEFAULT_THREAT),
-            "shelling": _aggregate_shelling(districts_map),
-            "districts": districts_map,
+        result[oblast] = {
+            "title": OBLAST_NAMES.get(oblast, oblast),
+            "districts": districts_dict,
         }
-
-    for o in oblasts:
-        result[o] = build_oblast_entry(o)
-
-    for city, parent_oblast in [
-        ("nikopol", "dnipropetrovsk_oblast"),
-        ("kherson", "kherson_oblast"),
-    ]:
-        entry = build_oblast_entry(parent_oblast)
-        entry["shelling"] = raw_data["city_shellings"].get(city, DEFAULT_THREAT)
-        result[city] = entry
 
     return result

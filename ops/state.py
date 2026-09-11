@@ -480,17 +480,17 @@ def apply_threat_change(
                     cur.execute(
                         """
                         INSERT INTO alert_history
-                        (datetime, date, time, district_key, oblast_key, type,
-                         channel_id, message_id, message_link)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        (recorded_at, district, event_type, level,
+                         channel_id, message_id, source)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             now,
-                            target_date,
-                            current_time,
                             district_key,
-                            oblast_key,
                             change["event_type"],
+                            (alert_level or "red")
+                            if change["component"] == "alert" and change.get("to")
+                            else None,
                             channel_id,
                             None,
                             source_tag,
@@ -526,11 +526,11 @@ def get_history(
             if district_key:
                 cur.execute(
                     """
-                    SELECT id, datetime, date, time, district_key, oblast_key, type,
-                           channel_id, message_id, message_link
+                    SELECT id, recorded_at, district, event_type, level,
+                           channel_id, message_id, source
                     FROM alert_history
-                    WHERE district_key = %s
-                    ORDER BY datetime DESC, id DESC
+                    WHERE district = %s
+                    ORDER BY recorded_at DESC, id DESC
                     LIMIT %s
                     """,
                     (district_key, limit),
@@ -538,10 +538,10 @@ def get_history(
             else:
                 cur.execute(
                     """
-                    SELECT id, datetime, date, time, district_key, oblast_key, type,
-                           channel_id, message_id, message_link
+                    SELECT id, recorded_at, district, event_type, level,
+                           channel_id, message_id, source
                     FROM alert_history
-                    ORDER BY datetime DESC, id DESC
+                    ORDER BY recorded_at DESC, id DESC
                     LIMIT %s
                     """,
                     (limit,),
@@ -549,18 +549,40 @@ def get_history(
             rows = cur.fetchall()
             history = []
             for row in rows:
+                rec_id, recorded_at, district, event_type, level, ch_id, msg_id, source = row
+                dt_str = (
+                    recorded_at.strftime("%Y-%m-%d %H:%M:%S")
+                    if hasattr(recorded_at, "strftime")
+                    else str(recorded_at)
+                )
+                d_str = (
+                    recorded_at.strftime("%Y-%m-%d")
+                    if hasattr(recorded_at, "strftime")
+                    else (str(recorded_at).split()[0] if " " in str(recorded_at) else str(recorded_at))
+                )
+                t_str = (
+                    recorded_at.strftime("%H:%M")
+                    if hasattr(recorded_at, "strftime")
+                    else (str(recorded_at).split()[1][:5] if " " in str(recorded_at) else "")
+                )
                 history.append(
                     {
-                        "id": row[0],
-                        "datetime": row[1],
-                        "date": str(row[2]),
-                        "time": row[3],
-                        "district_key": row[4],
-                        "oblast_key": row[5],
-                        "type": row[6],
-                        "channel_id": row[7],
-                        "message_id": row[8],
-                        "message_link": row[9],
+                        "id": rec_id,
+                        "recorded_at": recorded_at,
+                        "district": district,
+                        "event_type": event_type,
+                        "level": level,
+                        "channel_id": ch_id,
+                        "message_id": msg_id,
+                        "source": source,
+                        # Backwards-compatible aliases
+                        "datetime": dt_str,
+                        "date": d_str,
+                        "time": t_str,
+                        "district_key": district,
+                        "oblast_key": DISTRICT_CONFIG.get(district, {}).get("oblast", district),
+                        "type": event_type,
+                        "message_link": source,
                     }
                 )
             return history

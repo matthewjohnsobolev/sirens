@@ -60,7 +60,7 @@ with per_snapshot as (
         date,
         date::date as day_date,
         sum(subscribers) as total
-    from sirens.subscribers
+    from sirens.subscriber_snapshots
     group by 1, 2
 ),
 latest_per_day as (
@@ -112,7 +112,6 @@ left join week_ago on true
 <BigValue
     data={headline}
     value=total
-    fmt="#,##0"
     title="Total Network Audience"
     comparison=change_1d_pct
     comparisonFmt=pct1
@@ -145,7 +144,7 @@ with per_snapshot as (
         date,
         date::date as day_date,
         sum(subscribers) as total
-    from sirens.subscribers
+    from sirens.subscriber_snapshots
     group by 1, 2
 ),
 latest_per_day as (
@@ -245,12 +244,12 @@ order by 1
 ```sql movement_window
 with current_run as (
     select max(date) as current_time
-    from sirens.subscribers
+    from sirens.subscriber_snapshots
 ),
 previous_day_run as (
     select coalesce(
-        (select max(date) from sirens.subscribers where date::date < (select current_time::date from current_run)),
-        (select min(date) from sirens.subscribers)
+        (select max(date) from sirens.subscriber_snapshots where date::date < (select current_time::date from current_run)),
+        (select min(date) from sirens.subscriber_snapshots)
     ) as prev_time
     from current_run
 )
@@ -265,23 +264,23 @@ Net subscriber change per channel between {movement_window[0].earlier} and {move
 ```sql movement
 with current_run as (
     select max(date) as current_time
-    from sirens.subscribers
+    from sirens.subscriber_snapshots
 ),
 previous_day_run as (
     select coalesce(
-        (select max(date) from sirens.subscribers where date::date < (select current_time::date from current_run)),
-        (select min(date) from sirens.subscribers)
+        (select max(date) from sirens.subscriber_snapshots where date::date < (select current_time::date from current_run)),
+        (select min(date) from sirens.subscriber_snapshots)
     ) as prev_time
     from current_run
 ),
 later_counts as (
     select display_name, subscribers
-    from sirens.subscribers, current_run
+    from sirens.subscriber_snapshots, current_run
     where date = current_run.current_time
 ),
 earlier_counts as (
     select display_name, subscribers
-    from sirens.subscribers, previous_day_run
+    from sirens.subscriber_snapshots, previous_day_run
     where date = previous_day_run.prev_time
 )
 select
@@ -324,7 +323,7 @@ with day_runs as (
     select
         date::date as day_date,
         max(date) as run_time
-    from sirens.subscribers
+    from sirens.subscriber_snapshots
     group by 1
 ),
 current_run as (
@@ -342,12 +341,12 @@ week_ago_run as (
 ),
 later_counts as (
     select display_name, subscribers
-    from sirens.subscribers, current_run
+    from sirens.subscriber_snapshots, current_run
     where date = current_run.run_time
 ),
 earlier_counts as (
     select display_name, subscribers
-    from sirens.subscribers, week_ago_run
+    from sirens.subscriber_snapshots, week_ago_run
     where date = week_ago_run.run_time
 )
 select

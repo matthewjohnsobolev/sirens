@@ -142,10 +142,9 @@ async def test_store_writes_one_row_per_channel(bi_pool):
     await store(pool, counts)
 
     sql, rows = conn.executemany.await_args.args
-    assert "INSERT INTO subscribers" in sql
-    assert [(r[0], r[1], r[2]) for r in rows] == [("kyiv", 111, 10), ("lviv", 222, 20)]
-    assert all(isinstance(r[3], datetime.date) for r in rows)
-    assert all(isinstance(r[4], datetime.datetime) for r in rows)
+    assert "INSERT INTO subscriber_snapshots" in sql
+    assert [(r[0], r[1], r[3]) for r in rows] == [(111, "kyiv", 10), (222, "lviv", 20)]
+    assert all(isinstance(r[2], datetime.datetime) for r in rows)
 
 
 @pytest.mark.asyncio
@@ -155,7 +154,7 @@ async def test_store_overwrites_the_same_day_instead_of_duplicating(bi_pool):
     await store(pool, [ChannelCount("kyiv", 111, 10)])
 
     sql = conn.executemany.await_args.args[0]
-    assert "ON CONFLICT (channel_key, time) DO UPDATE" in sql
+    assert "ON CONFLICT (channel_id, collected_at) DO UPDATE" in sql
 
 
 @pytest.mark.asyncio
@@ -229,8 +228,8 @@ async def test_export_stats_csv(bi_pool):
     pool, conn = bi_pool
     now = datetime.datetime(2026, 8, 19, 12, 0, 0)
     conn.fetch.return_value = [
-        {"channel_key": "kyiv", "time": now, "date": now.date(), "subscribers": 100},
-        {"channel_key": "custom", "date": now.date(), "subscribers": 50},
+        {"channel": "kyiv", "collected_at": now, "subscriber_count": 100},
+        {"channel": "custom", "collected_at": now.date(), "subscriber_count": 50},
     ]
 
     from bi.main import export_stats_csv
@@ -268,7 +267,7 @@ def test_upload_to_r2_uploads_when_configured(monkeypatch):
     s3.put_object.assert_called_once()
     kwargs = s3.put_object.call_args.kwargs
     assert kwargs["Bucket"] == "test-bucket"
-    assert kwargs["Key"] == "subscribers.csv"
+    assert kwargs["Key"] == "subscriber_snapshots.csv"
 
 
 def test_trigger_dashboard_build_skips_when_not_configured(monkeypatch, caplog):

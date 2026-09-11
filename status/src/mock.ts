@@ -114,22 +114,20 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
     let headline = "Усе працює";
     const lastAlertHour = ((nowKyiv.hour - 4 + 24) % 24).toString().padStart(2, "0");
     const lastAlertMin = "12";
-    let subtitle = `Останнє сповіщення ми надіслали сьогодні о ${lastAlertHour}:${lastAlertMin} у Білій Церкві. Відтоді тривог чи відбоїв не було.`;
-
-    const outageTimeStr = `з ${((nowKyiv.hour - 2 + 24) % 24).toString().padStart(2, "0")}:00`;
+    let subtitle = `Усі наші системи працюють у штатному режимі. Останнє сповіщення ми надіслали сьогодні о ${lastAlertHour}:${lastAlertMin} у Білій Церкві. Нових тривог чи відбоїв відтоді не було.`;
 
     if (normScenario === "unknown") {
         headline = "Немає даних";
         subtitle = "";
     } else if (normScenario === "system_down") {
         headline = "Система не працює";
-        subtitle = `Не працюють ${outageTimeStr}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
+        subtitle = `Ми тимчасово не надсилаємо сповіщення й не оновлюємо дані. Не покладайтеся зараз на нашу систему — використовуйте застосунок "Повітряна тривога"`;
     } else if (normScenario === "service_down") {
         headline = "Телеграм-канали не працюють";
-        subtitle = `Не працюють ${outageTimeStr}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
+        subtitle = `Ми тимчасово не можемо надсилати сповіщення, але дані про тривоги ми отримуємо без перебоїв. Перевіряйте тривоги на нашій мапі або в застосунку "Повітряна тривога"`;
     } else if (normScenario === "map_api_down" || normScenario === "map_down") {
         headline = "Мапа тривог не працює";
-        subtitle = `Мапа недоступна ${outageTimeStr}. Розсилка в Telegram надходить як зазвичай.`;
+        subtitle = `У нас тимчасово проблеми з сайтом: мапа тривог може не відкриватися або показувати застарілі дані. Сповіщення ми надсилаємо без перебоїв. Актуальну мапу тривог можна переглянути на alerts.in.ua`;
     } else if (normScenario === "mnt") {
         headline = "Технічні роботи";
         subtitle = "Тривають планові технічні роботи.";

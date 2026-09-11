@@ -463,7 +463,7 @@ export async function computeStatusData(env: Env) {
     }
 
     let headline = "Усе працює";
-    let subtitle = "Розсилка в Telegram надходить як зазвичай.";
+    let subtitle = "Усі наші системи працюють у штатному режимі.";
 
     if (hasMaintenance) {
         headline = activeMaintenance?.headline || "Технічні роботи";
@@ -472,31 +472,14 @@ export async function computeStatusData(env: Env) {
         headline = "Немає даних";
         subtitle = "";
     } else if (!telegramAlive && !webAlive) {
-        const allFailing = components.filter(c => isFail(c));
-        const dts = allFailing.map(c => c.outage_since).filter(Boolean);
-        const earliest = dts.length ? dts.sort()[0] : null;
         headline = "Система не працює";
-        subtitle = `Не працюють${formatSince(earliest)}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
+        subtitle = `Ми тимчасово не надсилаємо сповіщення й не оновлюємо дані. Не покладайтеся зараз на нашу систему — використовуйте застосунок "Повітряна тривога"`;
     } else if (!telegramAlive && webAlive) {
-        const tgFailing = [compSource, compBroadcast].filter(c => isFail(c));
-        const dts = tgFailing.map(c => c?.outage_since).filter(Boolean);
-        const earliest = dts.length ? dts.sort()[0] : null;
         headline = "Телеграм-канали не працюють";
-        subtitle = `Не працюють${formatSince(earliest)}. Ми вже лагодимо. Поки що орієнтуйтесь на офіційний канал вашої області.`;
+        subtitle = `Ми тимчасово не можемо надсилати сповіщення, але дані про тривоги ми отримуємо без перебоїв. Перевіряйте тривоги на нашій мапі або в застосунку "Повітряна тривога"`;
     } else if (telegramAlive && !webAlive) {
-        const webFailing = [compMap, compApi].filter(c => isFail(c));
-        const dts = webFailing.map(c => c?.outage_since).filter(Boolean);
-        const earliest = dts.length ? dts.sort()[0] : null;
-        const timeStr = formatSince(earliest);
-
         headline = "Мапа тривог не працює";
-        if (mapFail && apiFail) {
-            subtitle = `Мапа та API недоступні${timeStr}. Розсилка в Telegram надходить як зазвичай.`;
-        } else if (mapFail) {
-            subtitle = `Мапа недоступна${timeStr}. Розсилка в Telegram надходить як зазвичай.`;
-        } else {
-            subtitle = `API недоступний${timeStr}. Розсилка в Telegram надходить як зазвичай.`;
-        }
+        subtitle = `У нас тимчасово проблеми з сайтом: мапа тривог може не відкриватися або показувати застарілі дані. Сповіщення ми надсилаємо без перебоїв. Актуальну мапу тривог можна переглянути на alerts.in.ua`;
     } else {
         headline = "Усе працює";
         if (lastAlertDt && !isNaN(lastAlertDt.getTime())) {
@@ -510,9 +493,9 @@ export async function computeStatusData(env: Env) {
                 (telemetry?.last_alert as any)?.location_title
             );
             const locSuffix = locPhrase ? ` ${locPhrase}` : "";
-            subtitle = `Останнє сповіщення ми надіслали ${dateStr} о ${hh}:${mm}${locSuffix}. Відтоді тривог чи відбоїв не було.`;
+            subtitle = `Усі наші системи працюють у штатному режимі. Останнє сповіщення ми надіслали ${dateStr} о ${hh}:${mm}${locSuffix}. Нових тривог чи відбоїв відтоді не було.`;
         } else {
-            subtitle = "Розсилка в Telegram надходить як зазвичай.";
+            subtitle = "Усі наші системи працюють у штатному режимі.";
         }
     }
 

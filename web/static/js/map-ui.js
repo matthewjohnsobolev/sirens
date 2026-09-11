@@ -37,10 +37,10 @@
     var STATES = {
         none: { state: 'ok', word: 'Все працює', loud: false },
         minor: { state: 'minor', word: 'Часткові збої', loud: false },
-        major: { state: 'down', word: 'Не працює', loud: true },
-        critical: { state: 'down', word: 'Не працює', loud: true },
+        major: { state: 'down', word: 'Дані не оновлюються', loud: true },
+        critical: { state: 'down', word: 'Дані не оновлюються', loud: true },
         maintenance: { state: 'mnt', word: 'Планові роботи', loud: false },
-        unknown: { state: 'nodata', word: 'Немає даних', loud: true }
+        unknown: { state: 'nodata', word: 'Дані не оновлюються', loud: true }
     };
     var UNKNOWN = STATES.unknown;
 
@@ -379,7 +379,7 @@
 
     // Каскад статусних плашок:
     // 1. Пріоритет 1 (Проблема з інтернетом у клієнта): НЕМАЄ ЗВ'ЯЗКУ / ЗВ'ЯЗОК ВІДНОВЛЕНО
-    // 2. Пріоритет 2 (Застигання даних на бекенді): ДАНІ НЕ ОНОВЛЮЮТЬСЯ
+    // 2. Пріоритет 2 (Проблема сервера або застигання даних): ДАНІ НЕ ОНОВЛЮЮТЬСЯ
     function alarmFor(info) {
         if (!isClientOnline) {
             return { state: 'offline', text: 'НЕМАЄ ЗВ\'ЯЗКУ' };
@@ -390,13 +390,8 @@
         }
 
         var syncIso = telemetryAt(statusData);
-        if (isStale(syncIso)) {
+        if (isStale(syncIso) || info.state === 'down' || info.loud) {
             return { state: 'down', text: 'ДАНІ НЕ ОНОВЛЮЮТЬСЯ' };
-        }
-
-        if (info.loud) {
-            var headline = statusData && statusData.status ? statusData.status.headline : null;
-            return { state: info.state, text: headline || info.word };
         }
 
         return null;

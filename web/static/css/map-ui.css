@@ -456,10 +456,10 @@
     box-sizing: border-box;
     display: inline-flex;
     align-items: center;
-    gap: var(--gap);
-    height: var(--control-h-map);
-    padding: 0 14px;
-    border-radius: var(--radius-control);
+    gap: var(--gap-tight);
+    height: var(--control-h-sm, 32px);
+    padding: 0 10px;
+    border-radius: var(--radius-control-sm, 8px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     /* Флекс-елемент за замовчуванням не вужчий за свій nowrap-текст, а
        min-width сильніший за max-width — без нуля чіп не стискався б і
@@ -533,11 +533,11 @@
     outline-offset: 2px;
 }
 
-/* Крапка та сама, що на плитці (8px). Тут вона не дихає: чіпу є що сказати словами. */
+/* Крапка узгоджена з тултипом статус-сторінки (6px). Тут вона не дихає: чіпу є що сказати словами. */
 .map-chip-dot {
     flex: none;
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--status-gray-bar);
     transition: background-color var(--motion);

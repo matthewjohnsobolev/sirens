@@ -11,6 +11,10 @@
     z-index: var(--z-map-ui);
 }
 
+.leaflet-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
 /* Відступ від краю задає контейнер кута, а не кожен контрол: нова кнопка
    просто стає в стопку й нічого не зсуває. Внизу лишається сама атрибуція
    Leaflet — їй власні відступи не потрібні. */
@@ -44,7 +48,7 @@
     flex-direction: row;
     align-items: center;
     gap: var(--gap);
-    padding: 0 0 max(var(--map-inset), env(safe-area-inset-bottom))
+    padding: 0 0 max(var(--map-inset), env(safe-area-inset-bottom, 16px))
              max(var(--map-inset), env(safe-area-inset-left));
 }
 
@@ -59,7 +63,7 @@
    висоті й шанують безпечну зону (safe area). */
 .leaflet-bottom.leaflet-right {
     padding: 0 max(var(--map-inset), env(safe-area-inset-right))
-             max(var(--map-inset), env(safe-area-inset-bottom)) 0;
+             max(var(--map-inset), env(safe-area-inset-bottom, 16px)) 0;
 }
 
 /* Кожна кнопка — окремий контрол Leaflet, тож стопку тримає той самий

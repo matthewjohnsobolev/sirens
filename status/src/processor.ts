@@ -332,8 +332,7 @@ export async function computeStatusData(env: Env) {
             downSeconds += down;
 
             let state = "ok";
-            if (hasDownInterval) state = "down";
-            else if (down > 0) state = "minor";
+            if (hasDownInterval || down > 0) state = "down";
             else if (isMntHour) state = "mnt";
 
             const parts = formatHourParts(dateIso, state, spec.key);
@@ -347,7 +346,7 @@ export async function computeStatusData(env: Env) {
         }
 
         if (probe.live && hours.length > 0) {
-            const severity = (s: string) => (s === "down" || s === "major") ? 2 : s === "minor" ? 1 : 0;
+            const severity = (s: string) => (s === "down" || s === "major" || s === "minor") ? 2 : 0;
             const computed = hours[hours.length - 1].state;
             let finalState = computed;
             if (probe.live === "mnt" || computed === "mnt") {
@@ -355,7 +354,7 @@ export async function computeStatusData(env: Env) {
             } else if (probe.live === "nodata" || computed === "nodata") {
                 if (computed === "nodata") finalState = probe.live;
             } else if (severity(probe.live) > severity(computed)) {
-                finalState = probe.live === "major" ? "down" : probe.live;
+                finalState = (probe.live === "major" || probe.live === "minor") ? "down" : probe.live;
             }
             hours[hours.length - 1].state = finalState;
             const updatedParts = formatHourParts(hours[hours.length - 1].date, finalState, spec.key);
@@ -462,8 +461,8 @@ export async function computeStatusData(env: Env) {
         }
     }
 
-    let headline = "Усе працює";
-    let subtitle = "Усі наші системи працюють у штатному режимі.";
+    let headline = "Усе працює без збоїв";
+    let subtitle = "Дані оновлюються, сповіщення надсилаються.";
 
     if (hasMaintenance) {
         headline = activeMaintenance?.headline || "Технічні роботи";
@@ -472,19 +471,19 @@ export async function computeStatusData(env: Env) {
         headline = "Немає даних";
         subtitle = "";
     } else if (!telegramAlive && !webAlive) {
-        headline = "Система не працює";
-        subtitle = `Ми тимчасово не надсилаємо сповіщення й не оновлюємо дані. Не покладайтеся зараз на нашу систему — використовуйте застосунок "Повітряна тривога"`;
+        headline = "Критичний збій системи";
+        subtitle = "Дані не оновлюються, сповіщення не надсилаються. Не покладайтеся зараз на нашу систему. Використовуйте офіційний застосунок «Повітряна тривога».";
     } else if (!telegramAlive && webAlive) {
-        headline = "Телеграм-канали не працюють";
-        subtitle = `Ми тимчасово не можемо надсилати сповіщення, але дані про тривоги ми отримуємо без перебоїв. Перевіряйте тривоги на нашій мапі або в застосунку "Повітряна тривога"`;
+        headline = "Збій Telegram-каналів";
+        subtitle = "Дані оновлюються, але сповіщення не надсилаються. Не покладайтеся зараз на наші канали. Використовуйте офіційний застосунок «Повітряна тривога».";
     } else if (telegramAlive && !webAlive) {
-        headline = "Мапа тривог не працює";
-        subtitle = `У нас тимчасово проблеми з сайтом: мапа тривог може не відкриватися або показувати застарілі дані. Сповіщення ми надсилаємо без перебоїв. Актуальну мапу тривог можна переглянути на alerts.in.ua`;
+        headline = "Збій мапи тривог";
+        subtitle = "Сповіщення в Telegram надсилаються без перебоїв, але мапа не відкривається або показує застарілі дані. Використовуйте офіційну мапу [map.ukrainealarm.com](http://map.ukrainealarm.com/).";
     } else {
-        headline = "Усе працює";
+        headline = "Усе працює без збоїв";
         if (lastAlertDt && !isNaN(lastAlertDt.getTime())) {
             const p = getKyivParts(lastAlertDt);
-            const dateStr = relativeDayLabel(p, nowKyiv) ?? `${p.day} ${UK_MONTHS[p.month]}`;
+            const dateStr = relativeDayLabel(p, nowKyiv);
             const hh = p.hour.toString().padStart(2, '0');
             const mm = p.minute.toString().padStart(2, '0');
             const locPhrase = telemetry?.last_alert?.locative || formatLocationLocative(
@@ -493,9 +492,12 @@ export async function computeStatusData(env: Env) {
                 (telemetry?.last_alert as any)?.location_title
             );
             const locSuffix = locPhrase ? ` ${locPhrase}` : "";
-            subtitle = `Усі наші системи працюють у штатному режимі. Останнє сповіщення ми надіслали ${dateStr} о ${hh}:${mm}${locSuffix}. Нових тривог чи відбоїв відтоді не було.`;
+            const timePrefix = (dateStr && dateStr !== "сьогодні")
+                ? `${dateStr} о ${hh}:${mm}`
+                : `о ${hh}:${mm}`;
+            subtitle = `Дані оновлюються, сповіщення надсилаються. Останнє сповіщення надіслано ${timePrefix}${locSuffix}. Нових тривог чи відбоїв відтоді не було.`;
         } else {
-            subtitle = "Усі наші системи працюють у штатному режимі.";
+            subtitle = "Дані оновлюються, сповіщення надсилаються.";
         }
     }
 

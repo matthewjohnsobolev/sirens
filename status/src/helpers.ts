@@ -6,7 +6,7 @@ export const UK_MONTHS = [
 // [однина, множина] — форма підбирається під назву компонента.
 // Наразі всі назви компонентів однинні, тож множина не використовується.
 export const STATUS_WORDS: Record<string, [string, string]> = {
-    "ok": ["в нормі", "в нормі"],
+    "ok": ["без збоїв", "без збоїв"],
     "minor": ["збій", "збої"],
     "major": ["збій", "збої"],
     "down": ["збій", "збої"],
@@ -172,14 +172,13 @@ export function formatHourTitle(isoDate: string, state: string, componentKey?: s
 export function summarizeHours(items: any[]): string {
     const counts: Record<string, number> = {};
     for (const item of items) {
-        const state = item.state === "major" ? "down" : (item.state || "nodata");
+        const state = (item.state === "major" || item.state === "minor") ? "down" : (item.state || "nodata");
         counts[state] = (counts[state] || 0) + 1;
     }
 
     const order = [
-        ["ok", "працює"],
-        ["minor", "з частковими збоями"],
-        ["down", "з тривалими збоями"],
+        ["ok", "без збоїв"],
+        ["down", "зі збоями"],
         ["mnt", "планові роботи"],
         ["nodata", "без даних"],
     ];

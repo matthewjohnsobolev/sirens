@@ -5,7 +5,7 @@
   // беремо саму картку й міняємо її на місці. Тож прокрутка, фокус і
   // масштаб лишаються там, де їх лишив читач, — рівно як на мапі, де те
   // саме робить SirensThreats.
-  const REFRESH_MS = 60000;
+  const REFRESH_MS = 30000;
 
   // Такт частий навмисне: він лише дивиться на годинник, а справжній
   // запит іде раз на REFRESH_MS. Дрібний крок потрібен, щоб оновлення не
@@ -34,7 +34,7 @@
       tip.className = 'tip';
       tip.setAttribute('role', 'tooltip');
       tip.hidden = true;
-      tip.innerHTML = '<span class="tip-time"></span><span class="tip-state"><span class="tip-dot" data-state="ok"></span><span class="tip-text"></span></span>';
+      tip.innerHTML = '<span class="tip-time"></span><span class="tip-dot" data-state="ok"></span><span class="tip-text"></span>';
     }
     const root = document.body || document.documentElement;
     if (root && tip.parentElement !== root) {
@@ -181,8 +181,12 @@
       timeEl.textContent = timeText;
       textEl.textContent = stateText;
       dotEl.dataset.state = state;
+      dotEl.hidden = false;
+      textEl.hidden = false;
     } else {
       if (timeEl) timeEl.textContent = text || '';
+      if (dotEl) dotEl.hidden = true;
+      if (textEl) textEl.hidden = true;
     }
 
     tip.hidden = false;
@@ -379,16 +383,96 @@
   // Міняємо вміст картки, а не всю сторінку: <head>, шапка й підвал на
   // статус-сторінці не змінюються ніколи, а перемальовувати їх означало б
   // на кадр згасити логотип і збити прокрутку.
+  // М'яке автооновлення вмісту картки: якщо дані не змінилися, DOM не
+  // чіпаємо взагалі; якщо змінилися — оновлюємо вузли на місці без знищення
+  // картки, зриву фокусу, прокрутки чи активного тултипа.
   function swap(html) {
     const fresh = new DOMParser().parseFromString(html, 'text/html');
     const card = fresh.getElementById('card');
     const current = document.getElementById('card');
     if (!card || !current) return false;
 
-    // Смужки, на які показує тултип, зараз зникнуть з DOM — інакше він
-    // лишиться висіти над порожнім місцем.
-    hideTip();
-    current.innerHTML = card.innerHTML;
+    // Якщо нічого не змінилося — жодних зайвих рухів DOM
+    if (card.innerHTML.trim() === current.innerHTML.trim()) {
+      return false;
+    }
+
+    // Поки читач тримає тултип, підміняти під ним смужки не можна
+    if (currentBar || activeTouchBars) {
+      due = Date.now() + BUSY_MS;
+      return false;
+    }
+
+    // Оновлюємо плашку notice (CSS-перехід плавно змінить колір)
+    const freshNotice = card.querySelector('.notice');
+    const currentNotice = current.querySelector('.notice');
+    if (freshNotice && currentNotice && freshNotice.outerHTML !== currentNotice.outerHTML) {
+      currentNotice.className = freshNotice.className;
+      currentNotice.innerHTML = freshNotice.innerHTML;
+    }
+
+    // Оновлюємо компоненти та смужки на місці
+    const freshList = card.querySelector('#list');
+    const currentList = current.querySelector('#list');
+    if (freshList && currentList) {
+      const freshComps = freshList.querySelectorAll('.comp');
+      const currentComps = currentList.querySelectorAll('.comp');
+      let canPatchInPlace = freshComps.length === currentComps.length;
+      if (canPatchInPlace) {
+        for (let i = 0; i < freshComps.length; i++) {
+          if (freshComps[i].dataset.key !== currentComps[i].dataset.key) {
+            canPatchInPlace = false;
+            break;
+          }
+        }
+      }
+
+      if (canPatchInPlace) {
+        for (let i = 0; i < freshComps.length; i++) {
+          const fc = freshComps[i];
+          const cc = currentComps[i];
+          if (fc.innerHTML !== cc.innerHTML) {
+            const fHead = fc.querySelector('.comp-head');
+            const cHead = cc.querySelector('.comp-head');
+            if (fHead && cHead && fHead.innerHTML !== cHead.innerHTML) {
+              cHead.innerHTML = fHead.innerHTML;
+            }
+
+            const fBars = fc.querySelectorAll('.bar');
+            const cBars = cc.querySelectorAll('.bar');
+            if (fBars.length === cBars.length) {
+              for (let b = 0; b < fBars.length; b++) {
+                const fb = fBars[b];
+                const cb = cBars[b];
+                if (cb.className !== fb.className) cb.className = fb.className;
+                if (cb.dataset.state !== fb.dataset.state) cb.dataset.state = fb.dataset.state;
+                if (fb.dataset.time) cb.dataset.time = fb.dataset.time;
+                if (fb.dataset.statusText) cb.dataset.statusText = fb.dataset.statusText;
+                if (fb.dataset.title) cb.dataset.title = fb.dataset.title;
+                const fbAria = fb.getAttribute('aria-label');
+                if (fbAria && cb.getAttribute('aria-label') !== fbAria) {
+                  cb.setAttribute('aria-label', fbAria);
+                }
+              }
+            } else {
+              const fBarsWrap = fc.querySelector('.bars');
+              const cBarsWrap = cc.querySelector('.bars');
+              if (fBarsWrap && cBarsWrap) cBarsWrap.innerHTML = fBarsWrap.innerHTML;
+            }
+          }
+        }
+      } else {
+        currentList.innerHTML = freshList.innerHTML;
+      }
+    }
+
+    // Оновлюємо блок заклику про збій
+    const freshAction = card.querySelector('.card-action');
+    const currentAction = current.querySelector('.card-action');
+    if (freshAction && currentAction && freshAction.innerHTML !== currentAction.innerHTML) {
+      currentAction.innerHTML = freshAction.innerHTML;
+    }
+
     initBars();
     return true;
   }
@@ -402,7 +486,7 @@
       ? window.setTimeout(function() { controller.abort(); }, TIMEOUT_MS)
       : null;
 
-    // no-store: питати сервер і отримати у відповідь власну хвилинну копію
+    // no-store: питати сервер і отримати у відповідь власну копію
     // — те саме, що не питати.
     fetch(window.location.href, {
       cache: 'no-store',
@@ -419,8 +503,7 @@
       })
       .catch(function() {
         // Провал не показуємо: сторінка лишається тією, що була, а
-        // наступний такт спробує ще раз. Кричати про мережу на сторінці
-        // про збої — сказати про збій, якого може й не бути.
+        // наступний такт спробує ще раз.
       })
       .finally(function() {
         window.clearTimeout(cutoff);
@@ -429,17 +512,32 @@
       });
   }
 
-  const tick = function() {
-    if (document.visibilityState !== 'visible') return;
+  function pollIfDue() {
+    if (document.hidden) return;
     if (Date.now() < due) return;
     if (currentBar || activeTouchBars) {
       due = Date.now() + BUSY_MS;
       return;
     }
     refresh();
-  };
+  }
 
-  window.setInterval(tick, TICK_MS);
+  window.setInterval(pollIfDue, TICK_MS);
+
+  // Щойно на вкладку повернулись — перевіряємо одразу, не чекаючи такту
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) pollIfDue();
+  });
+
+  // Навігація в історії чи відновлення з bfcache
+  window.addEventListener('pageshow', function() {
+    if (!document.hidden) pollIfDue();
+  });
+
+  // Повернення мережі
+  window.addEventListener('online', function() {
+    if (!document.hidden) pollIfDue();
+  });
 
   // У режимі standalone утримуємо переходи між доменами застосунку
   // (sirens.live, status.sirens.live) всередині вікна PWA без відкриття Mobile Safari.

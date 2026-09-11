@@ -112,6 +112,7 @@ left join week_ago on true
 <BigValue
     data={headline}
     value=total
+    fmt="#,##0"
     title="Total Network Audience"
     comparison=change_1d_pct
     comparisonFmt=pct1

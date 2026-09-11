@@ -11,6 +11,7 @@
   "lang": "uk",
   "scope_extensions": [
     {
+      "type": "origin",
       "origin": "https://status.sirens.live"
     }
   ],

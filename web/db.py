@@ -254,74 +254,7 @@ def ensure_pg_tables() -> None:
                             ALTER TABLE subscriber_snapshots RENAME COLUMN channel_code TO channel;
                         END IF;
 
-                        -- If channel_stats exists, rename to subscribers for migration
-                        IF EXISTS (
-                            SELECT 1 FROM information_schema.tables
-                            WHERE table_name = 'channel_stats'
-                        ) AND NOT EXISTS (
-                            SELECT 1 FROM information_schema.tables
-                            WHERE table_name = 'subscribers'
-                        ) THEN
-                            ALTER TABLE channel_stats RENAME TO subscribers;
-                        END IF;
-
-                        -- If subscribers is a base table (legacy), migrate data to subscriber_snapshots
-                        IF EXISTS (
-                            SELECT 1 FROM information_schema.tables
-                            WHERE table_name = 'subscribers' AND table_type = 'BASE TABLE'
-                        ) THEN
-                            -- Determine timestamp expression based on available columns
-                            DECLARE
-                                ts_expr TEXT;
-                                ch_expr TEXT;
-                                cnt_expr TEXT;
-                            BEGIN
-                                -- Timestamp: prefer 'time', then 'collected_at', then fallback to 'date'
-                                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subscribers' AND column_name='time') THEN
-                                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subscribers' AND column_name='date') THEN
-                                        ts_expr := 'COALESCE(time, (date::text || '' 00:00:00'')::timestamp) AT TIME ZONE ''Europe/Kyiv''';
-                                    ELSE
-                                        ts_expr := 'time AT TIME ZONE ''Europe/Kyiv''';
-                                    END IF;
-                                ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subscribers' AND column_name='collected_at') THEN
-                                    ts_expr := 'collected_at';
-                                ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subscribers' AND column_name='date') THEN
-                                    ts_expr := '(date::text || '' 00:00:00'')::timestamp AT TIME ZONE ''Europe/Kyiv''';
-                                ELSE
-                                    ts_expr := 'NOW()';
-                                END IF;
-
-                                -- Channel name: prefer 'channel_key', then 'channel'
-                                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subscribers' AND column_name='channel_key') THEN
-                                    ch_expr := 'COALESCE(channel_key, '''')';
-                                ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subscribers' AND column_name='channel') THEN
-                                    ch_expr := 'COALESCE(channel, '''')';
-                                ELSE
-                                    ch_expr := '''''';
-                                END IF;
-
-                                -- Subscriber count: prefer 'subscribers', then 'subscriber_count'
-                                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subscribers' AND column_name='subscribers') THEN
-                                    cnt_expr := 'GREATEST(COALESCE(subscribers, 0), 0)';
-                                ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subscribers' AND column_name='subscriber_count') THEN
-                                    cnt_expr := 'GREATEST(COALESCE(subscriber_count, 0), 0)';
-                                ELSE
-                                    cnt_expr := '0';
-                                END IF;
-
-                                EXECUTE format(
-                                    'INSERT INTO subscriber_snapshots (channel_id, channel, collected_at, subscriber_count)
-                                     SELECT channel_id, %s, %s, %s
-                                     FROM subscribers WHERE channel_id IS NOT NULL
-                                     ON CONFLICT (channel_id, collected_at) DO UPDATE
-                                         SET subscriber_count = EXCLUDED.subscriber_count,
-                                             channel = EXCLUDED.channel',
-                                    ch_expr, ts_expr, cnt_expr
-                                );
-                                DROP TABLE subscribers CASCADE;
-                            END;
-                        END IF;
-                        -- Drop view if it was created previously
+                        -- Drop legacy view if it was created previously
                         IF EXISTS (
                             SELECT 1 FROM information_schema.views
                             WHERE table_name = 'subscribers'
@@ -330,6 +263,69 @@ def ensure_pg_tables() -> None:
                         END IF;
                     END $$;
                 """)
+
+                # Check if channel_stats or subscribers table exists for legacy migration
+                cur.execute("""
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_name = 'channel_stats' AND table_type = 'BASE TABLE'
+                """)
+                if cur.fetchone() is not None:
+                    cur.execute("""
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_name = 'subscribers' AND table_type = 'BASE TABLE'
+                    """)
+                    if cur.fetchone() is None:
+                        cur.execute("ALTER TABLE channel_stats RENAME TO subscribers")
+
+                cur.execute("""
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_name = 'subscribers' AND table_type = 'BASE TABLE'
+                """)
+                if cur.fetchone() is not None:
+                    cur.execute("""
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_name = 'subscribers'
+                    """)
+                    cols = {r[0] for r in cur.fetchall()}
+
+                    if "time" in cols and "date" in cols:
+                        ts_expr = "COALESCE(time, (date::text || ' 00:00:00')::timestamp) AT TIME ZONE 'Europe/Kyiv'"
+                    elif "time" in cols:
+                        ts_expr = "time AT TIME ZONE 'Europe/Kyiv'"
+                    elif "collected_at" in cols:
+                        ts_expr = "collected_at"
+                    elif "date" in cols:
+                        ts_expr = (
+                            "(date::text || ' 00:00:00')::timestamp AT TIME ZONE 'Europe/Kyiv'"
+                        )
+                    else:
+                        ts_expr = "NOW()"
+
+                    if "channel_key" in cols:
+                        ch_expr = "COALESCE(channel_key, '')"
+                    elif "channel" in cols:
+                        ch_expr = "COALESCE(channel, '')"
+                    else:
+                        ch_expr = "''"
+
+                    if "subscribers" in cols:
+                        cnt_expr = "GREATEST(COALESCE(subscribers, 0), 0)"
+                    elif "subscriber_count" in cols:
+                        cnt_expr = "GREATEST(COALESCE(subscriber_count, 0), 0)"
+                    else:
+                        cnt_expr = "0"
+
+                    ch_id_expr = "channel_id" if "channel_id" in cols else "0"
+
+                    cur.execute(f"""
+                        INSERT INTO subscriber_snapshots (channel_id, channel, collected_at, subscriber_count)
+                        SELECT {ch_id_expr}, {ch_expr}, {ts_expr}, {cnt_expr}
+                        FROM subscribers WHERE channel_id IS NOT NULL
+                        ON CONFLICT (channel_id, collected_at) DO UPDATE
+                            SET subscriber_count = EXCLUDED.subscriber_count,
+                                channel = EXCLUDED.channel
+                    """)
+                    cur.execute("DROP TABLE subscribers CASCADE")
             conn.commit()
     except Exception:
         log.exception("Failed to ensure the database schema exists")

@@ -207,23 +207,23 @@
 /* Скролбар під хрестиком попапа: винесений у правий відступ (margin-right: -10px)
    прямо під кнопку закриття попапа, щоб плашки й текст лишалися окремим блоком.
    На великих екранах борозна скролбара тонка (2px) і проходить по центру під
-   ширшим бігунком (6px). На мобільних екранах (<=600px) діє класична акуратна
+   акуратним бігунком (4px). На мобільних екранах (<=600px) діє класична акуратна
    борозенка шириною 4px, усередині якої рухається бігунок 4px. */
 .scrollable-content::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
 }
 
 .scrollable-content::-webkit-scrollbar-track {
     background: #E8E8E8;
     background-clip: padding-box;
-    border-left: 2px solid transparent;
-    border-right: 2px solid transparent;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
     border-radius: 1px;
 }
 
 .scrollable-content::-webkit-scrollbar-thumb {
     background: #A6A6A6;
-    border-radius: 3px;
+    border-radius: 2px;
     min-height: 24px;
 }
 
@@ -259,9 +259,9 @@
     box-sizing: border-box;
     position: absolute;
     top: 0;
-    right: -8px;
+    right: -7px;
     bottom: 0;
-    width: 6px;
+    width: 4px;
     background: transparent;
     opacity: 0;
     transition: opacity 0.14s ease-out;
@@ -279,7 +279,7 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    left: 2px;
+    left: 1px;
     width: 2px;
     background: #E8E8E8;
     border-radius: 1px;
@@ -299,10 +299,10 @@
     position: absolute;
     top: 0;
     left: 0;
-    width: 6px;
+    width: 4px;
     min-height: 24px;
     background: #A6A6A6;
-    border-radius: 3px;
+    border-radius: 2px;
     z-index: 1;
     pointer-events: none;
     touch-action: none;

@@ -562,7 +562,8 @@
 /* ── Атрибуція мапи ─────────────────────────────────────────────────── */
 
 /* Плашка атрибуції зібрана з токенів системи: біле поле, тонка волосінь,
-   радіус контрола (--radius-control) та тінь картки (--shadow-card) —
+   радіус вкладеного елемента (--radius-nested, пропорційне заокруглення кутів
+   без перетворення плашки на овал) та тінь картки (--shadow-card) —
    ті самі кольори, волосінь і тіні, що й для решти кнопок на головній мапі.
    Розмір компактний, щоб не перевантажувати кут мапи. */
 .leaflet-container .leaflet-control-attribution {
@@ -574,7 +575,7 @@
     padding: 2.5px 8px;
     background: var(--surface);
     border: 1px solid var(--hairline);
-    border-radius: var(--radius-control);
+    border-radius: var(--radius-nested);
     box-shadow: var(--shadow-card);
     font-family: var(--font);
     font-size: var(--text-secondary);
@@ -582,15 +583,6 @@
     line-height: 1.35;
     color: var(--ink-muted);
     user-select: none;
-    transition: background-color var(--motion),
-                border-color var(--motion),
-                box-shadow var(--motion);
-}
-
-.leaflet-container .leaflet-control-attribution:hover {
-    background: var(--surface-hover);
-    border-color: var(--hairline-hover);
-    box-shadow: var(--shadow-card);
 }
 
 /* Посилання в атрибуції: спокійний сірий тон замість синього Leaflet,
@@ -667,12 +659,6 @@
 
     .map-chip:hover {
         background: var(--ink-solid);
-    }
-
-    .leaflet-container .leaflet-control-attribution:hover {
-        background: var(--surface);
-        border-color: var(--hairline);
-        box-shadow: var(--shadow-card);
     }
 
     .leaflet-container .leaflet-control-attribution a:hover {

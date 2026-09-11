@@ -259,10 +259,11 @@
     box-sizing: border-box;
     position: absolute;
     top: 0;
-    right: -7px;
+    right: -6px;
     bottom: 0;
     width: 4px;
-    background: transparent;
+    background: linear-gradient(to right, transparent 1px, #E8E8E8 1px, #E8E8E8 3px, transparent 3px);
+    border-radius: 1px;
     opacity: 0;
     transition: opacity 0.14s ease-out;
     pointer-events: none;
@@ -271,18 +272,6 @@
 
 .container.is-scrollable .scroller-bar {
     opacity: 1;
-}
-
-/* Тонка борозна по центру треку для великих екранів */
-.container .scroller-bar::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 1px;
-    width: 2px;
-    background: #E8E8E8;
-    border-radius: 1px;
 }
 
 .container .scroller-bar::before {
@@ -358,10 +347,6 @@
         right: -7px;
         background: #E8E8E8;
         border-radius: 2px;
-    }
-
-    .container .scroller-bar::after {
-        display: none;
     }
 
     .container .scroller-thumb {

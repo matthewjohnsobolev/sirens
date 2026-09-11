@@ -432,31 +432,31 @@
    не червоне: чіп не має сперечатися з тривогами під ним.
 
    Чіп не контрол Leaflet — він не стоїть у кутовій стопці, а тримається
-   центру, тож живе прямо в контейнері мапи. Обгортка лишається в DOM
+   центру всієї ширини екрана незалежно від розташування кнопок мапи,
+   тож живе прямо в контейнері мапи. Обгортка лишається в DOM
    завжди: порожній aria-live має існувати заздалегідь, інакше поява
-   тексту не озвучиться.
-
-   Центр вона рахує не від мапи, а від вільного місця: ліворуч стоїть
-   стопка кнопок, і довгий заголовок зі статус-сторінки наїхав би на зум.
-   Тож смуга починається за стопкою — чіп у ній і центрується. */
+   тексту не озвучиться. */
 .map-chip-live {
     position: absolute;
     top: max(var(--map-inset), env(safe-area-inset-top));
-    left: calc(max(var(--map-inset), env(safe-area-inset-left))
-               + var(--control-h-map) + var(--gap));
-    right: max(var(--map-inset), env(safe-area-inset-right));
+    left: 0;
+    right: 0;
     z-index: var(--z-map-ui);
     display: flex;
     justify-content: center;
+    padding: 0 max(var(--map-inset), env(safe-area-inset-left), env(safe-area-inset-right));
     pointer-events: none;
 }
 
 .map-chip {
+    box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     gap: var(--gap);
-    padding: 7px 12px;
-    border-radius: var(--radius-nested);
+    height: var(--control-h-map);
+    padding: 0 14px;
+    border-radius: var(--radius-control);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     /* Флекс-елемент за замовчуванням не вужчий за свій nowrap-текст, а
        min-width сильніший за max-width — без нуля чіп не стискався б і
        їхав за край. */
@@ -468,27 +468,36 @@
     user-select: none;
     -webkit-user-select: none;
     font-family: var(--font-mono);
-    font-size: var(--text-secondary);
-    font-weight: var(--weight-control);
-    letter-spacing: .04em;
+    font-size: 12.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .03em;
     line-height: 1;
     text-transform: uppercase;
     text-decoration: none;
     white-space: nowrap;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, .16),
-                0 5px 14px rgba(0, 0, 0, .10);
-    transition: background-color var(--motion);
-    animation: map-chip-in var(--motion);
+    box-shadow: var(--shadow-card);
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                background-color var(--motion),
+                border-color var(--motion);
+    will-change: transform, opacity;
 }
 
-/* Чіп з'являється, а не вмикається: те саме коротке проявлення, що й у
-   тултипа на статус-сторінці. Довше було б схоже на анімацію заради
-   анімації, коротше — на артефакт перемальовування. */
-@keyframes map-chip-in {
-    from {
-        opacity: 0;
-        transform: translateY(-4px);
-    }
+/* Плавна поява зверху вниз: опускається з translateY(-20px) до translateY(0) */
+.map-chip.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Плавний ухід знизу вверх: піднімається з translateY(0) до translateY(-20px) */
+.map-chip.is-leaving {
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: opacity 0.22s cubic-bezier(0.4, 0, 1, 1),
+                transform 0.22s cubic-bezier(0.4, 0, 1, 1);
 }
 
 /* Текст чіпа приходить зі статус-сторінки, тож його довжина не в нашій
@@ -507,6 +516,12 @@
 
 .map-chip:hover {
     background: var(--ink-solid-hover);
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+.map-chip[data-state="offline"],
+.map-chip[data-state="ok"] {
+    cursor: default;
 }
 
 .map-chip:focus-visible {
@@ -514,14 +529,14 @@
     outline-offset: 2px;
 }
 
-/* Крапка та сама, що на плитці, лише дрібніша — як у тултипа статус-
-   сторінки. Тут вона не дихає: чіпу є що сказати словами. */
+/* Крапка та сама, що на плитці (8px). Тут вона не дихає: чіпу є що сказати словами. */
 .map-chip-dot {
     flex: none;
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: var(--status-gray-bar);
+    transition: background-color var(--motion);
 }
 
 .map-chip[data-state="ok"] .map-chip-dot      { background: var(--status-green-bar); }
@@ -661,6 +676,13 @@
 
 @media (prefers-reduced-motion: reduce) {
     .map-chip,
+    .map-chip.is-visible,
+    .map-chip.is-leaving {
+        animation: none;
+        transition: none;
+        transform: none;
+    }
+
     .leaflet-control,
     .leaflet-bar a.is-pressed .map-ctl-icon,
     .map-ctl.is-pressed .map-ctl-icon,

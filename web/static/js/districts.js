@@ -134,7 +134,7 @@ function renderPill({ variant, text, updatedAt, source, showTime = true }) {
     // мапі вже переїжджали — назви станів лишилися.
     const body = `
         <button class="oblast-pill ${v.cls}" data-state="${variant || 'unknown'}">
-            <div class="icon-container"><img class="icon" src="static/img/icons/${v.icon}"></div>
+            <div class="icon-container"><img class="icon" src="static/img/icons/${v.icon}" alt="" aria-hidden="true"></div>
             <div class="oblast-description-text">${text || v.label}</div>
             ${timeHtml}
         </button>`;

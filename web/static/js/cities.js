@@ -102,7 +102,7 @@ function subscribeButtonHtml(channel) {
                     <div class="icon-container-marker">
                         <img class="icon-marker" src="static/img/icons/telegram.svg">
                     </div>
-                    Підпишіться на канал, щоб отримувати сповіщення про тривогу
+                    Підписатися на сповіщення
                 </button>
             </a>
         </div>`;

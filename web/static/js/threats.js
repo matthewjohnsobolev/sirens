@@ -85,7 +85,7 @@ const SirensThreats = (function () {
                 : null;
 
             pending = fetch('/api', {
-                cache: force ? 'no-store' : 'default',
+                cache: force ? 'no-store' : 'no-cache',
                 signal: controller ? controller.signal : undefined
             })
                 .then(response => {

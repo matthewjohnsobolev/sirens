@@ -258,9 +258,9 @@
 .container .scroller-bar {
     box-sizing: border-box;
     position: absolute;
-    top: 4px;
+    top: 0;
     right: -8px;
-    bottom: 4px;
+    bottom: 0;
     width: 6px;
     background: transparent;
     opacity: 0;

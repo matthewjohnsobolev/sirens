@@ -245,7 +245,11 @@ function attachOblastScrollbar(view) {
     });
 
     view.addEventListener('scroll', update, { passive: true });
-    if (window.ResizeObserver) new ResizeObserver(update).observe(view);
+    if (window.ResizeObserver) {
+        const ro = new ResizeObserver(update);
+        ro.observe(view);
+        if (host) ro.observe(host);
+    }
     update();
     requestAnimationFrame(update);
 

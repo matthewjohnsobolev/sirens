@@ -48,14 +48,20 @@ jobs:
           aws s3 ls "s3://${DATA_BUCKET}" --endpoint-url "$R2_ENDPOINT" --region auto >/dev/null \
             || { echo "Cannot access data bucket '${DATA_BUCKET}' at ${R2_ENDPOINT}. Check that your API token is the S3 Access Key ID/Secret (not the R2 token value) with Object Read & Write permissions."; exit 1; }
 
-          aws s3 ls "s3://${DATA_BUCKET}/subscribers.csv" --endpoint-url "$R2_ENDPOINT" --region auto >/dev/null \
-            || { echo "subscribers.csv not found in s3://${DATA_BUCKET}/. Run the BI worker on the server first to generate the initial snapshot."; exit 1; }
+          SNAPSHOT_KEY="subscriber_snapshots.csv"
+          if ! aws s3 ls "s3://${DATA_BUCKET}/${SNAPSHOT_KEY}" --endpoint-url "$R2_ENDPOINT" --region auto >/dev/null 2>&1; then
+            if aws s3 ls "s3://${DATA_BUCKET}/subscribers.csv" --endpoint-url "$R2_ENDPOINT" --region auto >/dev/null 2>&1; then
+              SNAPSHOT_KEY="subscribers.csv"
+            else
+              echo "subscriber_snapshots.csv not found in s3://${DATA_BUCKET}/. Run the BI worker on the server first to generate the initial snapshot."; exit 1;
+            fi
+          fi
 
           mkdir -p sources/sirens
-          aws s3 cp "s3://${DATA_BUCKET}/subscribers.csv" sources/sirens/subscribers.csv \
+          aws s3 cp "s3://${DATA_BUCKET}/${SNAPSHOT_KEY}" sources/sirens/subscriber_snapshots.csv \
             --endpoint-url "$R2_ENDPOINT" --region auto
 
-          rows=$(( $(wc -l < sources/sirens/subscribers.csv) - 1 ))
+          rows=$(( $(wc -l < sources/sirens/subscriber_snapshots.csv) - 1 ))
           test "$rows" -gt 0 || { echo "stats export returned no data rows"; exit 1; }
           echo "Downloaded $rows rows"
 

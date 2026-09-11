@@ -60,12 +60,11 @@ MAX_FLOOD_WAIT = 300
 MIN_COVERAGE = 0.9
 
 INSERT_SQL = """
-    INSERT INTO subscribers (channel_key, channel_id, subscribers, date, time)
-    VALUES ($1, $2, $3, $4, $5)
-    ON CONFLICT (channel_key, time) DO UPDATE
-        SET subscribers = EXCLUDED.subscribers,
-            channel_id   = EXCLUDED.channel_id,
-            date         = EXCLUDED.date
+    INSERT INTO subscriber_snapshots (channel_id, channel, collected_at, subscriber_count)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (channel_id, collected_at) DO UPDATE
+        SET subscriber_count = EXCLUDED.subscriber_count,
+            channel          = EXCLUDED.channel
 """
 
 
@@ -136,17 +135,17 @@ async def collect(client: TelegramClient, channels: dict) -> list[ChannelCount]:
 
 
 async def store(pool, counts: list[ChannelCount]) -> None:
-    now = datetime.datetime.now().replace(microsecond=0)
-    rows = [(c.channel_key, c.channel_id, c.subscribers, now.date(), now) for c in counts]
+    now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    rows = [(c.channel_id, c.channel_key, now, c.subscribers) for c in counts]
 
     async with pool.acquire() as conn:
         await conn.executemany(INSERT_SQL, rows)
 
 
 SELECT_ALL_STATS_SQL = """
-    SELECT channel_key, time, date, subscribers
-    FROM subscribers
-    ORDER BY time, channel_key
+    SELECT channel, collected_at, subscriber_count
+    FROM subscriber_snapshots
+    ORDER BY collected_at, channel
 """
 
 STATS_CSV_COLUMNS = ("channel_key", "display_name", "date", "subscribers")
@@ -161,9 +160,13 @@ async def export_stats_csv(pool) -> str:
     writer.writerow(STATS_CSV_COLUMNS)
 
     for record in rows:
-        channel_key = record["channel_key"]
-        date_val = record["time"] if "time" in record else record["date"]
-        subscribers = record["subscribers"]
+        channel_key = record["channel"] if "channel" in record else record.get("channel_key", "")
+        date_val = record["collected_at"] if "collected_at" in record else record.get("date")
+        subscribers = (
+            record["subscriber_count"]
+            if "subscriber_count" in record
+            else record.get("subscribers", 0)
+        )
         display_name = REGION_CONFIG.get(channel_key, {}).get("display_name", channel_key)
         if isinstance(date_val, datetime.datetime):
             date_str = date_val.strftime("%Y-%m-%d %H:%M:%S")
@@ -199,9 +202,9 @@ def upload_to_r2(csv_content: str) -> None:
         region_name="auto",
     )
     bucket = CLOUDFLARE_R2_BI_DATA_BUCKET
-    key = "subscribers.csv"
+    key = "subscriber_snapshots.csv"
     log.info(
-        "Uploading subscribers CSV to s3://%s/%s (%d bytes)",
+        "Uploading subscriber snapshots CSV to s3://%s/%s (%d bytes)",
         bucket,
         key,
         len(csv_content.encode("utf-8")),
@@ -212,7 +215,7 @@ def upload_to_r2(csv_content: str) -> None:
         Body=csv_content.encode("utf-8"),
         ContentType="text/csv; charset=utf-8",
     )
-    log.info("Successfully uploaded subscribers CSV to R2 data bucket %s", bucket)
+    log.info("Successfully uploaded subscriber snapshots CSV to R2 data bucket %s", bucket)
 
 
 def trigger_dashboard_build() -> None:

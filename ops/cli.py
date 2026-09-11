@@ -318,7 +318,8 @@ def print_history_list(history: list[dict[str, Any]], district: str | None = Non
     table.add_column("BY", style="dim", min_width=8)
 
     for h in history:
-        ev_type = str(h.get("type", "")).lower()
+        ev_type = str(h.get("event_type") or h.get("type") or "").lower()
+        lvl = str(h.get("level") or "").lower()
         if "cancelled" in ev_type:
             if "shelling" in ev_type:
                 badge = "[dim]○ threat of shelling cancelled[/]"
@@ -327,14 +328,19 @@ def print_history_list(history: list[dict[str, Any]], district: str | None = Non
         elif "shelling" in ev_type:
             badge = "[bold yellow]● threat of shelling[/]"
         else:
-            badge = "[bold red]● air raid alert[/]"
+            if lvl == "yellow":
+                badge = "[bold yellow]● air raid alert (yellow)[/]"
+            elif lvl == "red":
+                badge = "[bold red]● air raid alert (red)[/]"
+            else:
+                badge = "[bold red]● air raid alert[/]"
 
-        by_val = format_source_by(h.get("message_link"))
+        by_val = format_source_by(h.get("source") or h.get("message_link"))
 
         table.add_row(
             str(h.get("date") or "-"),
             str(h.get("time") or "-"),
-            str(h.get("district_key") or "-"),
+            str(h.get("district") or h.get("district_key") or "-"),
             badge,
             by_val,
         )

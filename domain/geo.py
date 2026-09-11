@@ -297,6 +297,36 @@ OBLAST_TRIGGERS = {
     "zhytomyr_oblast": ["Житомирська область"],
 }
 
+OBLAST_NAMES = {
+    "cherkasy_oblast": "Черкаська область",
+    "chernihiv_oblast": "Чернігівська область",
+    "chernivtsi_oblast": "Чернівецька область",
+    "crimea": "Автономна Республіка Крим",
+    "dnipropetrovsk_oblast": "Дніпропетровська область",
+    "donetsk_oblast": "Донецька область",
+    "ivanofrankivsk_oblast": "Івано-Франківська область",
+    "kharkiv_oblast": "Харківська область",
+    "kherson_oblast": "Херсонська область",
+    "khmelnytskyi_oblast": "Хмельницька область",
+    "kirovohrad_oblast": "Кіровоградська область",
+    "kyiv": "м. Київ",
+    "kyiv_oblast": "Київська область",
+    "luhansk_oblast": "Луганська область",
+    "lviv_oblast": "Львівська область",
+    "mykolaiv_oblast": "Миколаївська область",
+    "odesa_oblast": "Одеська область",
+    "poltava_oblast": "Полтавська область",
+    "rivne_oblast": "Рівненська область",
+    "sevastopol": "м. Севастополь",
+    "sumy_oblast": "Сумська область",
+    "ternopil_oblast": "Тернопільська область",
+    "vinnytsia_oblast": "Вінницька область",
+    "volyn_oblast": "Волинська область",
+    "zakarpattia_oblast": "Закарпатська область",
+    "zaporizhzhia_oblast": "Запорізька область",
+    "zhytomyr_oblast": "Житомирська область",
+}
+
 LOCATION_LOCATIVE = {
     "bilatserkva": "у Білій Церкві",
     "bucha": "у Бучі",

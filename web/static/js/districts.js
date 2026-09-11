@@ -145,15 +145,23 @@ function renderPill({ variant, text, updatedAt, source, showTime = true }) {
     return `<div class="info-block">${wrapped}</div>`;
 }
 
-function districtPillState(oblastData, key) {
-    const district = (oblastData.districts && oblastData.districts[key]) || {};
-    const threats = {
-        alert: district.alert,
-        shelling: district.shelling,
-        explosion: oblastData.explosion
-    };
+function districtPillState(arg1, arg2) {
+    let threats;
+    if (arg2 && typeof arg1 === 'object') {
+        const district = (arg1.districts && arg1.districts[arg2]) || arg1[arg2] || {};
+        threats = {
+            alert: district.alert,
+            shelling: district.shelling
+        };
+    } else {
+        const district = arg1 || {};
+        threats = {
+            alert: district.alert,
+            shelling: district.shelling
+        };
+    }
     const dominant = pickDominant(threats) || 'idle';
-    const winner = threats[dominant] || district.alert || {};
+    const winner = threats[dominant] || threats.alert || {};
 
     return {
         variant: threatVariant(dominant, winner),
@@ -204,33 +212,33 @@ const DISTRICT_MARKERS = [
 ];
 
 function getMarkerThreats(apiData, marker) {
-    if (!apiData) return { alert: null, explosion: null, shelling: null };
+    if (!apiData || !marker) return { alert: null, explosion: null, shelling: null };
     const oblastData = apiData[marker.oblast];
-    if (!oblastData) {
-        return { alert: null, explosion: null, shelling: null };
-    }
+    let districtData = null;
 
-    let alert = null;
-    let shelling = null;
-
-    if (marker.district && oblastData.districts && oblastData.districts[marker.district]) {
-        alert = oblastData.districts[marker.district].alert;
-        shelling = oblastData.districts[marker.district].shelling;
-    } else {
-        alert = oblastData.alert;
-    }
-
-    if (marker.district && apiData[marker.district] && apiData[marker.district].shelling) {
-        if (!shelling || !shelling.status) {
-            if (apiData[marker.district].shelling.status) {
-                shelling = apiData[marker.district].shelling;
-            }
+    if (oblastData) {
+        if (marker.district && oblastData.districts && oblastData.districts[marker.district]) {
+            districtData = oblastData.districts[marker.district];
+        } else if (marker.district && oblastData[marker.district]) {
+            districtData = oblastData[marker.district];
+        } else if (oblastData.alert) {
+            districtData = oblastData;
         }
     }
 
-    const explosion = oblastData.explosion;
+    if (!districtData && marker.district && apiData[marker.district]) {
+        districtData = apiData[marker.district];
+    }
 
-    return { alert, explosion, shelling };
+    if (!districtData) {
+        return { alert: null, explosion: null, shelling: null };
+    }
+
+    return {
+        alert: districtData.alert || null,
+        shelling: districtData.shelling || null,
+        explosion: null
+    };
 }
 
 if (typeof module !== 'undefined' && module.exports) {

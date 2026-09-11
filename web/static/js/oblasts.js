@@ -12,48 +12,33 @@
    області. Обидва живуть маркерами міст — і саме тому полігон лишається
    однозначним: колір на ньому означає тривогу й нічого крім неї. */
 function oblastState(data) {
-    // Вибухи мапа поки не малює (RENDER_EXPLOSIONS у districts.js). Гілка
-    // лишається, щоб повернути їх можна було прапорцем, а не розслідуванням.
-    if (RENDER_EXPLOSIONS && data.explosion && data.explosion.status) return 'explosion';
+    if (!data) return 'idle';
 
-    const alert = data.alert;
-    const coverage = alert && alert.coverage;
-    if (coverage !== 'full' && coverage !== 'partial') return 'idle';
+    const districts = data.districts || data;
+    const districtKeys = Object.keys(districts).filter(k => k !== 'alert' && k !== 'shelling' && k !== 'explosion' && k !== 'title');
+    if (!districtKeys.length) return 'idle';
 
-    // Два рівні поруч — уже саме по собі складна картина, і додавати до
-    // неї третій шар («а ще не в усіх районах») нема сенсу: область, де є
-    // і відбій, і жовтий, і червоний, виглядає так само, як область, де є
-    // просто жовтий і червоний. Покриття залишається питанням одного
-    // рівня: воно відповідає, чи скрізь оголошено те саме.
-    const levels = activeLevels(data);
-    if (levels.size > 1) return 'mixed';
+    const activeKeys = districtKeys.filter(key => {
+        const d = districts[key];
+        return d && d.alert && d.alert.status;
+    });
 
-    const level = levels.values().next().value || alertLevel(alert);
-    return coverage === 'partial' ? level + '-partial' : level;
-}
+    if (!activeKeys.length) return 'idle';
 
-/* Рівень області — не одне число. Тривогу оголошують районам, і в сусідніх
-   районах однієї області цілком буває різний рівень: у прикордонному
-   червоний, у дальньому жовтий. Тож збираємо рівні всіх районів під
-   тривогою: один — область говорить ним, два — область говорить обома. */
-function activeLevels(data) {
-    const alert = data.alert || {};
-    const active = alert.active_districts || [];
-    const districts = data.districts || {};
+    const coverage = activeKeys.length >= districtKeys.length ? 'full' : 'partial';
+
     const levels = new Set();
-
-    for (const key of active) {
-        const district = districts[key];
-        if (district && district.alert && district.alert.status) {
-            levels.add(alertLevel(district.alert));
+    for (const key of activeKeys) {
+        const d = districts[key];
+        if (d && d.alert) {
+            levels.add(alertLevel(d.alert));
         }
     }
 
-    // Район може бути в active_districts і без власного запису — тоді
-    // рівень бере на себе область: іншого джерела в нас усе одно немає.
-    if (!levels.size && active.length) levels.add(alertLevel(alert));
+    if (levels.size > 1) return 'mixed';
 
-    return levels;
+    const level = levels.values().next().value || DEFAULT_ALERT_LEVEL;
+    return coverage === 'partial' ? level + '-partial' : level;
 }
 
 /* ── Штрихування ────────────────────────────────────────────────────── */
@@ -268,10 +253,17 @@ function attachOblastScrollbar(view) {
 }
 
 function getOblastPopupContent(oblastData) {
-    const alert = (oblastData && oblastData.alert) || {};
-    const tracked = alert.tracked_districts || [];
+    if (!oblastData) {
+        return `
+      <div class="container">
+          ${renderPill({ variant: 'unknown', showTime: false })}
+      </div>`;
+    }
 
-    if (!tracked.length) {
+    const districts = oblastData.districts || oblastData;
+    const districtKeys = Object.keys(districts).filter(k => k !== 'alert' && k !== 'shelling' && k !== 'explosion' && k !== 'title');
+
+    if (!districtKeys.length) {
         return `
       <div class="container">
           ${renderPill({ variant: 'unknown', showTime: false })}
@@ -279,12 +271,13 @@ function getOblastPopupContent(oblastData) {
     }
 
     let rows = '';
-    for (const key of tracked) {
-        const district = (oblastData.districts && oblastData.districts[key]) || {};
+    for (const key of districtKeys) {
+        const district = districts[key] || {};
+        const districtName = district.title || district.name || key;
         rows += `
               <div class="popup-city">
-                  <div class="popup-city-name">${district.name || key}</div>
-                  ${renderPill(districtPillState(oblastData, key))}
+                  <div class="popup-city-name">${districtName}</div>
+                  ${renderPill(districtPillState(district))}
               </div>`;
     }
 
@@ -304,23 +297,6 @@ for (const marker of DISTRICT_MARKERS) {
 }
 
 var customOptions = {'maxWidth': '310', 'width': '310'};
-
-const OBLAST_NAMES = {
-    'cherkasy_oblast': 'Черкаська область', 'chernihiv_oblast': 'Чернігівська область',
-    'chernivtsi_oblast': 'Чернівецька область', 'crimea': 'Крим',
-    'dnipropetrovsk_oblast': 'Дніпропетровська область', 'donetsk_oblast': 'Донецька область',
-    'ivanofrankivsk_oblast': 'Івано-Франківська область', 'kharkiv_oblast': 'Харківська область',
-    'kherson_oblast': 'Херсонська область', 'khmelnytskyi_oblast': 'Хмельницька область',
-    'kirovohrad_oblast': 'Кіровоградська область', 'kyiv': 'Київ',
-    'kyiv_oblast': 'Київська область', 'luhansk_oblast': 'Луганська область',
-    'lviv_oblast': 'Львівська область', 'mykolaiv_oblast': 'Миколаївська область',
-    'odesa_oblast': 'Одеська область', 'poltava_oblast': 'Полтавська область',
-    'rivne_oblast': 'Рівненська область', 'sevastopol': 'Севастополь',
-    'sumy_oblast': 'Сумська область', 'ternopil_oblast': 'Тернопільска область',
-    'vinnytsia_oblast': 'Вінницька область', 'volyn_oblast': 'Волинська область',
-    'zakarpattia_oblast': 'Закарпатська область', 'zaporizhzhia_oblast': 'Запорізька область',
-    'zhytomyr_oblast': 'Житомирська область'
-};
 
 let oblastLayer = null;
 
@@ -343,24 +319,24 @@ function buildOblasts(geoData) {
             const regionId = feature.properties.id;
             if (!oblastData(regionId)) return;
 
-            const name = OBLAST_NAMES[regionId] || regionId;
             const cityMarker = CITY_REGIONS[regionId];
 
             layer.bindPopup(
                 () => {
-                    const data = oblastData(regionId);
-                    if (!data) return '';
+                    const data = oblastData(regionId) || {};
+                    const title = (data && data.title) || regionId;
                     return cityMarker
                         ? getMarkerPopupContent(cityMarker, getMarkerThreats(SirensThreats.get(), cityMarker))
-                        : '<div class="oblast-name">' + name + '</div>' + getOblastPopupContent(data);
+                        : '<div class="oblast-name">' + title + '</div>' + getOblastPopupContent(data);
                 },
                 customOptions
             );
             layer.on('popupopen', (e) => {
-                const data = oblastData(regionId);
+                const data = oblastData(regionId) || {};
+                const title = (data && data.title) || regionId;
                 if (window.track) window.track('region_popup_open', {
-                    region_name: name,
-                    threat_state: data ? oblastState(data) : 'idle'
+                    region_name: title,
+                    threat_state: oblastState(data)
                 });
                 const popupEl = (e && e.popup) ? e.popup.getElement() : null;
                 if (popupEl) {
@@ -388,12 +364,12 @@ function buildOblasts(geoData) {
 // його на кожній відповіді означало б згортати відкритий попап і на мить
 // лишати мапу без областей.
 function paintOblasts(data) {
-    if (!oblastLayer) return;
+    if (!oblastLayer || !data) return;
 
     let changed = false;
     oblastLayer.eachLayer(function(layer) {
-        const regionData = data[layer.feature.properties.id];
-        if (regionData && setOblastStyle(layer, regionData)) changed = true;
+        const regionData = data[layer.feature.properties.id] || {};
+        if (setOblastStyle(layer, regionData)) changed = true;
     });
 
     // Перекладати шар має сенс лише тоді, коли щось справді змінило стан.

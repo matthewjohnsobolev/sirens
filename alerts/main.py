@@ -361,10 +361,10 @@ async def _record_alert_state(
 
     district_key = region
     oblast_key = DISTRICT_CONFIG.get(region, {}).get("oblast", region)
-    now = datetime.datetime.now()
-    current_time = now.strftime("%H:%M")
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    current_time = datetime.datetime.now().strftime("%H:%M")
     now_epoch = str(int(time.time()))
-    now_utc_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    now_utc_iso = now_utc.isoformat()
     source = message_link or DEFAULT_SOURCE
 
     if channel_id is not None:
@@ -477,18 +477,16 @@ async def _record_alert_state(
             async with pg_pool.acquire() as conn:
                 await conn.execute(
                     """INSERT INTO alert_history
-                       (datetime, date, time, district_key, oblast_key, type,
-                        channel_id, message_id, message_link)
-                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
-                    now,
-                    now.date(),
-                    current_time,
+                       (recorded_at, district, event_type, level,
+                        channel_id, message_id, source)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                    now_utc,
                     district_key,
-                    oblast_key,
                     alert_type,
+                    level if alert_type == "air_raid_alert" else None,
                     channel_id,
                     message_id,
-                    message_link,
+                    source,
                 )
         except Exception as e:
             log.error("Failed to insert alert history into PG: %s", e)
@@ -1144,24 +1142,26 @@ async def _prime_monitoring_state(primary_source: int, fallback_source: int | No
         try:
             async with pg_pool.acquire() as conn:
                 row = await conn.fetchrow(
-                    """SELECT datetime, district_key, oblast_key, type, message_id, message_link
+                    """SELECT recorded_at, district, event_type, level, message_id, source
                        FROM alert_history
                        WHERE channel_id IS NOT NULL
-                       ORDER BY datetime DESC LIMIT 1"""
+                       ORDER BY recorded_at DESC LIMIT 1"""
                 )
                 if row:
-                    dt = row["datetime"]
+                    dt = row["recorded_at"]
                     dt_iso = (
                         dt.astimezone(datetime.timezone.utc).isoformat()
                         if dt.tzinfo
                         else dt.replace(tzinfo=datetime.timezone.utc).isoformat()
                     )
-                    d_key = row["district_key"] or ""
+                    d_key = row["district"] or ""
+                    o_key = DISTRICT_CONFIG.get(d_key, {}).get("oblast", d_key)
                     loc_name = city_or_district_name(d_key) if d_key else ""
                     loc_title = location_locative(d_key) if d_key else ""
                     last_alert_payload = {
-                        "type": row["type"],
-                        "oblast": row["oblast_key"],
+                        "type": row["event_type"],
+                        "level": row["level"],
+                        "oblast": o_key,
                         "district": d_key,
                         "city": loc_name,
                         "locative": loc_title,

@@ -36,6 +36,19 @@ def test_domain_occupied_regions_have_no_districts():
         assert region not in domain.DISTRICTS_BY_OBLAST
 
 
+def test_domain_oblast_names_covers_all_regions():
+    """OBLAST_NAMES covers all 27 regions with non-empty Ukrainian titles."""
+    assert len(domain.OBLAST_NAMES) == 27
+    for key, name in domain.OBLAST_NAMES.items():
+        assert isinstance(key, str) and key
+        assert isinstance(name, str) and name
+    assert domain.OBLAST_NAMES["kyiv_oblast"] == "Київська область"
+    assert domain.OBLAST_NAMES["kyiv"] == "м. Київ"
+    assert domain.OBLAST_NAMES["crimea"] == "Автономна Республіка Крим"
+    assert domain.OBLAST_NAMES["sevastopol"] == "м. Севастополь"
+    assert set(domain.DISTRICTS_BY_OBLAST.keys()) <= set(domain.OBLAST_NAMES.keys())
+
+
 def test_domain_region_config_is_the_broadcast_subset():
     """REGION_CONFIG contains exactly the districts that have a broadcast channel."""
     assert set(domain.REGION_CONFIG) == domain.BROADCAST_DISTRICTS

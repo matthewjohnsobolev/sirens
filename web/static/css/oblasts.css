@@ -166,8 +166,7 @@
     max-height: 132px;
     overflow-y: auto;
     overflow-x: hidden;
-    padding-right: 8px;
-    box-sizing: border-box;
+    margin-right: -10px;
     /* Prevent scroll chaining to the underlying map */
     touch-action: pan-y;
     overscroll-behavior: contain;
@@ -205,26 +204,36 @@
     margin-bottom: 0;
 }
 
-/* Скролбар: акуратна тонка смуга 4px зі світло-сірою доріжкою та округлими краями.
-   Знаходиться праворуч списку так, що правий відступ від скролбара до краю попапа
-   (15px) точно дорівнює лівому відступу плашок і тексту (15px), утворюючи єдиний блок. */
+/* Скролбар під хрестиком попапа: винесений у правий відступ (margin-right: -10px)
+   прямо під кнопку закриття попапа, щоб плашки й текст лишалися окремим блоком.
+   Прозорі поля з боків звужують видиму смугу до 4px. Еліптичний радіус 5px / 2px
+   враховує товщину бокових рамок і дає ідеально круглі торці 2px. */
 .scrollable-content::-webkit-scrollbar {
-    width: 4px;
+    width: 10px;
 }
 
 .scrollable-content::-webkit-scrollbar-track {
     background: rgba(0, 0, 0, 0.05);
-    border-radius: 2px;
+    background-clip: padding-box;
+    border: 0 solid transparent;
+    border-left-width: 3px;
+    border-right-width: 3px;
+    border-radius: 5px / 2px;
 }
 
 .scrollable-content::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.25);
-    border-radius: 2px;
+    background-clip: padding-box;
+    border: 0 solid transparent;
+    border-left-width: 3px;
+    border-right-width: 3px;
+    border-radius: 5px / 2px;
     min-height: 24px;
 }
 
 .scrollable-content::-webkit-scrollbar-thumb:hover {
     background: rgba(0, 0, 0, 0.4);
+    background-clip: padding-box;
 }
 
 /* Firefox fallback for custom scrollbar (isolated to avoid overriding ::-webkit-scrollbar in Chrome 121+) */
@@ -236,10 +245,13 @@
 }
 
 /* Коли активний кастомний скролбар (на iOS Safari та в браузерах із JS),
-   приховуємо нативний, щоб уникнути подвійного скролбара */
+   приховуємо нативний і додаємо правий відступ для компенсації ширини скролбара,
+   щоб плашки мали ширину рівно 310px */
 .container.is-live .scrollable-content {
     scrollbar-width: none;
     -ms-overflow-style: none;
+    padding-right: 10px;
+    box-sizing: border-box;
 }
 
 .container.is-live .scrollable-content::-webkit-scrollbar {
@@ -251,12 +263,15 @@
 .container .scroller-bar {
     position: absolute;
     top: 0;
-    right: 0;
+    right: -10px;
     bottom: 0;
-    width: 4px;
+    width: 10px;
+    padding: 0 3px;
+    box-sizing: border-box;
     pointer-events: none;
     background: rgba(0, 0, 0, 0.05);
-    border-radius: 2px;
+    background-clip: content-box;
+    border-radius: 5px / 2px;
     opacity: 0;
     transition: opacity 0.14s ease-out;
 }
@@ -269,10 +284,15 @@
     position: absolute;
     top: 0;
     left: 0;
-    width: 4px;
+    width: 10px;
     min-height: 24px;
+    box-sizing: border-box;
+    border: 0 solid transparent;
+    border-left-width: 3px;
+    border-right-width: 3px;
     background: rgba(0, 0, 0, 0.25);
-    border-radius: 2px;
+    background-clip: padding-box;
+    border-radius: 5px / 2px;
     pointer-events: none;
     touch-action: none;
     -webkit-transform: translate3d(0, 0, 0);
@@ -286,6 +306,7 @@
 .container .scroller-thumb:hover,
 .container.is-dragging .scroller-thumb {
     background: rgba(0, 0, 0, 0.4);
+    background-clip: padding-box;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -293,14 +314,5 @@
     .container.is-scrollable .scroller-thumb {
         pointer-events: auto;
         cursor: pointer;
-    }
-
-    .container.is-scrollable .scroller-thumb::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: -4px;
-        right: -4px;
     }
 }

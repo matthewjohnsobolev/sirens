@@ -52,12 +52,7 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
             const iso = d.toISOString();
             let state = "ok";
 
-            if (normScenario === "ok") {
-                if (specKey === "map" && i === 15) {
-                    state = "minor";
-                    minorCount++;
-                }
-            } else if (normScenario === "map_down") {
+            if (normScenario === "map_down") {
                 if (specKey === "map" && i >= 22) {
                     state = "down";
                     downCount++;
@@ -89,8 +84,6 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         let uptime: number | null = Math.min(100, Math.max(0, healthyRatio * 100));
         if (downCount === 0 && minorCount === 0) {
             uptime = 100;
-        } else if (specKey === "map" && normScenario === "ok") {
-            uptime = 99.8;
         }
 
         const currentState = hours[hours.length - 1].state;
@@ -111,23 +104,23 @@ export function getMockStatusData(scenario: string = "ok", now: Date = new Date(
         };
     });
 
-    let headline = "Усе працює";
+    let headline = "Усе працює без збоїв";
     const lastAlertHour = ((nowKyiv.hour - 4 + 24) % 24).toString().padStart(2, "0");
     const lastAlertMin = "12";
-    let subtitle = `Усі наші системи працюють у штатному режимі. Останнє сповіщення ми надіслали сьогодні о ${lastAlertHour}:${lastAlertMin} у Білій Церкві. Нових тривог чи відбоїв відтоді не було.`;
+    let subtitle = `Дані оновлюються, сповіщення надсилаються. Останнє сповіщення надіслано о ${lastAlertHour}:${lastAlertMin} у Білій Церкві. Нових тривог чи відбоїв відтоді не було.`;
 
     if (normScenario === "unknown") {
         headline = "Немає даних";
         subtitle = "";
     } else if (normScenario === "system_down") {
-        headline = "Система не працює";
-        subtitle = `Ми тимчасово не надсилаємо сповіщення й не оновлюємо дані. Не покладайтеся зараз на нашу систему — використовуйте застосунок "Повітряна тривога"`;
+        headline = "Критичний збій системи";
+        subtitle = "Дані не оновлюються, сповіщення не надсилаються. Не покладайтеся зараз на нашу систему. Використовуйте офіційний застосунок «Повітряна тривога».";
     } else if (normScenario === "service_down") {
-        headline = "Телеграм-канали не працюють";
-        subtitle = `Ми тимчасово не можемо надсилати сповіщення, але дані про тривоги ми отримуємо без перебоїв. Перевіряйте тривоги на нашій мапі або в застосунку "Повітряна тривога"`;
+        headline = "Збій Telegram-каналів";
+        subtitle = "Дані оновлюються, але сповіщення не надсилаються. Не покладайтеся зараз на наші канали. Використовуйте офіційний застосунок «Повітряна тривога».";
     } else if (normScenario === "map_api_down" || normScenario === "map_down") {
-        headline = "Мапа тривог не працює";
-        subtitle = `У нас тимчасово проблеми з сайтом: мапа тривог може не відкриватися або показувати застарілі дані. Сповіщення ми надсилаємо без перебоїв. Актуальну мапу тривог можна переглянути на alerts.in.ua`;
+        headline = "Збій мапи тривог";
+        subtitle = "Сповіщення в Telegram надсилаються без перебоїв, але мапа не відкривається або показує застарілі дані. Використовуйте офіційну мапу [map.ukrainealarm.com](http://map.ukrainealarm.com/).";
     } else if (normScenario === "mnt") {
         headline = "Технічні роботи";
         subtitle = "Тривають планові технічні роботи.";

@@ -71,8 +71,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
     const isServiceDown = data.headline === "Сповіщення не надходять" ||
         data.headline === "Система не працює" ||
+        data.headline === "Критичний збій системи" ||
         data.headline === "Телеграм-канали не працюють" ||
-        data.headline === "Мапа тривог не працює";
+        data.headline === "Збій Telegram-каналів" ||
+        data.headline === "Мапа тривог не працює" ||
+        data.headline === "Збій мапи тривог";
     const isDegraded = data.headline.includes("— ні") || data.headline.includes("перебо");
     const isMnt = data.headline === "Планові роботи" || data.headline === "Технічні роботи";
     const isUnknown = data.headline === "Немає даних";

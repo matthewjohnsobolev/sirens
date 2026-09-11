@@ -12,8 +12,11 @@ function getStateInfo(headline: string) {
     if (
         headline === 'Сповіщення не надходять' ||
         headline === 'Система не працює' ||
+        headline === 'Критичний збій системи' ||
         headline === 'Телеграм-канали не працюють' ||
-        headline === 'Мапа тривог не працює'
+        headline === 'Збій Telegram-каналів' ||
+        headline === 'Мапа тривог не працює' ||
+        headline === 'Збій мапи тривог'
     ) {
         return {
             cls: 'error',
@@ -89,10 +92,20 @@ export function renderHtml(data: any, measurementId = ""): string {
     const hasSpecificFailure = data.headline.includes('— ні') ||
         data.headline === 'Сповіщення не надходять' ||
         data.headline === 'Система не працює' ||
+        data.headline === 'Критичний збій системи' ||
         data.headline === 'Телеграм-канали не працюють' ||
+        data.headline === 'Збій Telegram-каналів' ||
         data.headline === 'Мапа тривог не працює' ||
-        data.headline.includes('перебо');
-    const formattedSubtitle = data.subtitle ? data.subtitle.replace(/(\b\d{1,2}:\d{2}\b)/g, '<time class="mono-time">$1</time>') : '';
+        data.headline === 'Збій мапи тривог' ||
+        data.headline.includes('перебо') ||
+        data.headline.includes('Збій');
+    let formattedSubtitle = data.subtitle || '';
+    if (formattedSubtitle) {
+        formattedSubtitle = formattedSubtitle
+            .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+            .replace(/(?<!["/])\b(map\.ukrainealarm\.com)\b/g, '<a href="https://map.ukrainealarm.com/" target="_blank" rel="noopener noreferrer">$1</a>')
+            .replace(/(\b\d{1,2}:\d{2}\b)/g, '<time class="mono-time">$1</time>');
+    }
 
     return `<!DOCTYPE html>
 <html lang="uk">

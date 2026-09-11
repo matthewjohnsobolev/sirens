@@ -551,9 +551,7 @@ def rehydrate_state_from_db() -> None:
         o_key = DISTRICT_CONFIG.get(d_key, {}).get("oblast", d_key)
         alert_time = dt.strftime("%H:%M") if (dt and hasattr(dt, "strftime")) else "None"
         dt_epoch = (
-            str(int(dt.timestamp()))
-            if (dt and hasattr(dt, "timestamp"))
-            else str(int(time.time()))
+            str(int(dt.timestamp())) if (dt and hasattr(dt, "timestamp")) else str(int(time.time()))
         )
 
         if "shelling" in str(alert_type).lower():
@@ -657,7 +655,9 @@ def get_all_threats_data() -> dict[str, Any]:
     shellings_results = results[n:]
 
     district_map: dict[str, dict[str, Any]] = {}
-    for district, alert_raw, shelling_raw in zip(districts, alerts_results, shellings_results, strict=False):
+    for district, alert_raw, shelling_raw in zip(
+        districts, alerts_results, shellings_results, strict=False
+    ):
         alert_raw = alert_raw or {}
         shelling_raw = shelling_raw or {}
 
@@ -693,9 +693,7 @@ def get_all_threats_data() -> dict[str, Any]:
     result: dict[str, Any] = {}
     for oblast in ALL_OBLASTS:
         oblast_districts = DISTRICTS_BY_OBLAST.get(oblast, [])
-        districts_dict = {
-            d: district_map[d] for d in oblast_districts if d in district_map
-        }
+        districts_dict = {d: district_map[d] for d in oblast_districts if d in district_map}
         result[oblast] = {
             "title": OBLAST_NAMES.get(oblast, oblast),
             "districts": districts_dict,

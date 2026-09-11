@@ -423,7 +423,6 @@ async def test_send_alert_writes_state_history_and_broadcasts(
     mock_redis, mock_pg_pool, mock_telegram_client, region, alert_type, expected_status
 ):
     _, mock_conn = mock_pg_pool
-    oblast = REGION_CONFIG[region]["oblast"]
 
     with patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock) as mock_photo:
         await send_alert(CHANNEL_ID, region, alert_type)

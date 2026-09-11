@@ -558,7 +558,9 @@ def get_history(
                 d_str = (
                     recorded_at.strftime("%Y-%m-%d")
                     if hasattr(recorded_at, "strftime")
-                    else (str(recorded_at).split()[0] if " " in str(recorded_at) else str(recorded_at))
+                    else (
+                        str(recorded_at).split()[0] if " " in str(recorded_at) else str(recorded_at)
+                    )
                 )
                 t_str = (
                     recorded_at.strftime("%H:%M")

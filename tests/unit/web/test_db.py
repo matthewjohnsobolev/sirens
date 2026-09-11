@@ -12,8 +12,6 @@ import pytest
 from config import DATABASE_URL
 from domain import (
     DISTRICT_CONFIG,
-    DISTRICTS_BY_OBLAST,
-    REGION_CONFIG,
     real_channels,
     test_channels,
 )
@@ -73,7 +71,15 @@ def test_ensure_pg_tables_creates_alert_history(mock_web_pg):
 
     sql = "\n".join(call.args[0] for call in mock_cursor.execute.call_args_list)
     assert "CREATE TABLE IF NOT EXISTS alert_history" in sql
-    for column in ("recorded_at", "event_type", "level", "district", "channel_id", "message_id", "source"):
+    for column in (
+        "recorded_at",
+        "event_type",
+        "level",
+        "district",
+        "channel_id",
+        "message_id",
+        "source",
+    ):
         assert column in sql
     mock_conn.commit.assert_called_once()
 
@@ -647,9 +653,7 @@ def test_get_all_threats_data_covers_every_oblast_and_district(mock_web_redis):
     result = get_all_threats_data()
 
     assert set(result.keys()) == set(ALL_OBLASTS)
-    tracked_districts = {
-        d_key for obl in result.values() for d_key in obl["districts"].keys()
-    }
+    tracked_districts = {d_key for obl in result.values() for d_key in obl["districts"].keys()}
     assert tracked_districts == set(DISTRICT_CONFIG.keys())
     for obl in result.values():
         assert isinstance(obl["title"], str) and len(obl["title"]) > 0

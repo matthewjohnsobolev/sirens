@@ -91,7 +91,10 @@ function applyPinState(entry, state) {
 // щоразу заново: кружок сам по собі не називає нічого.
 function nameElement(entry) {
     const element = entry.layer.getElement();
-    if (element) element.setAttribute('aria-label', entry.marker.name);
+    if (element) {
+        element.setAttribute('aria-label', entry.marker.name);
+        element.removeAttribute('title');
+    }
 }
 
 function subscribeButtonHtml(channel) {
@@ -100,7 +103,7 @@ function subscribeButtonHtml(channel) {
             <a href="tg://resolve?domain=${channel}" class="oblast-button-link">
                 <button class="channel-popup-button">
                     <div class="icon-container-marker">
-                        <img class="icon-marker" src="static/img/icons/telegram.svg">
+                        <img class="icon-marker" src="static/img/icons/telegram.svg" alt="" aria-hidden="true">
                     </div>
                     Підписатися на сповіщення
                 </button>
@@ -139,9 +142,6 @@ function buildCities(data) {
         const state = pinState(getMarkerThreats(data, marker));
         const layer = L.marker([marker.lat, marker.lng], {
             icon: pinIcon(marker, state),
-            // Назва потрібна і мишці, і скрінрідеру: підпис поруч
-            // з'являється лише від оглядового зума й вище.
-            title: marker.name,
             zIndexOffset: (PIN_STATES[state] || PIN_STATES.idle).lift
         });
 

@@ -57,15 +57,9 @@
     var chip = null;
     var currentInfo = UNKNOWN;
 
-    function updateLabel(at) {
+    function updateLabel() {
         if (!tile) return;
-        if (at === undefined) {
-            var moment = window.SirensThreats ? SirensThreats.at() : null;
-            at = moment ? kyivTime.format(moment) : null;
-        }
-
         var text = 'Оновити дані';
-        if (at) text = 'Дані станом на ' + at + '. Натисніть, щоб оновити';
         tile.title = text;
         tile.setAttribute('aria-label', text);
     }
@@ -175,7 +169,7 @@
             // Поки сервер не відповів жодного разу, часу немає — і прочерк
             // чесніший за чужий час.
             var text = at || '--:--';
-            updateLabel(at);
+            updateLabel();
 
             // Відповіді приходять щокілька секунд, а хвилина на плитці
             // міняється рідше: проявляємо лише справжню зміну, інакше час

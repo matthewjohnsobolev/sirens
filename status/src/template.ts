@@ -3,8 +3,7 @@ import { analyticsHead } from "./analytics";
 
 function getBadgeClass(state: string): string {
     if (state === 'ok') return 'ok';
-    if (state === 'minor') return 'minor';
-    if (state === 'down' || state === 'major') return 'down';
+    if (state === 'minor' || state === 'down' || state === 'major') return 'down';
     if (state === 'mnt') return 'mnt';
     return 'nodata';
 }
@@ -18,30 +17,30 @@ function getStateInfo(headline: string) {
     ) {
         return {
             cls: 'error',
-            icon: '/img/icons/status-error.svg'
+            icon: '/img/icons/air-raid-alert-icon.svg'
         };
     }
     if (headline.includes('— ні') || headline.includes('перебо')) {
         return {
             cls: 'warning',
-            icon: '/img/icons/status-warning.svg'
+            icon: '/img/icons/air-raid-alert-icon.svg'
         };
     }
     if (headline === 'Планові роботи' || headline === 'Технічні роботи') {
         return {
             cls: 'mnt',
-            icon: '/img/icons/status-mnt.svg'
+            icon: '/img/icons/mnt-icon.svg'
         };
     }
     if (headline === 'Немає даних') {
         return {
             cls: 'nodata',
-            icon: '/img/icons/status-nodata.svg'
+            icon: '/img/icons/no-data-icon.svg'
         };
     }
     return {
         cls: 'ok',
-        icon: '/img/icons/status-ok.svg'
+        icon: '/img/icons/air-raid-alert-cancelled-icon.svg'
     };
 }
 

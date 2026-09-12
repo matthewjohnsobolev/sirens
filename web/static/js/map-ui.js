@@ -28,6 +28,10 @@
     var isClientOnline = typeof navigator !== 'undefined' ? navigator.onLine !== false : true;
     var showRestoredUntil = 0;
     var restoredTimer = null;
+    var restoredText = 'ЗВ\'ЯЗОК ВІДНОВЛЕНО';
+    var lastAlarmState = null;
+    var lastApiSuccess = null;
+    var lastApiError = 0;
     var statusData = null;
 
     // indicator зі status.json → стан крапки, слово для скрінрідера й те,
@@ -40,7 +44,7 @@
         major: { state: 'down', word: 'Дані не оновлюються', loud: true },
         critical: { state: 'down', word: 'Дані не оновлюються', loud: true },
         maintenance: { state: 'mnt', word: 'Планові роботи', loud: false },
-        unknown: { state: 'nodata', word: 'Дані не оновлюються', loud: true }
+        unknown: { state: 'nodata', word: 'Дані не оновлюються', loud: false }
     };
     var UNKNOWN = STATES.unknown;
 
@@ -192,6 +196,7 @@
                 }, spinTail(since));
             }
 
+            poll();
             if (window.SirensThreats && window.SirensThreats.load) {
                 SirensThreats.load(true).then(done, done);
             } else {
@@ -344,6 +349,16 @@
         showChip(alarm);
     }
 
+    function triggerRestored(text) {
+        restoredText = text || 'ЗВ\'ЯЗОК ВІДНОВЛЕНО';
+        showRestoredUntil = Date.now() + 4000;
+        if (restoredTimer) clearTimeout(restoredTimer);
+        restoredTimer = setTimeout(function () {
+            restoredTimer = null;
+            updateState();
+        }, 4000);
+    }
+
     function setClientOnline(online) {
         if (!online) {
             var wasOnline = isClientOnline;
@@ -360,32 +375,52 @@
         } else {
             if (!isClientOnline) {
                 isClientOnline = true;
-                showRestoredUntil = Date.now() + 4000;
-                if (restoredTimer) clearTimeout(restoredTimer);
-                restoredTimer = setTimeout(function () {
-                    restoredTimer = null;
-                    updateState();
-                }, 4000);
+                triggerRestored('ЗВ\'ЯЗОК ВІДНОВЛЕНО');
                 updateState();
             }
         }
     }
 
+    function isThreatsStale() {
+        if (!window.SirensThreats || !window.SirensThreats.at) return false;
+        var moment = window.SirensThreats.at();
+        if (!moment) return false;
+        return Date.now() - moment.getTime() > STALE_MS;
+    }
+
+    function isFreshApi() {
+        if (!lastApiSuccess) return false;
+        if (lastApiError > lastApiSuccess) return false;
+        return Date.now() - lastApiSuccess < 45000;
+    }
+
     // Каскад статусних плашок:
     // 1. Пріоритет 1 (Проблема з інтернетом у клієнта): НЕМАЄ ЗВ'ЯЗКУ / ЗВ'ЯЗОК ВІДНОВЛЕНО
-    // 2. Пріоритет 2 (Проблема сервера або застигання даних): ДАНІ НЕ ОНОВЛЮЮТЬСЯ
+    // 2. Пріоритет 2 (Проблема сервера або застигання даних): ДАНІ НЕ ОНОВЛЮЮТЬСЯ / ДАНІ ОНОВЛЕНО
     function alarmFor(info) {
         if (!isClientOnline) {
             return { state: 'offline', text: 'НЕМАЄ ЗВ\'ЯЗКУ' };
         }
 
         if (Date.now() < showRestoredUntil) {
-            return { state: 'ok', text: 'ЗВ\'ЯЗОК ВІДНОВЛЕНО' };
+            return { state: 'ok', text: restoredText };
         }
 
         var syncIso = telemetryAt(statusData);
-        if (isStale(syncIso) || info.state === 'down' || info.loud) {
+        var sourceStale = isStale(syncIso);
+        var threatsStale = isThreatsStale();
+
+        if (sourceStale || threatsStale) {
             return { state: 'down', text: 'ДАНІ НЕ ОНОВЛЮЮТЬСЯ' };
+        }
+
+        if (info.state === 'down' || info.loud) {
+            // Якщо /api щойно успішно відповів (останній запит успішний і свіжий),
+            // і джерело не застигло — мапа реально оновлюється просто зараз,
+            // тому плашку збою не показуємо.
+            if (!isFreshApi()) {
+                return { state: 'down', text: 'ДАНІ НЕ ОНОВЛЮЮТЬСЯ' };
+            }
         }
 
         return null;
@@ -407,7 +442,22 @@
     function updateState() {
         var indicator = statusData && statusData.status ? statusData.status.indicator : null;
         var info = STATES[indicator] || UNKNOWN;
-        render(info, alarmFor(info));
+        var alarm = alarmFor(info);
+
+        // Якщо сервер щойно відновився після збою ('down' → 'ok') — показуємо
+        // плашку «ДАНІ ОНОВЛЕНО» на 4 секунди.
+        if (!alarm && lastAlarmState === 'down' && isClientOnline) {
+            triggerRestored('ДАНІ ОНОВЛЕНО');
+            alarm = { state: 'ok', text: 'ДАНІ ОНОВЛЕНО' };
+        }
+
+        if (alarm) {
+            lastAlarmState = alarm.state;
+        } else {
+            lastAlarmState = null;
+        }
+
+        render(info, alarm);
     }
 
     var POLL_TIMEOUT_MS = 6000;
@@ -526,16 +576,28 @@
     window.addEventListener('offline', function () { setClientOnline(false); });
 
     if (window.SirensThreats) {
+        if (window.SirensThreats.at && window.SirensThreats.at()) {
+            lastApiSuccess = window.SirensThreats.at().getTime();
+        }
         window.SirensThreats.onSuccess(function () {
+            lastApiSuccess = Date.now();
             if (typeof navigator !== 'undefined' && navigator.onLine === false) {
                 setClientOnline(false);
-            } else if (!isClientOnline) {
-                poll();
+            } else {
+                if (!isClientOnline) {
+                    setClientOnline(true);
+                } else if (lastAlarmState === 'down' || (chip && chip.root && !chip.root.hidden && chip.root.dataset.state === 'down')) {
+                    poll();
+                    updateState();
+                }
             }
         });
         window.SirensThreats.onError(function (err) {
+            lastApiError = Date.now();
             if (!navigator.onLine || (err && (err.name === 'TypeError' || err.name === 'AbortError' || String(err).indexOf('fetch') !== -1 || String(err).indexOf('NetworkError') !== -1 || String(err).indexOf('Load failed') !== -1))) {
                 setClientOnline(false);
+            } else {
+                poll();
             }
         });
     }

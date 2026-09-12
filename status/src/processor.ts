@@ -366,17 +366,19 @@ export async function computeStatusData(env: Env) {
         const uptimePct = trackedSeconds > 0 ? Math.max(0, Math.min(100, ((trackedSeconds - downSeconds) / trackedSeconds) * 100)) : null;
 
         let outageSince = null;
-        if (intervals.length > 0 && intervals[intervals.length - 1].end >= now) {
-            outageSince = intervals[intervals.length - 1].start.toISOString();
-        } else if (["down", "major", "minor"].includes(probe.live)) {
-            if (probe.flips.length > 0 && probe.flips[probe.flips.length - 1].up === 0) {
-                outageSince = probe.flips[probe.flips.length - 1].timestamp.toISOString();
-            } else {
-                outageSince = now.toISOString();
+        if (probe.live !== "ok" && probe.live !== "mnt") {
+            if (intervals.length > 0 && intervals[intervals.length - 1].end >= now) {
+                outageSince = intervals[intervals.length - 1].start.toISOString();
+            } else if (["down", "major", "minor"].includes(probe.live)) {
+                if (probe.flips.length > 0 && probe.flips[probe.flips.length - 1].up === 0) {
+                    outageSince = probe.flips[probe.flips.length - 1].timestamp.toISOString();
+                } else {
+                    outageSince = now.toISOString();
+                }
             }
         }
 
-        let compState = hours.length > 0 ? hours[hours.length - 1].state : "nodata";
+        let compState = "nodata";
         if (mntAppliesToComp(spec.key)) {
             compState = "mnt";
             outageSince = null;
@@ -387,8 +389,6 @@ export async function computeStatusData(env: Env) {
                 hours[hours.length - 1].statusText = updatedParts.statusText;
                 hours[hours.length - 1].title = updatedParts.fullTitle;
             }
-        } else if (compState === "mnt") {
-            compState = (probe.live && probe.live !== "mnt") ? probe.live : "ok";
         } else if (spec.key === "source" && isSourceStale) {
             compState = "down";
             if (!outageSince && lastSyncStr) {
@@ -400,6 +400,16 @@ export async function computeStatusData(env: Env) {
                 hours[hours.length - 1].timeText = updatedParts.timeText;
                 hours[hours.length - 1].statusText = updatedParts.statusText;
                 hours[hours.length - 1].title = updatedParts.fullTitle;
+            }
+        } else if (probe.present) {
+            if (outageSince !== null) {
+                compState = (probe.live === "minor") ? "minor" : "down";
+            } else if (probe.live) {
+                compState = probe.live === "major" ? "down" : probe.live;
+            } else if (probe.flips_ok) {
+                compState = "ok";
+            } else {
+                compState = "nodata";
             }
         }
 

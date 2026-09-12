@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "Sirens"
-version = "1.1.0"
+version = "1.7.0"
 requires-python = ">=3.10"
 dynamic = ["dependencies"]
 
@@ -34,3 +34,9 @@ target-version = "py310"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
 ignore = ["E501"]
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+version_variables = ["config.py:VERSION"]
+build_command = ""
+assets = []

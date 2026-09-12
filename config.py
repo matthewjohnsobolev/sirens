@@ -7,7 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 IMAGES_PATH = PROJECT_ROOT / "assets" / "img"
 SESSION_PATH = PROJECT_ROOT / "data" / "sessions"
 LOGS_PATH = PROJECT_ROOT / "logs"
-VERSION = "1.1.0"
+VERSION = "1.7.0"
 
 load_dotenv()
 

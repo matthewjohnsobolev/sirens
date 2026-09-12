@@ -1,4 +1,5 @@
 import importlib
+import re
 from unittest.mock import patch
 
 import pytest
@@ -17,7 +18,8 @@ def test_config_paths():
     assert config.IMAGES_PATH.name == "img"
     assert config.SESSION_PATH.name == "sessions"
     assert config.LOGS_PATH.name == "logs"
-    assert config.VERSION == "1.1.0"
+    assert config.VERSION == "1.7.0"
+    assert re.match(r"^\d+\.\d+\.\d+", config.VERSION)
 
 
 def test_map_tile_key_is_appended_without_breaking_an_existing_query():

@@ -111,10 +111,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         }))
     };
 
+    const cacheSeconds = (isServiceDown || isDegraded) ? ERROR_CACHE_SECONDS : JSON_CACHE_SECONDS;
     const response = new Response(JSON.stringify(responsePayload, null, 2), {
         headers: {
             ...CORS_HEADERS,
-            "Cache-Control": `public, max-age=${JSON_CACHE_SECONDS}`
+            "Cache-Control": `public, max-age=${cacheSeconds}`
         }
     });
 

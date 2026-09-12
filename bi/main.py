@@ -15,6 +15,7 @@ import logging
 import os
 import sys
 from typing import NamedTuple
+from zoneinfo import ZoneInfo
 
 import asyncpg
 import boto3
@@ -142,8 +143,10 @@ async def store(pool, counts: list[ChannelCount]) -> None:
         await conn.executemany(INSERT_SQL, rows)
 
 
+KYIV_TZ = ZoneInfo("Europe/Kyiv")
+
 SELECT_ALL_STATS_SQL = """
-    SELECT channel, collected_at, subscriber_count
+    SELECT channel, (collected_at AT TIME ZONE 'Europe/Kyiv') AS collected_at, subscriber_count
     FROM subscriber_snapshots
     ORDER BY collected_at, channel
 """
@@ -169,6 +172,8 @@ async def export_stats_csv(pool) -> str:
         )
         display_name = REGION_CONFIG.get(channel_key, {}).get("display_name", channel_key)
         if isinstance(date_val, datetime.datetime):
+            if date_val.tzinfo is not None:
+                date_val = date_val.astimezone(KYIV_TZ)
             date_str = date_val.strftime("%Y-%m-%d %H:%M:%S")
         elif hasattr(date_val, "isoformat"):
             date_str = date_val.isoformat()
@@ -182,13 +187,56 @@ async def export_stats_csv(pool) -> str:
 export_subscribers_csv = export_stats_csv
 
 
-def upload_to_r2(csv_content: str) -> None:
+SELECT_ALERTS_SQL = """
+    SELECT
+        (recorded_at AT TIME ZONE 'Europe/Kyiv') AS recorded_at,
+        event_type,
+        level,
+        district,
+        channel_id
+    FROM alert_history
+    WHERE channel_id IS NOT NULL
+      AND event_type = 'air_raid_alert'
+    ORDER BY recorded_at
+"""
+
+ALERTS_CSV_COLUMNS = ("date", "event_type", "level", "district", "channel_id")
+
+
+async def export_alerts_csv(pool) -> str:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(SELECT_ALERTS_SQL)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(ALERTS_CSV_COLUMNS)
+
+    for record in rows:
+        date_val = record.get("recorded_at") if "recorded_at" in record else record.get("date")
+        event_type = record.get("event_type", "air_raid_alert")
+        level = record.get("level") or ""
+        district = record.get("district", "")
+        channel_id = record.get("channel_id") or ""
+        if isinstance(date_val, datetime.datetime):
+            if date_val.tzinfo is not None:
+                date_val = date_val.astimezone(KYIV_TZ)
+            date_str = date_val.strftime("%Y-%m-%d %H:%M:%S")
+        elif hasattr(date_val, "isoformat"):
+            date_str = date_val.isoformat()
+        else:
+            date_str = str(date_val) if date_val is not None else ""
+        writer.writerow([date_str, event_type, level, district, channel_id])
+
+    return buffer.getvalue()
+
+
+def upload_to_r2(csv_content: str, key: str = "subscriber_snapshots.csv") -> None:
     if not (
         CLOUDFLARE_R2_ACCESS_KEY_ID
         and CLOUDFLARE_R2_SECRET_ACCESS_KEY
         and (CLOUDFLARE_R2_S3_ENDPOINT or CLOUDFLARE_ACCOUNT_ID)
     ):
-        log.warning("R2 credentials not set; skipping upload to R2")
+        log.warning("R2 credentials not set; skipping upload of %s to R2", key)
         return
 
     endpoint = (
@@ -202,9 +250,9 @@ def upload_to_r2(csv_content: str) -> None:
         region_name="auto",
     )
     bucket = CLOUDFLARE_R2_BI_DATA_BUCKET
-    key = "subscriber_snapshots.csv"
     log.info(
-        "Uploading subscriber snapshots CSV to s3://%s/%s (%d bytes)",
+        "Uploading %s to s3://%s/%s (%d bytes)",
+        key,
         bucket,
         key,
         len(csv_content.encode("utf-8")),
@@ -215,7 +263,7 @@ def upload_to_r2(csv_content: str) -> None:
         Body=csv_content.encode("utf-8"),
         ContentType="text/csv; charset=utf-8",
     )
-    log.info("Successfully uploaded subscriber snapshots CSV to R2 data bucket %s", bucket)
+    log.info("Successfully uploaded %s to R2 data bucket %s", key, bucket)
 
 
 def trigger_dashboard_build() -> None:
@@ -267,7 +315,11 @@ async def run_snapshot(client: TelegramClient, pool, channels: dict) -> int:
     log.info("Snapshot done: %d/%d channels, %d subscribers in total", len(counts), expected, total)
 
     csv_data = await export_stats_csv(pool)
-    await asyncio.to_thread(upload_to_r2, csv_data)
+    await asyncio.to_thread(upload_to_r2, csv_data, "subscriber_snapshots.csv")
+
+    alerts_csv_data = await export_alerts_csv(pool)
+    await asyncio.to_thread(upload_to_r2, alerts_csv_data, "alerts_history.csv")
+
     await asyncio.to_thread(trigger_dashboard_build)
 
     return 0

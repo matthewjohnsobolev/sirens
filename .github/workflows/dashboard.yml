@@ -65,6 +65,15 @@ jobs:
           test "$rows" -gt 0 || { echo "stats export returned no data rows"; exit 1; }
           echo "Downloaded $rows rows"
 
+          if aws s3 ls "s3://${DATA_BUCKET}/alerts_history.csv" --endpoint-url "$R2_ENDPOINT" --region auto >/dev/null 2>&1; then
+            aws s3 cp "s3://${DATA_BUCKET}/alerts_history.csv" sources/sirens/alerts_history.csv \
+              --endpoint-url "$R2_ENDPOINT" --region auto
+            echo "Downloaded alerts_history.csv"
+          else
+            echo "alerts_history.csv not found in s3://${DATA_BUCKET}/; creating empty alerts history source"
+            printf 'date,event_type,level,district,channel_id\n' > sources/sirens/alerts_history.csv
+          fi
+
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 

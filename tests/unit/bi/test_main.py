@@ -182,12 +182,15 @@ async def test_run_snapshot_stores_and_reports(bi_pool, caplog):
         patch("bi.main.collect", AsyncMock(return_value=counts)),
         patch("bi.main.store", new_callable=AsyncMock) as mock_store,
         patch("bi.main.export_stats_csv", AsyncMock(return_value="csv_data")),
-        patch("bi.main.upload_to_r2"),
+        patch("bi.main.export_alerts_csv", AsyncMock(return_value="alerts_csv_data")),
+        patch("bi.main.upload_to_r2") as mock_upload,
         patch("bi.main.trigger_dashboard_build"),
     ):
         assert await run_snapshot(AsyncMock(), pool, NETWORK_CHANNELS) == 0
 
     mock_store.assert_awaited_once_with(pool, counts)
+    mock_upload.assert_any_call("csv_data", "subscriber_snapshots.csv")
+    mock_upload.assert_any_call("alerts_csv_data", "alerts_history.csv")
     assert "3/3 channels" in caplog.text
     assert "60 subscribers" in caplog.text
 
@@ -239,6 +242,55 @@ async def test_export_stats_csv(bi_pool):
     assert "channel_key,display_name,date,subscribers" in csv_str
     assert "kyiv,Kyiv,2026-08-19 12:00:00,100" in csv_str
     assert "custom,custom,2026-08-19,50" in csv_str
+
+
+@pytest.mark.asyncio
+async def test_export_stats_csv_with_utc_timezone(bi_pool):
+    pool, conn = bi_pool
+    # 12:00 UTC on Aug 19 is 15:00 in Kyiv (EEST, UTC+3)
+    utc_dt = datetime.datetime(2026, 8, 19, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    conn.fetch.return_value = [{"channel": "kyiv", "collected_at": utc_dt, "subscriber_count": 100}]
+    from bi.main import export_stats_csv
+
+    csv_str = await export_stats_csv(pool)
+    assert "kyiv,Kyiv,2026-08-19 15:00:00,100" in csv_str
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_csv(bi_pool):
+    pool, conn = bi_pool
+    utc_dt = datetime.datetime(2026, 8, 19, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    naive_dt = datetime.datetime(2026, 8, 19, 16, 0, 0)
+    conn.fetch.return_value = [
+        {
+            "recorded_at": utc_dt,
+            "event_type": "air_raid_alert",
+            "level": "red",
+            "district": "kyiv",
+            "channel_id": -1001712561448,
+        },
+        {
+            "recorded_at": naive_dt,
+            "event_type": "air_raid_alert",
+            "level": "yellow",
+            "district": "bucha",
+            "channel_id": -1001712561449,
+        },
+        {
+            "recorded_at": None,
+            "event_type": "air_raid_alert",
+            "level": None,
+            "district": "odesa",
+            "channel_id": None,
+        },
+    ]
+    from bi.main import export_alerts_csv
+
+    csv_str = await export_alerts_csv(pool)
+    assert "date,event_type,level,district,channel_id" in csv_str
+    assert "2026-08-19 15:00:00,air_raid_alert,red,kyiv,-1001712561448" in csv_str
+    assert "2026-08-19 16:00:00,air_raid_alert,yellow,bucha,-1001712561449" in csv_str
+    assert ",air_raid_alert,,odesa," in csv_str
 
 
 def test_upload_to_r2_skips_when_no_credentials(monkeypatch, caplog):

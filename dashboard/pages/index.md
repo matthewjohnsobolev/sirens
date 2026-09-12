@@ -160,29 +160,77 @@ latest_per_day as (
     )
     where rn = 1
 ),
-view_24h as (
+yellow_start as (
+    select min(date::date) as start_date
+    from sirens.alerts_history
+    where level = 'yellow'
+      and channel_id is not null
+      and channel_id != ''
+),
+daily_alerts as (
+    select
+        date::date as day_date,
+        count(*) filter (where level = 'red') as red_alarms,
+        count(*) filter (where level = 'yellow') as yellow_alarms
+    from sirens.alerts_history
+    where channel_id is not null
+      and channel_id != ''
+    group by 1
+),
+snapshots_24h as (
     select
         date,
         total,
+        lag(date) over (order by date) as prev_date,
         strftime(date, '%b %-d, %H:%M') as label
     from per_snapshot
     where date >= (select max(date) from per_snapshot) - interval '24 hours'
 ),
+view_24h as (
+    select
+        s.date,
+        s.total,
+        s.label,
+        coalesce(count(a.date) filter (where a.level = 'red'), 0) as red_alarms,
+        case
+            when s.date::date < (select start_date from yellow_start) then null
+            else coalesce(count(a.date) filter (where a.level = 'yellow'), 0)
+        end as yellow_alarms
+    from snapshots_24h s
+    left join sirens.alerts_history a
+           on a.channel_id is not null
+          and a.channel_id != ''
+          and a.date > coalesce(s.prev_date, s.date - interval '4 hours')
+          and a.date <= s.date
+    group by s.date, s.total, s.label
+),
 view_7d as (
     select
-        date::timestamp as date,
-        total,
-        strftime(date, '%b %-d') as label
-    from latest_per_day
-    where date >= (select max(date) from latest_per_day) - interval '7 days'
+        l.date::timestamp as date,
+        l.total,
+        strftime(l.date, '%b %-d') as label,
+        coalesce(a.red_alarms, 0) as red_alarms,
+        case
+            when l.date < (select start_date from yellow_start) then null
+            else coalesce(a.yellow_alarms, 0)
+        end as yellow_alarms
+    from latest_per_day l
+    left join daily_alerts a on a.day_date = l.date
+    where l.date >= (select max(date) from latest_per_day) - interval '7 days'
 ),
 view_30d as (
     select
-        date::timestamp as date,
-        total,
-        strftime(date, '%b %-d') as label
-    from latest_per_day
-    where date >= (select max(date) from latest_per_day) - interval '30 days'
+        l.date::timestamp as date,
+        l.total,
+        strftime(l.date, '%b %-d') as label,
+        coalesce(a.red_alarms, 0) as red_alarms,
+        case
+            when l.date < (select start_date from yellow_start) then null
+            else coalesce(a.yellow_alarms, 0)
+        end as yellow_alarms
+    from latest_per_day l
+    left join daily_alerts a on a.day_date = l.date
+    where l.date >= (select max(date) from latest_per_day) - interval '30 days'
 ),
 selected as (
     select * from view_24h
@@ -206,7 +254,9 @@ select
     total - lag(total) over (order by date) as change,
     (total - lag(total) over (order by date))
         / nullif(lag(total) over (order by date), 0)::double as change_pct,
-    lag(label) over (order by date) as prev_label
+    lag(label) over (order by date) as prev_label,
+    red_alarms,
+    yellow_alarms
 from selected
 order by 1
 ```
@@ -214,26 +264,65 @@ order by 1
 <LineChart
     data={daily_total}
     x=date
-    y=total
+    y={["total", "red_alarms", "yellow_alarms"]}
     yAxisTitle="subscribers"
     yScale=true
     markers=true
     chartAreaHeight=280
     echartsOptions={{
         useUTC: true,
+        legend: {
+            show: true,
+            top: 0
+        },
+        yAxis: [
+            {
+                type: 'value',
+                name: 'subscribers',
+                scale: true
+            },
+            {
+                type: 'value',
+                name: 'alarms',
+                minInterval: 1,
+                splitLine: { show: false }
+            }
+        ],
+        series: [
+            {
+                name: 'total',
+                yAxisIndex: 0,
+                itemStyle: { color: '#2f9e44' },
+                lineStyle: { color: '#2f9e44', width: 2 }
+            },
+            {
+                name: 'red_alarms',
+                yAxisIndex: 1,
+                itemStyle: { color: '#e03131' },
+                lineStyle: { color: '#e03131', width: 2 }
+            },
+            {
+                name: 'yellow_alarms',
+                yAxisIndex: 1,
+                connectNulls: false,
+                itemStyle: { color: '#fab005' },
+                lineStyle: { color: '#fab005', width: 2 }
+            }
+        ],
         tooltip: {
             formatter: (params) => {
                 const point = Array.isArray(params) ? params[0] : params;
                 const row = daily_total[point.dataIndex] ?? {};
-                // The first point of a window has nothing behind it to compare
-                // against, so it just shows the count.
-                return (
-                    tipHead(row.label ?? point.axisValueLabel) +
-                    tipRow('subscribers', num(point.value[1])) +
-                    (row.prev_label
-                        ? tipRow('vs ' + row.prev_label, delta(row.change, row.change_pct))
-                        : '')
-                );
+                let res = tipHead(row.label ?? point.axisValueLabel);
+                res += tipRow('subscribers', num(row.total));
+                if (row.prev_label) {
+                    res += tipRow('vs ' + row.prev_label, delta(row.change, row.change_pct));
+                }
+                res += tipRow('<span style="color: #e03131;">●</span> red alarms', num(row.red_alarms));
+                if (row.yellow_alarms !== null && row.yellow_alarms !== undefined) {
+                    res += tipRow('<span style="color: #fab005;">●</span> yellow alarms', num(row.yellow_alarms));
+                }
+                return res;
             }
         }
     }}
@@ -259,7 +348,7 @@ select
 from current_run, previous_day_run
 ```
 
-Net subscriber change per channel between {movement_window[0].earlier} and {movement_window[0].later}.
+Net subscriber change per channel between {movement_window[0].earlier} and {movement_window[0].later} (Kyiv time).
 
 ```sql movement
 with current_run as (
@@ -439,7 +528,7 @@ order by change_7d_pct desc
     }}
 />
 
-Data as of {movement_window[0].later}. Historical tracking begins from the date
+Data as of {movement_window[0].later} (Kyiv time). Historical tracking begins from the date
 metrics collection was enabled. To ensure data integrity, incomplete snapshots
 are omitted rather than recorded partially — any gaps in the trend line indicate
 a missed run, not lost subscribers.

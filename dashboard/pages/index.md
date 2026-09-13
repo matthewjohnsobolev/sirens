@@ -320,7 +320,6 @@ view_24h as (
           and a.date > coalesce(s.prev_date, s.date - interval '4 hours')
           and a.date <= s.date
     where s.date >= (select max(date) from per_snapshot) - interval '24 hours'
-      and s.date >= '2026-09-12'::timestamp
     group by s.date, s.label, s.net_change, s.net_change_pct
 ),
 view_7d as (
@@ -334,7 +333,6 @@ view_7d as (
     from daily_delta d
     left join daily_alerts a on a.day_date = d.date
     where d.date >= (select max(date) from latest_per_day) - interval '7 days'
-      and d.date >= '2026-09-12'::date
 ),
 view_30d as (
     select
@@ -347,7 +345,6 @@ view_30d as (
     from daily_delta d
     left join daily_alerts a on a.day_date = d.date
     where d.date >= (select max(date) from latest_per_day) - interval '30 days'
-      and d.date >= '2026-09-12'::date
 ),
 selected as (
     select * from view_24h
@@ -366,29 +363,38 @@ select
     label,
     net_change,
     net_change_pct,
+    yellow_alerts as "Yellow Alerts",
+    red_alerts as "Red Alerts",
     yellow_alerts,
     red_alerts
 from selected
-where date >= '2026-09-12'::timestamp
 order by 1
 ```
 
-<LineChart
+<Chart
     data={alert_impact}
     x=date
-    y={["net_change", "yellow_alerts", "red_alerts"]}
+    y="net_change"
     chartAreaHeight=280
+    yAxisTitle="net change"
+    y2AxisTitle="alerts"
+    y2Min=0
     echartsOptions={{
         useUTC: true,
+        xAxis: {
+            type: 'time',
+            min: 'dataMin',
+            max: 'dataMax',
+            ...(inputs.impact_timeframe?.value === '24h' || inputs.impact_timeframe === '24h'
+                ? {
+                    minInterval: 3600 * 1000,
+                    maxInterval: 4 * 3600 * 1000
+                  }
+                : {})
+        },
         legend: {
             show: true,
-            top: 0,
-            formatter: (name) => {
-                if (name === 'net_change') return 'Net Subscriber Change';
-                if (name === 'yellow_alerts') return 'Moderate Alerts (Yellow)';
-                if (name === 'red_alerts') return 'High/Critical Alerts (Red)';
-                return name;
-            }
+            top: 0
         },
         yAxis: [
             {
@@ -418,7 +424,27 @@ order by 1
         ],
         series: [
             {
-                name: 'net_change',
+                name: 'Yellow Alerts',
+                type: 'bar',
+                stack: 'alerts',
+                yAxisIndex: 1,
+                z: 2,
+                itemStyle: {
+                    color: 'rgba(234, 179, 8, 0.65)'
+                }
+            },
+            {
+                name: 'Red Alerts',
+                type: 'bar',
+                stack: 'alerts',
+                yAxisIndex: 1,
+                z: 2,
+                itemStyle: {
+                    color: 'rgba(239, 68, 68, 0.65)'
+                }
+            },
+            {
+                name: 'Net Subscriber Change',
                 type: 'line',
                 smooth: true,
                 yAxisIndex: 0,
@@ -440,26 +466,6 @@ order by 1
                         }
                     ]
                 }
-            },
-            {
-                name: 'yellow_alerts',
-                type: 'bar',
-                stack: 'alerts',
-                yAxisIndex: 1,
-                z: 2,
-                itemStyle: {
-                    color: 'rgba(234, 179, 8, 0.65)'
-                }
-            },
-            {
-                name: 'red_alerts',
-                type: 'bar',
-                stack: 'alerts',
-                yAxisIndex: 1,
-                z: 2,
-                itemStyle: {
-                    color: 'rgba(239, 68, 68, 0.65)'
-                }
             }
         ],
         tooltip: {
@@ -475,13 +481,34 @@ order by 1
                 const row = alert_impact[point.dataIndex] ?? {};
                 let res = tipHead(row.label ?? point.axisValueLabel);
                 res += tipRow('net change', delta(row.net_change, row.net_change_pct));
-                res += tipRow('<span style="color: #eab308;">●</span> yellow (moderate)', num(row.yellow_alerts));
-                res += tipRow('<span style="color: #ef4444;">●</span> red (high/critical)', num(row.red_alerts));
+                res += tipRow('<span style="color: #eab308;">●</span> Yellow Alerts', num(row.yellow_alerts));
+                res += tipRow('<span style="color: #ef4444;">●</span> Red Alerts', num(row.red_alerts));
                 return res;
             }
         }
     }}
-/>
+>
+    <Bar
+        y="Yellow Alerts"
+        name="Yellow Alerts"
+        stackName="alerts"
+        fillColor="#eab308"
+        fillOpacity=0.65
+    />
+    <Bar
+        y="Red Alerts"
+        name="Red Alerts"
+        stackName="alerts"
+        fillColor="#ef4444"
+        fillOpacity=0.65
+    />
+    <Line
+        y="net_change"
+        name="Net Subscriber Change"
+        lineColor="#22c55e"
+        lineWidth=2
+    />
+</Chart>
 
 ## Daily Channel Movement
 

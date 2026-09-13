@@ -136,6 +136,7 @@ Aggregate subscriber trajectory across all monitored alert channels over time.
     <ButtonGroupItem valueLabel="24H" value="24h" />
     <ButtonGroupItem valueLabel="7D" value="7d" />
     <ButtonGroupItem valueLabel="30D" value="30d" />
+    <ButtonGroupItem valueLabel="ALL" value="all" />
 </ButtonGroup>
 
 ```sql daily_total
@@ -184,6 +185,13 @@ view_30d as (
     from latest_per_day
     where date >= (select max(date) from latest_per_day) - interval '30 days'
 ),
+view_all as (
+    select
+        date::timestamp as date,
+        total,
+        strftime(date, '%b %-d') as label
+    from latest_per_day
+),
 selected as (
     select * from view_24h
     where '${inputs.timeframe.value}' = '24h' or '${inputs.timeframe}' = '24h'
@@ -191,10 +199,13 @@ selected as (
     select * from view_7d
     where ('${inputs.timeframe.value}' = '7d' or '${inputs.timeframe}' = '7d')
        or ('${inputs.timeframe.value}' is null and '${inputs.timeframe}' is null)
-       or ('${inputs.timeframe.value}' not in ('24h', '30d') and '${inputs.timeframe}' not in ('24h', '30d'))
+       or (coalesce('${inputs.timeframe.value}', '${inputs.timeframe}', '') not in ('24h', '7d', '30d', 'all'))
     union all
     select * from view_30d
     where '${inputs.timeframe.value}' = '30d' or '${inputs.timeframe}' = '30d'
+    union all
+    select * from view_all
+    where '${inputs.timeframe.value}' = 'all' or '${inputs.timeframe}' = 'all'
 )
 -- The step back is over the points actually plotted, so on a day with no
 -- snapshot the tooltip compares against the previous point it can name rather
@@ -248,12 +259,13 @@ order by 1
 
 ## Alert Impact on Daily Growth
 
-Correlation between net subscriber gain/loss and alert level activity.
+Net subscriber movement mapped against yellow and red alert frequency.
 
 <ButtonGroup name=impact_timeframe defaultValue="7d">
     <ButtonGroupItem valueLabel="24H" value="24h" />
     <ButtonGroupItem valueLabel="7D" value="7d" />
     <ButtonGroupItem valueLabel="30D" value="30d" />
+    <ButtonGroupItem valueLabel="ALL" value="all" />
 </ButtonGroup>
 
 ```sql alert_impact
@@ -346,6 +358,17 @@ view_30d as (
     left join daily_alerts a on a.day_date = d.date
     where d.date >= (select max(date) from latest_per_day) - interval '30 days'
 ),
+view_all as (
+    select
+        d.date::timestamp as date,
+        strftime(d.date, '%b %-d') as label,
+        coalesce(d.net_change, 0) as net_change,
+        d.net_change_pct,
+        coalesce(a.yellow_alerts, 0) as yellow_alerts,
+        coalesce(a.red_alerts, 0) as red_alerts
+    from daily_delta d
+    left join daily_alerts a on a.day_date = d.date
+),
 selected as (
     select * from view_24h
     where '${inputs.impact_timeframe.value}' = '24h' or '${inputs.impact_timeframe}' = '24h'
@@ -353,10 +376,13 @@ selected as (
     select * from view_7d
     where ('${inputs.impact_timeframe.value}' = '7d' or '${inputs.impact_timeframe}' = '7d')
        or ('${inputs.impact_timeframe.value}' is null and '${inputs.impact_timeframe}' is null)
-       or ('${inputs.impact_timeframe.value}' not in ('24h', '30d') and '${inputs.impact_timeframe}' not in ('24h', '30d'))
+       or (coalesce('${inputs.impact_timeframe.value}', '${inputs.impact_timeframe}', '') not in ('24h', '7d', '30d', 'all'))
     union all
     select * from view_30d
     where '${inputs.impact_timeframe.value}' = '30d' or '${inputs.impact_timeframe}' = '30d'
+    union all
+    select * from view_all
+    where '${inputs.impact_timeframe.value}' = 'all' or '${inputs.impact_timeframe}' = 'all'
 )
 select
     date,
@@ -381,6 +407,13 @@ order by 1
     y2Min=0
     echartsOptions={{
         useUTC: true,
+        grid: {
+            top: 36,
+            bottom: 25,
+            left: '1%',
+            right: '3%',
+            containLabel: true
+        },
         xAxis: {
             type: 'time',
             min: 'dataMin',
@@ -394,7 +427,8 @@ order by 1
         },
         legend: {
             show: true,
-            top: 0
+            top: 0,
+            type: 'scroll'
         },
         yAxis: [
             {
@@ -402,6 +436,12 @@ order by 1
                 name: 'net change',
                 position: 'left',
                 scale: false,
+                nameTextStyle: {
+                    align: 'left',
+                    verticalAlign: 'bottom',
+                    padding: [0, 0, 4, 0]
+                },
+                nameGap: 6,
                 axisLine: {
                     show: true,
                     onZero: true
@@ -419,6 +459,12 @@ order by 1
                 position: 'right',
                 min: 0,
                 minInterval: 1,
+                nameTextStyle: {
+                    align: 'right',
+                    verticalAlign: 'bottom',
+                    padding: [0, 0, 4, 0]
+                },
+                nameGap: 6,
                 splitLine: { show: false }
             }
         ],
@@ -429,6 +475,10 @@ order by 1
                 stack: 'alerts',
                 yAxisIndex: 1,
                 z: 2,
+                barWidth: (inputs.impact_timeframe?.value === '24h' || inputs.impact_timeframe === '24h')
+                    ? (alert_impact && alert_impact.length ? Math.min(24, Math.max(12, Math.round(140 / alert_impact.length))) : 20)
+                    : undefined,
+                barMaxWidth: 30,
                 itemStyle: {
                     color: 'rgba(234, 179, 8, 0.65)'
                 }
@@ -439,6 +489,10 @@ order by 1
                 stack: 'alerts',
                 yAxisIndex: 1,
                 z: 2,
+                barWidth: (inputs.impact_timeframe?.value === '24h' || inputs.impact_timeframe === '24h')
+                    ? (alert_impact && alert_impact.length ? Math.min(24, Math.max(12, Math.round(140 / alert_impact.length))) : 20)
+                    : undefined,
+                barMaxWidth: 30,
                 itemStyle: {
                     color: 'rgba(239, 68, 68, 0.65)'
                 }
@@ -470,12 +524,6 @@ order by 1
         ],
         tooltip: {
             trigger: 'axis',
-            axisPointer: {
-                type: 'cross',
-                crossStyle: {
-                    color: '#999'
-                }
-            },
             formatter: (params) => {
                 const point = Array.isArray(params) ? params[0] : params;
                 const row = alert_impact[point.dataIndex] ?? {};
@@ -512,42 +560,79 @@ order by 1
 
 ## Daily Channel Movement
 
+```sql movement_days
+select distinct
+    date::date as day_date,
+    strftime(date::date, '%Y-%m-%d') as day_value,
+    strftime(date::date, '%B %-d, %Y') as day_label
+from sirens.subscriber_snapshots
+order by day_date desc
+```
+
+<Dropdown
+    data={movement_days}
+    name=movement_date
+    value=day_value
+    label=day_label
+    title="Date"
+/>
+
 ```sql movement_window
-with current_run as (
+with target_day as (
+    select case
+        when '${inputs.movement_date.value}' not in ('', 'undefined', 'null')
+            then '${inputs.movement_date.value}'::date
+        when '${inputs.movement_date}' not in ('', 'undefined', 'null')
+            then '${inputs.movement_date}'::date
+        else (select max(date::date) from sirens.subscriber_snapshots)
+    end as chosen_date
+),
+target_run as (
     select max(date) as current_time
-    from sirens.subscriber_snapshots
+    from sirens.subscriber_snapshots, target_day
+    where date::date = target_day.chosen_date
 ),
 previous_day_run as (
     select coalesce(
-        (select max(date) from sirens.subscriber_snapshots where date::date < (select current_time::date from current_run)),
+        (select max(date) from sirens.subscriber_snapshots, target_day where date::date < target_day.chosen_date),
         (select min(date) from sirens.subscriber_snapshots)
     ) as prev_time
-    from current_run
+    from target_day
 )
 select
     strftime(previous_day_run.prev_time, '%B %-d, %Y %H:%M') as earlier,
-    strftime(current_run.current_time, '%B %-d, %Y %H:%M') as later
-from current_run, previous_day_run
+    strftime(target_run.current_time, '%B %-d, %Y %H:%M') as later
+from target_run, previous_day_run
 ```
 
 Net subscriber change per channel between {movement_window[0].earlier} and {movement_window[0].later} (Kyiv time).
 
 ```sql movement
-with current_run as (
+with target_day as (
+    select case
+        when '${inputs.movement_date.value}' not in ('', 'undefined', 'null')
+            then '${inputs.movement_date.value}'::date
+        when '${inputs.movement_date}' not in ('', 'undefined', 'null')
+            then '${inputs.movement_date}'::date
+        else (select max(date::date) from sirens.subscriber_snapshots)
+    end as chosen_date
+),
+target_run as (
     select max(date) as current_time
-    from sirens.subscriber_snapshots
+    from sirens.subscriber_snapshots, target_day
+    where date::date = target_day.chosen_date
 ),
 previous_day_run as (
     select coalesce(
-        (select max(date) from sirens.subscriber_snapshots where date::date < (select current_time::date from current_run)),
+        (select max(date) from sirens.subscriber_snapshots, target_day where date::date < target_day.chosen_date),
         (select min(date) from sirens.subscriber_snapshots)
     ) as prev_time
-    from current_run
+    from target_day
 ),
 later_counts as (
     select display_name, subscribers
-    from sirens.subscriber_snapshots, current_run
-    where date = current_run.current_time
+    from sirens.subscriber_snapshots, target_run
+    where date = target_run.current_time
 ),
 earlier_counts as (
     select display_name, subscribers
@@ -710,7 +795,12 @@ order by change_7d_pct desc
     }}
 />
 
-Data as of {movement_window[0].later} (Kyiv time). Historical tracking begins from the date
+```sql latest_snapshot
+select strftime(max(date), '%B %-d, %Y %H:%M') as latest_time
+from sirens.subscriber_snapshots
+```
+
+Data as of {latest_snapshot[0].latest_time} (Kyiv time). Historical tracking begins from the date
 metrics collection was enabled. To ensure data integrity, incomplete snapshots
 are omitted rather than recorded partially — any gaps in the trend line indicate
 a missed run, not lost subscribers.

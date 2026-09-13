@@ -55,6 +55,7 @@ def test_domain_region_config_is_the_broadcast_subset():
     assert domain.BROADCAST_DISTRICTS <= set(domain.DISTRICT_CONFIG)
     assert set(domain.real_channels) == set(domain.test_channels)
     assert all("display_name" in conf for conf in domain.REGION_CONFIG.values())
+    assert all("display_name" in conf for conf in domain.DISTRICT_CONFIG.values())
 
 
 def test_domain_broadcast_triggers_keep_the_oblast_name():

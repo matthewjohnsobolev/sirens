@@ -165,7 +165,6 @@ yellow_start as (
     from sirens.alerts_history
     where level = 'yellow'
       and channel_id is not null
-      and channel_id != ''
 ),
 daily_alerts as (
     select
@@ -174,7 +173,6 @@ daily_alerts as (
         count(*) filter (where level = 'yellow') as yellow_alarms
     from sirens.alerts_history
     where channel_id is not null
-      and channel_id != ''
     group by 1
 ),
 snapshots_24h as (
@@ -199,7 +197,6 @@ view_24h as (
     from snapshots_24h s
     left join sirens.alerts_history a
            on a.channel_id is not null
-          and a.channel_id != ''
           and a.date > coalesce(s.prev_date, s.date - interval '4 hours')
           and a.date <= s.date
     group by s.date, s.total, s.label

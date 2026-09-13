@@ -70,8 +70,12 @@ jobs:
               --endpoint-url "$R2_ENDPOINT" --region auto
             echo "Downloaded alerts_history.csv"
           else
-            echo "alerts_history.csv not found in s3://${DATA_BUCKET}/; creating empty alerts history source"
-            printf 'date,event_type,level,district,channel_id\n' > sources/sirens/alerts_history.csv
+            echo "alerts_history.csv not found in s3://${DATA_BUCKET}/; will seed placeholder alerts history source"
+          fi
+
+          if [ ! -f sources/sirens/alerts_history.csv ] || [ $(( $(wc -l < sources/sirens/alerts_history.csv) - 1 )) -le 0 ]; then
+            echo "alerts_history.csv is missing or contains no data rows; seeding placeholder row"
+            printf 'date,event_type,level,district,channel_id\n1970-01-01 00:00:00,air_raid_alert,,,\n' > sources/sirens/alerts_history.csv
           fi
 
       - name: Install dependencies

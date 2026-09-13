@@ -293,6 +293,17 @@ async def test_export_alerts_csv(bi_pool):
     assert ",air_raid_alert,,odesa," in csv_str
 
 
+@pytest.mark.asyncio
+async def test_export_alerts_csv_empty(bi_pool):
+    pool, conn = bi_pool
+    conn.fetch.return_value = []
+    from bi.main import export_alerts_csv
+
+    csv_str = await export_alerts_csv(pool)
+    assert "date,event_type,level,district,channel_id" in csv_str
+    assert "1970-01-01 00:00:00,air_raid_alert,,," in csv_str
+
+
 def test_upload_to_r2_skips_when_no_credentials(monkeypatch, caplog):
     caplog.set_level(logging.WARNING)
     monkeypatch.setattr("bi.main.CLOUDFLARE_R2_ACCESS_KEY_ID", "")

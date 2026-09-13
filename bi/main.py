@@ -211,6 +211,10 @@ async def export_alerts_csv(pool) -> str:
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(ALERTS_CSV_COLUMNS)
 
+    if not rows:
+        writer.writerow(["1970-01-01 00:00:00", "air_raid_alert", "", "", ""])
+        return buffer.getvalue()
+
     for record in rows:
         date_val = record.get("recorded_at") if "recorded_at" in record else record.get("date")
         event_type = record.get("event_type", "air_raid_alert")

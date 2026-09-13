@@ -2,9 +2,11 @@
   "name": "sirens-bi",
   "version": "0.0.1",
   "scripts": {
+    "prebuild": "node ./prepare-sources.js",
     "build": "evidence build",
     "build:strict": "evidence build:strict",
     "dev": "evidence dev --open /",
+    "presources": "node ./prepare-sources.js",
     "sources": "evidence sources",
     "preview": "evidence preview"
   },

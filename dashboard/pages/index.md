@@ -671,6 +671,7 @@ order by day_date desc
     name=movement_date
     value=day_value
     label=day_label
+    order="day_value desc"
     title="Date"
 />
 

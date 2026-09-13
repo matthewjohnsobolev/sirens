@@ -67,6 +67,29 @@ def test_config_cloudflare_r2_keys_and_buckets(monkeypatch):
     assert config.CLOUDFLARE_R2_BI_WEB_BUCKET == "cf-web-bucket"
 
 
+def test_config_cloudflare_r2_fallback_keys(monkeypatch):
+    monkeypatch.delenv("CLOUDFLARE_R2_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_R2_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_R2_BI_DATA_BUCKET", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_R2_BI_WEB_BUCKET", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_R2_S3_ENDPOINT", raising=False)
+
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "fallback-key")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "fallback-secret")
+    monkeypatch.setenv("R2_DATA_BUCKET", "fallback-data")
+    monkeypatch.setenv("R2_WEB_BUCKET", "fallback-web")
+    monkeypatch.setenv("R2_ENDPOINT", "https://fallback.endpoint")
+
+    importlib.reload(config)
+
+    assert config.CLOUDFLARE_R2_ACCESS_KEY_ID == "fallback-key"
+    assert config.CLOUDFLARE_R2_SECRET_ACCESS_KEY == "fallback-secret"
+    assert config.CLOUDFLARE_R2_BI_DATA_BUCKET == "fallback-data"
+    assert config.CLOUDFLARE_R2_BI_WEB_BUCKET == "fallback-web"
+    assert config.CLOUDFLARE_R2_S3_ENDPOINT == "https://fallback.endpoint"
+
+
+
 def test_config_cloudflare_kv_keys(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-api-token-test")
     monkeypatch.setenv("CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "cf-kv-namespace-id")

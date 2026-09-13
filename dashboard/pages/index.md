@@ -160,74 +160,29 @@ latest_per_day as (
     )
     where rn = 1
 ),
-yellow_start as (
-    select min(date::date) as start_date
-    from sirens.alerts_history
-    where level = 'yellow'
-      and channel_id is not null
-),
-daily_alerts as (
-    select
-        date::date as day_date,
-        count(*) filter (where level = 'red') as red_alarms,
-        count(*) filter (where level = 'yellow') as yellow_alarms
-    from sirens.alerts_history
-    where channel_id is not null
-    group by 1
-),
-snapshots_24h as (
+view_24h as (
     select
         date,
         total,
-        lag(date) over (order by date) as prev_date,
         strftime(date, '%b %-d, %H:%M') as label
     from per_snapshot
     where date >= (select max(date) from per_snapshot) - interval '24 hours'
 ),
-view_24h as (
-    select
-        s.date,
-        s.total,
-        s.label,
-        coalesce(count(a.date) filter (where a.level = 'red'), 0) as red_alarms,
-        case
-            when s.date::date < (select start_date from yellow_start) then null
-            else coalesce(count(a.date) filter (where a.level = 'yellow'), 0)
-        end as yellow_alarms
-    from snapshots_24h s
-    left join sirens.alerts_history a
-           on a.channel_id is not null
-          and a.date > coalesce(s.prev_date, s.date - interval '4 hours')
-          and a.date <= s.date
-    group by s.date, s.total, s.label
-),
 view_7d as (
     select
-        l.date::timestamp as date,
-        l.total,
-        strftime(l.date, '%b %-d') as label,
-        coalesce(a.red_alarms, 0) as red_alarms,
-        case
-            when l.date < (select start_date from yellow_start) then null
-            else coalesce(a.yellow_alarms, 0)
-        end as yellow_alarms
-    from latest_per_day l
-    left join daily_alerts a on a.day_date = l.date
-    where l.date >= (select max(date) from latest_per_day) - interval '7 days'
+        date::timestamp as date,
+        total,
+        strftime(date, '%b %-d') as label
+    from latest_per_day
+    where date >= (select max(date) from latest_per_day) - interval '7 days'
 ),
 view_30d as (
     select
-        l.date::timestamp as date,
-        l.total,
-        strftime(l.date, '%b %-d') as label,
-        coalesce(a.red_alarms, 0) as red_alarms,
-        case
-            when l.date < (select start_date from yellow_start) then null
-            else coalesce(a.yellow_alarms, 0)
-        end as yellow_alarms
-    from latest_per_day l
-    left join daily_alerts a on a.day_date = l.date
-    where l.date >= (select max(date) from latest_per_day) - interval '30 days'
+        date::timestamp as date,
+        total,
+        strftime(date, '%b %-d') as label
+    from latest_per_day
+    where date >= (select max(date) from latest_per_day) - interval '30 days'
 ),
 selected as (
     select * from view_24h
@@ -251,9 +206,7 @@ select
     total - lag(total) over (order by date) as change,
     (total - lag(total) over (order by date))
         / nullif(lag(total) over (order by date), 0)::double as change_pct,
-    lag(label) over (order by date) as prev_label,
-    red_alarms,
-    yellow_alarms
+    lag(label) over (order by date) as prev_label
 from selected
 order by 1
 ```
@@ -261,64 +214,269 @@ order by 1
 <LineChart
     data={daily_total}
     x=date
-    y={["total", "red_alarms", "yellow_alarms"]}
+    y=total
+    lineColor="#2f9e44"
     yAxisTitle="subscribers"
     yScale=true
     markers=true
     chartAreaHeight=280
     echartsOptions={{
         useUTC: true,
-        legend: {
-            show: true,
-            top: 0
-        },
-        yAxis: [
-            {
-                type: 'value',
-                name: 'subscribers',
-                scale: true
-            },
-            {
-                type: 'value',
-                name: 'alarms',
-                minInterval: 1,
-                splitLine: { show: false }
-            }
-        ],
         series: [
             {
-                name: 'total',
-                yAxisIndex: 0,
                 itemStyle: { color: '#2f9e44' },
                 lineStyle: { color: '#2f9e44', width: 2 }
-            },
-            {
-                name: 'red_alarms',
-                yAxisIndex: 1,
-                itemStyle: { color: '#e03131' },
-                lineStyle: { color: '#e03131', width: 2 }
-            },
-            {
-                name: 'yellow_alarms',
-                yAxisIndex: 1,
-                connectNulls: false,
-                itemStyle: { color: '#fab005' },
-                lineStyle: { color: '#fab005', width: 2 }
             }
         ],
         tooltip: {
             formatter: (params) => {
                 const point = Array.isArray(params) ? params[0] : params;
                 const row = daily_total[point.dataIndex] ?? {};
+                // The first point of a window has nothing behind it to compare
+                // against, so it just shows the count.
+                return (
+                    tipHead(row.label ?? point.axisValueLabel) +
+                    tipRow('subscribers', num(point.value[1] ?? row.total)) +
+                    (row.prev_label
+                        ? tipRow('vs ' + row.prev_label, delta(row.change, row.change_pct))
+                        : '')
+                );
+            }
+        }
+    }}
+/>
+
+## Alert Impact on Daily Growth
+
+Correlation between net subscriber gain/loss and alert level activity.
+
+<ButtonGroup name=impact_timeframe defaultValue="7d">
+    <ButtonGroupItem valueLabel="24H" value="24h" />
+    <ButtonGroupItem valueLabel="7D" value="7d" />
+    <ButtonGroupItem valueLabel="30D" value="30d" />
+</ButtonGroup>
+
+```sql alert_impact
+with per_snapshot as (
+    select
+        date,
+        date::date as day_date,
+        sum(subscribers) as total
+    from sirens.subscriber_snapshots
+    group by 1, 2
+),
+latest_per_day as (
+    select
+        day_date as date,
+        total
+    from (
+        select
+            day_date,
+            total,
+            row_number() over (partition by day_date order by date desc) as rn
+        from per_snapshot
+    )
+    where rn = 1
+),
+daily_delta as (
+    select
+        date,
+        total,
+        total - lag(total) over (order by date) as net_change,
+        (total - lag(total) over (order by date))
+            / nullif(lag(total) over (order by date), 0)::double as net_change_pct
+    from latest_per_day
+),
+daily_alerts as (
+    select
+        date::date as day_date,
+        count(*) filter (where lower(level) in ('yellow', 'moderate') and channel_id is not null) as yellow_alerts,
+        count(*) filter (where lower(level) in ('red', 'high', 'critical') and channel_id is not null) as red_alerts
+    from sirens.alerts_history
+    group by 1
+),
+snapshot_delta as (
+    select
+        date,
+        total,
+        lag(date) over (order by date) as prev_date,
+        total - lag(total) over (order by date) as net_change,
+        (total - lag(total) over (order by date))
+            / nullif(lag(total) over (order by date), 0)::double as net_change_pct,
+        strftime(date, '%b %-d, %H:%M') as label
+    from per_snapshot
+),
+view_24h as (
+    select
+        s.date,
+        s.label,
+        coalesce(s.net_change, 0) as net_change,
+        s.net_change_pct,
+        coalesce(count(a.date) filter (where lower(a.level) in ('yellow', 'moderate')), 0) as yellow_alerts,
+        coalesce(count(a.date) filter (where lower(a.level) in ('red', 'high', 'critical')), 0) as red_alerts
+    from snapshot_delta s
+    left join sirens.alerts_history a
+           on a.channel_id is not null
+          and a.date > coalesce(s.prev_date, s.date - interval '4 hours')
+          and a.date <= s.date
+    where s.date >= (select max(date) from per_snapshot) - interval '24 hours'
+      and s.date >= '2026-09-12'::timestamp
+    group by s.date, s.label, s.net_change, s.net_change_pct
+),
+view_7d as (
+    select
+        d.date::timestamp as date,
+        strftime(d.date, '%b %-d') as label,
+        coalesce(d.net_change, 0) as net_change,
+        d.net_change_pct,
+        coalesce(a.yellow_alerts, 0) as yellow_alerts,
+        coalesce(a.red_alerts, 0) as red_alerts
+    from daily_delta d
+    left join daily_alerts a on a.day_date = d.date
+    where d.date >= (select max(date) from latest_per_day) - interval '7 days'
+      and d.date >= '2026-09-12'::date
+),
+view_30d as (
+    select
+        d.date::timestamp as date,
+        strftime(d.date, '%b %-d') as label,
+        coalesce(d.net_change, 0) as net_change,
+        d.net_change_pct,
+        coalesce(a.yellow_alerts, 0) as yellow_alerts,
+        coalesce(a.red_alerts, 0) as red_alerts
+    from daily_delta d
+    left join daily_alerts a on a.day_date = d.date
+    where d.date >= (select max(date) from latest_per_day) - interval '30 days'
+      and d.date >= '2026-09-12'::date
+),
+selected as (
+    select * from view_24h
+    where '${inputs.impact_timeframe.value}' = '24h' or '${inputs.impact_timeframe}' = '24h'
+    union all
+    select * from view_7d
+    where ('${inputs.impact_timeframe.value}' = '7d' or '${inputs.impact_timeframe}' = '7d')
+       or ('${inputs.impact_timeframe.value}' is null and '${inputs.impact_timeframe}' is null)
+       or ('${inputs.impact_timeframe.value}' not in ('24h', '30d') and '${inputs.impact_timeframe}' not in ('24h', '30d'))
+    union all
+    select * from view_30d
+    where '${inputs.impact_timeframe.value}' = '30d' or '${inputs.impact_timeframe}' = '30d'
+)
+select
+    date,
+    label,
+    net_change,
+    net_change_pct,
+    yellow_alerts,
+    red_alerts
+from selected
+where date >= '2026-09-12'::timestamp
+order by 1
+```
+
+<LineChart
+    data={alert_impact}
+    x=date
+    y={["net_change", "yellow_alerts", "red_alerts"]}
+    chartAreaHeight=280
+    echartsOptions={{
+        useUTC: true,
+        legend: {
+            show: true,
+            top: 0,
+            formatter: (name) => {
+                if (name === 'net_change') return 'Net Subscriber Change';
+                if (name === 'yellow_alerts') return 'Moderate Alerts (Yellow)';
+                if (name === 'red_alerts') return 'High/Critical Alerts (Red)';
+                return name;
+            }
+        },
+        yAxis: [
+            {
+                type: 'value',
+                name: 'net change',
+                position: 'left',
+                scale: false,
+                axisLine: {
+                    show: true,
+                    onZero: true
+                },
+                splitLine: {
+                    show: true,
+                    lineStyle: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    }
+                }
+            },
+            {
+                type: 'value',
+                name: 'alerts',
+                position: 'right',
+                min: 0,
+                minInterval: 1,
+                splitLine: { show: false }
+            }
+        ],
+        series: [
+            {
+                name: 'net_change',
+                type: 'line',
+                smooth: true,
+                yAxisIndex: 0,
+                z: 3,
+                itemStyle: { color: '#22c55e' },
+                lineStyle: { color: '#22c55e', width: 2 },
+                markLine: {
+                    silent: true,
+                    symbol: 'none',
+                    label: { show: false },
+                    data: [
+                        {
+                            yAxis: 0,
+                            lineStyle: {
+                                color: 'rgba(156, 163, 175, 0.6)',
+                                type: 'solid',
+                                width: 1.5
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                name: 'yellow_alerts',
+                type: 'bar',
+                stack: 'alerts',
+                yAxisIndex: 1,
+                z: 2,
+                itemStyle: {
+                    color: 'rgba(234, 179, 8, 0.65)'
+                }
+            },
+            {
+                name: 'red_alerts',
+                type: 'bar',
+                stack: 'alerts',
+                yAxisIndex: 1,
+                z: 2,
+                itemStyle: {
+                    color: 'rgba(239, 68, 68, 0.65)'
+                }
+            }
+        ],
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: {
+                type: 'cross',
+                crossStyle: {
+                    color: '#999'
+                }
+            },
+            formatter: (params) => {
+                const point = Array.isArray(params) ? params[0] : params;
+                const row = alert_impact[point.dataIndex] ?? {};
                 let res = tipHead(row.label ?? point.axisValueLabel);
-                res += tipRow('subscribers', num(row.total));
-                if (row.prev_label) {
-                    res += tipRow('vs ' + row.prev_label, delta(row.change, row.change_pct));
-                }
-                res += tipRow('<span style="color: #e03131;">●</span> red alarms', num(row.red_alarms));
-                if (row.yellow_alarms !== null && row.yellow_alarms !== undefined) {
-                    res += tipRow('<span style="color: #fab005;">●</span> yellow alarms', num(row.yellow_alarms));
-                }
+                res += tipRow('net change', delta(row.net_change, row.net_change_pct));
+                res += tipRow('<span style="color: #eab308;">●</span> yellow (moderate)', num(row.yellow_alerts));
+                res += tipRow('<span style="color: #ef4444;">●</span> red (high/critical)', num(row.red_alerts));
                 return res;
             }
         }

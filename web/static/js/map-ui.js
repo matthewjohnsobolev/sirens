@@ -391,7 +391,9 @@
     function isFreshApi() {
         if (!lastApiSuccess) return false;
         if (lastApiError > lastApiSuccess) return false;
-        return Date.now() - lastApiSuccess < 45000;
+        // У фоні такт оновлення становить 90 с, тому свіжою вважається відповідь до 3 хв
+        // (2 такти з запасом на браузерний тротлінг таймерів у фонових вкладках)
+        return Date.now() - lastApiSuccess < 180000;
     }
 
     // Каскад статусних плашок:

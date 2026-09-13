@@ -158,7 +158,7 @@ MESSAGES_SAMPLES = (
     region_sample("dnipro", "Дніпровський район", "00:21", "01:29"),
     region_sample("kryvyirih", "Криворізький район", "05:03", "06:46"),
     region_sample("kamianske", "Кам'янський район", "03:26", "04:53"),
-    region_sample("nikopol", "м. Нікополь", "10:27", "11:30"),
+    region_sample("nikopol", "Нікопольський район", "10:27", "11:30"),
     region_sample("kherson", "Херсонський район", "08:44", "09:18"),
     region_sample("mykolaiv", "Миколаївський район", "23:33", "01:21"),
     region_sample("pervomaisk", "Первомайський район", "09:11", "10:07"),
@@ -189,7 +189,7 @@ COMBINED_SAMPLES = (
         cancellation_time="16:56",
     ),
     AlertSample(
-        regions=("dnipro", "kryvyirih", "kamianske"),
+        regions=("dnipro", "kryvyirih", "kamianske", "nikopol"),
         districts=(
             "Дніпровський район",
             "Криворізький район",

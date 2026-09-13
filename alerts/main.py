@@ -779,6 +779,12 @@ DISTRICT_PATTERNS = {
     for key, conf in DISTRICT_CONFIG.items()
 }
 
+CITY_PATTERNS = {
+    key: [_trigger_pattern(trigger) for trigger in conf["city_triggers"]]
+    for key, conf in DISTRICT_CONFIG.items()
+    if "city_triggers" in conf
+}
+
 OBLAST_PATTERNS = {
     oblast: [_trigger_pattern(trigger) for trigger in triggers]
     for oblast, triggers in OBLAST_TRIGGERS.items()
@@ -927,9 +933,13 @@ def _match_districts_in_section(
 
     matched: dict[str, AlertEvent] = {}
     for district_key, conf in DISTRICT_CONFIG.items():
-        if not oblast_hit.get(conf["oblast"]) and not any(
+        is_district_match = oblast_hit.get(conf["oblast"]) or any(
             pattern.search(message_text) for pattern in DISTRICT_PATTERNS[district_key]
-        ):
+        )
+        is_city_match = any(
+            pattern.search(message_text) for pattern in CITY_PATTERNS.get(district_key, ())
+        )
+        if not is_district_match and not is_city_match:
             continue
 
         event = _alert_type_for(district_key, message_text) or current_event
@@ -939,6 +949,13 @@ def _match_districts_in_section(
                 and district_key != "nikopol"
             ):
                 continue
+            if not is_district_match and is_city_match:
+                if event.type not in (
+                    "threat_of_shelling",
+                    "threat_of_shelling_cancelled",
+                    "air_raid_alert_cancelled",
+                ):
+                    continue
             matched[district_key] = event
             current_event = event
 
@@ -957,7 +974,13 @@ def match_districts(message_text: str) -> dict[str, AlertEvent]:
 
 
 KNOWN_DISTRICT_TRIGGERS = frozenset(
-    name for conf in DISTRICT_CONFIG.values() for name in [conf["name"], *conf["triggers"]]
+    name
+    for conf in DISTRICT_CONFIG.values()
+    for name in [
+        conf["name"],
+        *conf["triggers"],
+        *conf.get("city_triggers", ()),
+    ]
 )
 
 

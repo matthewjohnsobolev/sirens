@@ -109,7 +109,8 @@ DISTRICT_CONFIG = {
         "aliases": ["м. Нікополь", "Нікополь"],
         "oblast": "dnipropetrovsk_oblast",
         "display_name": "Nikopol",
-        "triggers": [
+        "triggers": ["Нікопольський район"],
+        "city_triggers": [
             "м. Нікополь",
             "Нікополь",
             "Нікополі",
@@ -608,6 +609,10 @@ for _key, _conf in DISTRICT_CONFIG.items():
     else:
         _forms = [_conf["name"], *_conf.get("aliases", ())]
     _conf["triggers"] = [form for raw in _forms for form in apostrophe_variants(raw)]
+    if "city_triggers" in _conf:
+        _conf["city_triggers"] = [
+            form for raw in _conf["city_triggers"] for form in apostrophe_variants(raw)
+        ]
 
 OBLAST_TRIGGERS = {
     "cherkasy_oblast": ["Черкаська область"],

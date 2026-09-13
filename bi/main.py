@@ -189,18 +189,18 @@ export_subscribers_csv = export_stats_csv
 
 SELECT_ALERTS_SQL = """
     SELECT
-        (recorded_at AT TIME ZONE 'Europe/Kyiv') AS recorded_at,
-        event_type,
-        level,
+        date_bin('4 hours', recorded_at AT TIME ZONE 'Europe/Kyiv', TIMESTAMP '2000-01-01 00:00:00') AS date,
         district,
-        channel_id
+        COUNT(*) FILTER (WHERE level = 'red') AS red_alerts,
+        COUNT(*) FILTER (WHERE level = 'yellow') AS yellow_alerts
     FROM alert_history
     WHERE channel_id IS NOT NULL
       AND event_type = 'air_raid_alert'
-    ORDER BY recorded_at
+    GROUP BY 1, 2
+    ORDER BY 1, 2
 """
 
-ALERTS_CSV_COLUMNS = ("date", "event_type", "level", "district", "channel_id")
+ALERTS_CSV_COLUMNS = ("date", "district", "red_alerts", "yellow_alerts")
 
 
 async def export_alerts_csv(pool) -> str:
@@ -212,15 +212,14 @@ async def export_alerts_csv(pool) -> str:
     writer.writerow(ALERTS_CSV_COLUMNS)
 
     if not rows:
-        writer.writerow(["1970-01-01 00:00:00", "air_raid_alert", "", "", ""])
+        writer.writerow(["1970-01-01 00:00:00", "unknown", 0, 0])
         return buffer.getvalue()
 
     for record in rows:
-        date_val = record.get("recorded_at") if "recorded_at" in record else record.get("date")
-        event_type = record.get("event_type", "air_raid_alert")
-        level = record.get("level") or ""
-        district = record.get("district", "")
-        channel_id = record.get("channel_id") or ""
+        date_val = record.get("date") if "date" in record else record.get("recorded_at")
+        district = record.get("district") or "unknown"
+        red_alerts = int(record.get("red_alerts") or 0)
+        yellow_alerts = int(record.get("yellow_alerts") or 0)
         if isinstance(date_val, datetime.datetime):
             if date_val.tzinfo is not None:
                 date_val = date_val.astimezone(KYIV_TZ)
@@ -229,7 +228,7 @@ async def export_alerts_csv(pool) -> str:
             date_str = date_val.isoformat()
         else:
             date_str = str(date_val) if date_val is not None else ""
-        writer.writerow([date_str, event_type, level, district, channel_id])
+        writer.writerow([date_str, district, red_alerts, yellow_alerts])
 
     return buffer.getvalue()
 

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const alertsFile = path.join(__dirname, 'sources', 'sirens', 'alerts_history.csv');
 const PLACEHOLDER =
-	'date,event_type,level,district,channel_id\n1970-01-01 00:00:00,air_raid_alert,,,\n';
+	'date,district,red_alerts,yellow_alerts\n1970-01-01 00:00:00,unknown,0,0\n';
 
 if (!fs.existsSync(alertsFile)) {
 	fs.mkdirSync(path.dirname(alertsFile), { recursive: true });

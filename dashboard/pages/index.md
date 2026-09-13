@@ -380,8 +380,8 @@ daily_delta as (
 daily_alerts as (
     select
         date::date as day_date,
-        count(*) filter (where lower(level) in ('yellow', 'moderate') and channel_id is not null) as yellow_alerts,
-        count(*) filter (where lower(level) in ('red', 'high', 'critical') and channel_id is not null) as red_alerts
+        sum(yellow_alerts) as yellow_alerts,
+        sum(red_alerts) as red_alerts
     from sirens.alerts_history
     group by 1
 ),
@@ -402,13 +402,12 @@ view_24h as (
         s.label,
         coalesce(s.net_change, 0) as net_change,
         s.net_change_pct,
-        coalesce(count(a.date) filter (where lower(a.level) in ('yellow', 'moderate')), 0) as yellow_alerts,
-        coalesce(count(a.date) filter (where lower(a.level) in ('red', 'high', 'critical')), 0) as red_alerts
+        coalesce(sum(a.yellow_alerts), 0) as yellow_alerts,
+        coalesce(sum(a.red_alerts), 0) as red_alerts
     from snapshot_delta s
     left join sirens.alerts_history a
-           on a.channel_id is not null
-          and a.date > coalesce(s.prev_date, s.date - interval '4 hours')
-          and a.date <= s.date
+           on a.date >= coalesce(date_trunc('hour', s.prev_date), date_trunc('hour', s.date) - interval '4 hours')
+          and a.date < date_trunc('hour', s.date)
     where s.date >= (select max(date) from per_snapshot) - interval '24 hours'
     group by s.date, s.label, s.net_change, s.net_change_pct
 ),

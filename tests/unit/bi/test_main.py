@@ -263,34 +263,31 @@ async def test_export_alerts_csv(bi_pool):
     naive_dt = datetime.datetime(2026, 8, 19, 16, 0, 0)
     conn.fetch.return_value = [
         {
-            "recorded_at": utc_dt,
-            "event_type": "air_raid_alert",
-            "level": "red",
+            "date": utc_dt,
             "district": "kyiv",
-            "channel_id": -1001712561448,
+            "red_alerts": 3,
+            "yellow_alerts": 1,
         },
         {
-            "recorded_at": naive_dt,
-            "event_type": "air_raid_alert",
-            "level": "yellow",
+            "date": naive_dt,
             "district": "bucha",
-            "channel_id": -1001712561449,
+            "red_alerts": 0,
+            "yellow_alerts": 2,
         },
         {
-            "recorded_at": None,
-            "event_type": "air_raid_alert",
-            "level": None,
+            "date": None,
             "district": "odesa",
-            "channel_id": None,
+            "red_alerts": 1,
+            "yellow_alerts": 0,
         },
     ]
     from bi.main import export_alerts_csv
 
     csv_str = await export_alerts_csv(pool)
-    assert "date,event_type,level,district,channel_id" in csv_str
-    assert "2026-08-19 15:00:00,air_raid_alert,red,kyiv,-1001712561448" in csv_str
-    assert "2026-08-19 16:00:00,air_raid_alert,yellow,bucha,-1001712561449" in csv_str
-    assert ",air_raid_alert,,odesa," in csv_str
+    assert "date,district,red_alerts,yellow_alerts" in csv_str
+    assert "2026-08-19 15:00:00,kyiv,3,1" in csv_str
+    assert "2026-08-19 16:00:00,bucha,0,2" in csv_str
+    assert ",odesa,1,0" in csv_str
 
 
 @pytest.mark.asyncio
@@ -300,8 +297,8 @@ async def test_export_alerts_csv_empty(bi_pool):
     from bi.main import export_alerts_csv
 
     csv_str = await export_alerts_csv(pool)
-    assert "date,event_type,level,district,channel_id" in csv_str
-    assert "1970-01-01 00:00:00,air_raid_alert,,," in csv_str
+    assert "date,district,red_alerts,yellow_alerts" in csv_str
+    assert "1970-01-01 00:00:00,unknown,0,0" in csv_str
 
 
 def test_upload_to_r2_skips_when_no_credentials(monkeypatch, caplog):

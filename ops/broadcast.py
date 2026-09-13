@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 CHANNEL_PHOTO_PATHS = {
     "air_raid_alert": f"{IMAGES_PATH}/air-raid-alert.png",
     "air_raid_alert_cancelled": f"{IMAGES_PATH}/air-raid-alert-cancelled.png",
-    "threat_of_shelling": f"{IMAGES_PATH}/threat-of-shelling.png",
+    "threat_of_shelling": f"{IMAGES_PATH}/air-raid-alert.png",
     "threat_of_shelling_cancelled": f"{IMAGES_PATH}/air-raid-alert-cancelled.png",
 }
 

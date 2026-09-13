@@ -116,7 +116,7 @@ CHANNEL_PHOTO_PATHS = {
     "air_raid_alert:red": f"{IMAGES_PATH}/explosions.png",
     "air_raid_alert:yellow": f"{IMAGES_PATH}/threat-of-shelling.png",
     "air_raid_alert_cancelled": f"{IMAGES_PATH}/air-raid-alert-cancelled.png",
-    "threat_of_shelling": f"{IMAGES_PATH}/threat-of-shelling.png",
+    "threat_of_shelling": f"{IMAGES_PATH}/air-raid-alert.png",
     "threat_of_shelling_cancelled": f"{IMAGES_PATH}/air-raid-alert-cancelled.png",
 }
 
@@ -347,6 +347,66 @@ async def process_channel_photo_update(channel_id, region, alert_type, level: st
     )
 
 
+async def maybe_reset_nikopol_shelling_on_all_clear(
+    message_text: str,
+    source: str = DEFAULT_SOURCE,
+    message_id: int | None = None,
+    channel_id: int | None = None,
+) -> bool:
+    """Resets Nikopol shelling status after the first general all-clear after shelling."""
+    if not redis_client:
+        return False
+    if "Відбій тривоги" not in message_text:
+        return False
+    if "Нікополь" not in message_text and "Дніпропетровськ" not in message_text:
+        return False
+
+    try:
+        raw_status = await redis_client.hget("threat:shellings:nikopol", "status")
+        if raw_status != "true":
+            return False
+
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        current_time = datetime.datetime.now().strftime("%H:%M")
+        now_epoch = str(int(time.time()))
+
+        await redis_client.hset(
+            "threat:shellings:nikopol",
+            mapping={
+                "status": "false",
+                "time": current_time,
+                "source": source,
+                "updated_at": now_epoch,
+            },
+        )
+        log.info("Reset active shelling threat for Nikopol after general all-clear")
+
+        if pg_pool:
+            try:
+                async with pg_pool.acquire() as conn:
+                    await conn.execute(
+                        """INSERT INTO alert_history
+                           (recorded_at, district, event_type, level,
+                            channel_id, message_id, source)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                        now_utc,
+                        "nikopol",
+                        "threat_of_shelling_cancelled",
+                        None,
+                        channel_id,
+                        message_id,
+                        source,
+                    )
+            except Exception as e:
+                log.error("Failed to insert shelling cancellation into PG: %s", e)
+
+        request_telemetry_sync()
+        return True
+    except Exception:
+        log.warning("Failed to reset Nikopol shelling status in Redis", exc_info=True)
+        return False
+
+
 async def _record_alert_state(
     channel_id: int | None,
     region: str,
@@ -426,6 +486,13 @@ async def _record_alert_state(
                 )
                 if not is_alert_active:
                     await redis_client.hdel(f"threat:alerts:city:{district_key}", "level")
+                    if district_key == "nikopol":
+                        await maybe_reset_nikopol_shelling_on_all_clear(
+                            "Відбій тривоги Нікополь",
+                            source=source,
+                            message_id=message_id,
+                            channel_id=channel_id,
+                        )
 
                 active_key = f"threat:alerts:active:{oblast_key}"
                 if is_alert_active:
@@ -721,11 +788,20 @@ DISTRICT_MENTION_RE = re.compile(r"[А-ЯІЇЄҐ][\w'\u2019-]*\s+район")
 
 
 LEVEL_TRIGGERS = {"red": "Червоний рівень тривоги", "yellow": "Жовтий рівень тривоги"}
-SHELLING_TRIGGERS = ("Загроза артобстрілу", "артилерійський обстріл")
+SHELLING_TRIGGERS = ("Загроза артобстрілу", "Загроза обстрілу", "артилерійський обстріл")
 SHELLING_CANCEL_TRIGGERS = ("Відбій загрози артобстрілу",)
+RED_ALERT_CANCEL_TRIGGERS = (
+    "Відбій червоної тривоги",
+    "Відбій червоного рівня тривоги",
+    "Відбій червоного рівня",
+)
 
 
 def _alert_type_for(district_key: str, message_text: str) -> AlertEvent | None:
+    # "Відбій червоної тривоги" transitions down to yellow level alert
+    if any(keyword in message_text for keyword in RED_ALERT_CANCEL_TRIGGERS):
+        return AlertEvent("air_raid_alert", "yellow")
+
     level = None
     for lvl, trigger in LEVEL_TRIGGERS.items():
         if trigger in message_text:
@@ -774,6 +850,7 @@ _HEADER_TRIGGER_PHRASES = sorted(
     | set(LEVEL_TRIGGERS.values())
     | set(SHELLING_TRIGGERS)
     | set(SHELLING_CANCEL_TRIGGERS)
+    | set(RED_ALERT_CANCEL_TRIGGERS)
     | {
         keyword
         for conf in DISTRICT_CONFIG.values()
@@ -791,7 +868,7 @@ SECTION_HEADER_RE = re.compile(
     re.MULTILINE,
 )
 
-STATUS_EMOJI_LINE_RE = re.compile(r"^[^\S\n]*[🔴🟡🟢🟤]", re.MULTILINE)
+STATUS_EMOJI_LINE_RE = re.compile(r"^[^\S\n]*[🔴🟡🟢🟤💥🟠]", re.MULTILINE)
 
 
 def _split_block(block: str) -> list[str]:
@@ -1233,6 +1310,17 @@ def build_message_handler(
             return
 
         message_text = strip_ongoing_notice(event.message.message)
+        if "Відбій тривоги" in message_text and (
+            "Нікополь" in message_text or "Дніпропетровськ" in message_text
+        ):
+            source_ref_reset = await source_reference(event)
+            await maybe_reset_nikopol_shelling_on_all_clear(
+                message_text,
+                source=source_ref_reset[1] or DEFAULT_SOURCE,
+                message_id=source_ref_reset[0],
+                channel_id=region_channels.get("nikopol"),
+            )
+
         matched = match_districts(message_text)
         log_unrecognised_districts(message_text)
 
@@ -1254,15 +1342,6 @@ def build_message_handler(
         if source_type == "fallback":
             if "fallback" not in active_broadcast_sources:
                 log.debug("Post from fallback ignored: fallback broadcasting is disabled")
-                return
-            # Fallback channel broadcasts air raid alerts; shelling comes from primary
-            matched = {
-                d: ev
-                for d, ev in matched.items()
-                if ev.type not in ("threat_of_shelling", "threat_of_shelling_cancelled")
-            }
-            if not matched:
-                log.debug("Post from fallback ignored: shelling alerts come from primary")
                 return
 
         source_ref: tuple[int | None, str | None] = (None, None)

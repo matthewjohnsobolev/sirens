@@ -68,8 +68,22 @@ DISTRICT_CONFIG = {
         "aliases": ["м. Нікополь", "Нікополь"],
         "oblast": "dnipropetrovsk_oblast",
         "display_name": "Nikopol",
+        "triggers": [
+            "м. Нікополь",
+            "Нікополь",
+            "Нікополі",
+            "місто Нікополь",
+            "місті Нікополь",
+            "місті Нікополі",
+            "м.Нікополь",
+            "м Нікополь",
+        ],
         "alert_triggers": {
-            "threat_of_shelling": ["артилерійський обстріл", "Загроза артобстрілу"],
+            "threat_of_shelling": [
+                "артилерійський обстріл",
+                "Загроза артобстрілу",
+                "Загроза обстрілу",
+            ],
             "threat_of_shelling_cancelled": ["Відбій загрози артобстрілу"],
             "air_raid_alert": ["Повітряна тривога"],
             "air_raid_alert_cancelled": ["Відбій тривоги"],
@@ -263,6 +277,13 @@ DISTRICT_CONFIG = {
     "nizhyn": {"name": "Ніжинський район", "oblast": "chernihiv_oblast"},
     "novhorodsiverskyi": {"name": "Новгород-Сіверський район", "oblast": "chernihiv_oblast"},
     "pryluky": {"name": "Прилуцький район", "oblast": "chernihiv_oblast"},
+    "volnovakha": {"name": "Волноваський район", "oblast": "donetsk_oblast"},
+    "bakhmut": {"name": "Бахмутський район", "oblast": "donetsk_oblast"},
+    "donetsk": {"name": "Донецький район", "oblast": "donetsk_oblast"},
+    "horlivka": {"name": "Горлівський район", "oblast": "donetsk_oblast"},
+    "pokrovsk": {"name": "Покровський район", "oblast": "donetsk_oblast"},
+    "kramatorsk": {"name": "Краматорський район", "oblast": "donetsk_oblast"},
+    "mariupol": {"name": "Маріупольський район", "oblast": "donetsk_oblast"},
 }
 
 for _key, _conf in DISTRICT_CONFIG.items():
@@ -277,6 +298,7 @@ OBLAST_TRIGGERS = {
     "chernihiv_oblast": ["Чернігівська область"],
     "chernivtsi_oblast": ["Чернівецька область"],
     "dnipropetrovsk_oblast": ["Дніпропетровська область"],
+    "donetsk_oblast": ["Донецька область"],
     "ivanofrankivsk_oblast": ["Івано-Франківська область"],
     "kharkiv_oblast": ["Харківська область"],
     "kherson_oblast": ["Херсонська область"],
@@ -367,6 +389,13 @@ LOCATION_LOCATIVE = {
     "brovary": "у Броварах",
     "vyshhorod": "у Вишгороді",
     "obukhiv": "в Обухові",
+    "volnovakha": "у Волноваському районі",
+    "bakhmut": "у Бахмутському районі",
+    "donetsk": "у Донецькому районі",
+    "horlivka": "у Горлівському районі",
+    "pokrovsk": "у Покровському районі",
+    "kramatorsk": "у Краматорському районі",
+    "mariupol": "у Маріупольському районі",
 }
 
 DISTRICTS_BY_OBLAST = {}

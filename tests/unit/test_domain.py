@@ -31,8 +31,8 @@ def test_domain_districts_by_oblast_covers_every_district():
 
 
 def test_domain_occupied_regions_have_no_districts():
-    """Crimea, Sevastopol, Donetsk, and Luhansk regions remain outside the directory."""
-    for region in ("crimea", "sevastopol", "donetsk_oblast", "luhansk_oblast"):
+    """Crimea, Sevastopol, and Luhansk regions remain outside the directory."""
+    for region in ("crimea", "sevastopol", "luhansk_oblast"):
         assert region not in domain.DISTRICTS_BY_OBLAST
 
 
@@ -64,7 +64,7 @@ def test_domain_broadcast_triggers_keep_the_oblast_name():
 
 
 def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
-    """Kharkiv and Zaporizhzhia must only trigger on city names, not district names."""
+    """Kharkiv, Zaporizhzhia, and Nikopol must only trigger on city names, not district names."""
     expected_kharkiv = [
         "м. Харків",
         "Харків",
@@ -92,11 +92,43 @@ def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
     assert domain.DISTRICT_CONFIG["zaporizhzhia"]["triggers"] == expected_zaporizhzhia
     assert "Запорізький район" not in domain.DISTRICT_CONFIG["zaporizhzhia"]["triggers"]
 
+    expected_nikopol = [
+        "м. Нікополь",
+        "Нікополь",
+        "Нікополі",
+        "місто Нікополь",
+        "місті Нікополь",
+        "місті Нікополі",
+        "м.Нікополь",
+        "м Нікополь",
+    ]
+    assert domain.DISTRICT_CONFIG["nikopol"]["triggers"] == expected_nikopol
+    assert "Нікопольський район" not in domain.DISTRICT_CONFIG["nikopol"]["triggers"]
+
     # In REGION_CONFIG, oblast is appended but district names remain excluded
     assert "Харківський район" not in domain.REGION_CONFIG["kharkiv"]["triggers"]
     assert "Запорізький район" not in domain.REGION_CONFIG["zaporizhzhia"]["triggers"]
+    assert "Нікопольський район" not in domain.REGION_CONFIG["nikopol"]["triggers"]
     assert "Харківська область" in domain.REGION_CONFIG["kharkiv"]["triggers"]
     assert "Запорізька область" in domain.REGION_CONFIG["zaporizhzhia"]["triggers"]
+    assert "Дніпропетровська область" in domain.REGION_CONFIG["nikopol"]["triggers"]
+
+
+def test_domain_donetsk_oblast_districts():
+    expected_districts = {
+        "volnovakha",
+        "bakhmut",
+        "donetsk",
+        "horlivka",
+        "pokrovsk",
+        "kramatorsk",
+        "mariupol",
+    }
+    for d in expected_districts:
+        assert d in domain.DISTRICT_CONFIG
+        assert domain.DISTRICT_CONFIG[d]["oblast"] == "donetsk_oblast"
+    assert "donetsk_oblast" in domain.OBLAST_TRIGGERS
+    assert "Донецька область" in domain.OBLAST_TRIGGERS["donetsk_oblast"]
 
 
 def test_domain_triggers_cover_both_apostrophes():
@@ -142,7 +174,7 @@ def test_domain_messages_completeness():
     assert "air_raid_alert_cancelled" in domain.MESSAGES
     assert "threat_of_shelling" in domain.MESSAGES
     assert "threat_of_shelling_cancelled" in domain.MESSAGES
-    assert domain.MESSAGES["threat_of_shelling"] == "🟤 Загроза артобстрілу!"
+    assert domain.MESSAGES["threat_of_shelling"] == "🟠 Загроза артобстрілу!"
     assert domain.MESSAGES["threat_of_shelling_cancelled"] == "🟢 Відбій загрози артобстрілу !"
     assert domain.MESSAGES["air_raid_alert_cancelled"] == "🟢 Відбій тривоги!"
     assert domain.MESSAGES["air_raid_alert:yellow"] == "🟡 Жовтий рівень тривоги!"

@@ -380,6 +380,28 @@ async def test_update_alert_status_stores_shelling_link(mock_web_redis, mock_web
 
 
 @pytest.mark.asyncio
+async def test_update_alert_status_nikopol_all_clear_resets_shelling(mock_web_redis, mock_web_pg):
+    _, mock_cursor = mock_web_pg
+    nikopol_channel = real_channels["nikopol"]
+    mock_web_redis.hget.side_effect = lambda key, field: (
+        "true" if key == "threat:shellings:nikopol" and field == "status" else None
+    )
+
+    await update_alert_status(nikopol_channel, "Відбій повітряної тривоги", message_id=888)
+
+    calls = [
+        c
+        for c in mock_web_redis.hset.call_args_list
+        if c.args and c.args[0] == "threat:shellings:nikopol"
+    ]
+    assert len(calls) >= 1
+    assert calls[0].kwargs["mapping"]["status"] == "false"
+    assert any(
+        "threat_of_shelling_cancelled" in str(call) for call in mock_cursor.execute.call_args_list
+    )
+
+
+@pytest.mark.asyncio
 async def test_update_alert_status_raises_and_logs_when_history_write_fails(
     mock_web_redis, mock_web_pg, caplog
 ):
@@ -642,8 +664,8 @@ def test_get_all_threats_data_defaults_empty_and_missing_keys(threats_store):
 
     assert result["crimea"] == {"title": "Автономна Республіка Крим", "districts": {}}
     assert result["sevastopol"] == {"title": "м. Севастополь", "districts": {}}
-    assert result["donetsk_oblast"] == {"title": "Донецька область", "districts": {}}
     assert result["luhansk_oblast"] == {"title": "Луганська область", "districts": {}}
+    assert len(result["donetsk_oblast"]["districts"]) == 7
 
 
 def test_get_all_threats_data_covers_every_oblast_and_district(mock_web_redis):

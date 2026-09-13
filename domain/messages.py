@@ -6,7 +6,7 @@ MESSAGES = {
     # base / legacy
     "air_raid_alert": "🟠 Повітряна тривога!",
     "air_raid_alert_cancelled": "🟢 Відбій тривоги!",
-    "threat_of_shelling": "🟤 Загроза артобстрілу!",
+    "threat_of_shelling": "🟠 Загроза артобстрілу!",
     "threat_of_shelling_cancelled": "🟢 Відбій загрози артобстрілу !",
     # єТривога, дворівнева система
     "air_raid_alert:yellow": "🟡 Жовтий рівень тривоги!",

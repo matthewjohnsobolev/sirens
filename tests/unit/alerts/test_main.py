@@ -1747,7 +1747,7 @@ def test_match_districts_from_the_oblast_name():
 
 
 def test_match_districts_ignores_kharkiv_and_zaporizhzhia_district_mentions():
-    """Alerts for Kharkiv and Zaporizhzhia districts must NOT trigger alerts for the cities."""
+    """Alerts for Kharkiv, Zaporizhzhia, and Nikopol districts must NOT trigger alerts for the cities."""
     assert match_districts("Повітряна тривога в Харківський район") == {}
     assert match_districts("Відбій тривоги в Харківський район") == {}
     assert match_districts("🚨 Повітряна тривога\nХарківський район (Харківська обл.)") == {}
@@ -1755,6 +1755,12 @@ def test_match_districts_ignores_kharkiv_and_zaporizhzhia_district_mentions():
     assert match_districts("Повітряна тривога в Запорізький район") == {}
     assert match_districts("Відбій тривоги в Запорізький район") == {}
     assert match_districts("🚨 Повітряна тривога\nЗапорізький район (Запорізька обл.)") == {}
+
+    assert match_districts("Повітряна тривога в Нікопольський район") == {}
+    assert match_districts("Відбій тривоги в Нікопольський район") == {}
+    assert (
+        match_districts("🚨 Повітряна тривога\nНікопольський район (Дніпропетровська обл.)") == {}
+    )
 
     # City mentions must still match across all variants
     for variant in (
@@ -1783,6 +1789,20 @@ def test_match_districts_ignores_kharkiv_and_zaporizhzhia_district_mentions():
     ):
         assert match_districts(f"Повітряна тривога в {variant}") == {
             "zaporizhzhia": AlertEvent("air_raid_alert", None)
+        }
+
+    for variant in (
+        "м. Нікополь",
+        "Нікополь",
+        "Нікополі",
+        "місто Нікополь",
+        "місті Нікополь",
+        "місті Нікополі",
+        "м.Нікополь",
+        "м Нікополь",
+    ):
+        assert match_districts(f"Повітряна тривога в {variant}") == {
+            "nikopol": AlertEvent("air_raid_alert", None)
         }
 
 
@@ -2807,7 +2827,9 @@ async def test_nikopol_shelling_from_primary_channel_and_air_raid_from_fallback(
     # 4. Fallback sends Nikopol two-level air raid alert -> MUST broadcast with level
     ev_fallback_air = MagicMock()
     ev_fallback_air.chat_id = fallback_id
-    ev_fallback_air.message.message = "🔴 Нікопольський район (Дніпропетровська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!"
+    ev_fallback_air.message.message = (
+        "🔴 Нікополь (Дніпропетровська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!"
+    )
     ev_fallback_air.message.id = 404
     ev_fallback_air.message.date = datetime.datetime(
         2026, 9, 6, 12, 20, tzinfo=datetime.timezone.utc
@@ -2828,28 +2850,212 @@ def test_shelling_only_applies_to_nikopol():
     assert "kharkiv" not in matched_non
     assert not any(ev.type == "threat_of_shelling" for ev in matched_non.values())
 
-    # Shelling threat for Nikopol MUST match
-    msg_nikopol = "🟤 Загроза артобстрілу!\nНікопольський район (Дніпропетровська обл.)"
+    # Shelling threat for Nikopol district mention must NOT match (city-only)
+    msg_nik_district = "🟤 Загроза артобстрілу!\nНікопольський район (Дніпропетровська обл.)"
+    assert match_districts(msg_nik_district) == {}
+
+    # Shelling threat for Nikopol city MUST match
+    msg_nikopol = "💥 Нікополь (Дніпропетровська обл.)\nЗагроза обстрілу! Перейдіть в укриття!"
     matched_nik = match_districts(msg_nikopol)
     assert matched_nik == {"nikopol": AlertEvent("threat_of_shelling", None)}
 
+    # Legacy shelling threat format for Nikopol city MUST also match
+    msg_nikopol_legacy = "🟤 Загроза артобстрілу!\nНікополь (Дніпропетровська обл.)"
+    assert match_districts(msg_nikopol_legacy) == {
+        "nikopol": AlertEvent("threat_of_shelling", None)
+    }
+
+    # Orange shelling threat format for Nikopol city MUST also match
+    msg_nikopol_orange = "🟠 Загроза артобстрілу!\nНікополь (Дніпропетровська обл.)"
+    assert match_districts(msg_nikopol_orange) == {
+        "nikopol": AlertEvent("threat_of_shelling", None)
+    }
+
     # Shelling cancel for Nikopol MUST match
-    msg_nikopol_cancel = (
-        "🟢 Відбій загрози артобстрілу!\nНікопольський район (Дніпропетровська обл.)"
-    )
+    msg_nikopol_cancel = "🟢 Відбій загрози артобстрілу!\nНікополь (Дніпропетровська обл.)"
     matched_nik_cancel = match_districts(msg_nikopol_cancel)
     assert matched_nik_cancel == {"nikopol": AlertEvent("threat_of_shelling_cancelled", None)}
 
 
 def test_nikopol_two_level_alerts():
-    # Red level alert for Nikopol
-    red_msg = "🔴 Нікопольський район (Дніпропетровська обл.)\nЧервоний рівень тривоги."
+    # Red level alert for Nikopol city
+    red_msg = "🔴 Нікополь (Дніпропетровська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!"
     assert match_districts(red_msg) == {"nikopol": AlertEvent("air_raid_alert", "red")}
 
-    # Yellow level alert for Nikopol
-    yellow_msg = "🟡 Нікопольський район (Дніпропетровська обл.)\nЖовтий рівень тривоги."
+    # Yellow level alert for Nikopol city
+    yellow_msg = "🟡 Нікополь (Дніпропетровська обл.)\nЖовтий рівень тривоги. Прямуйте в укриття!"
     assert match_districts(yellow_msg) == {"nikopol": AlertEvent("air_raid_alert", "yellow")}
 
-    # Air raid cancel for Nikopol
-    cancel_msg = "🟢 Нікопольський район (Дніпропетровська обл.)\nВідбій тривоги."
+    # Air raid cancel for Nikopol city
+    cancel_msg = "🟢 Нікополь (Дніпропетровська обл.)\nВідбій тривоги. Будьте обережні!"
     assert match_districts(cancel_msg) == {"nikopol": AlertEvent("air_raid_alert_cancelled", None)}
+
+    # Nikopol district alert does NOT match Nikopol city
+    assert (
+        match_districts("🔴 Нікопольський район (Дніпропетровська обл.)\nЧервоний рівень тривоги.")
+        == {}
+    )
+
+
+@pytest.mark.asyncio
+async def test_fallback_nikopol_shelling_alert_broadcast():
+    fallback_id = 11112222
+    channels = {"nikopol": 8001}
+    handler = build_message_handler(channels, fallback_source=fallback_id)
+
+    ev = MagicMock()
+    ev.chat_id = fallback_id
+    ev.message.message = (
+        "💥 Нікополь (Дніпропетровська обл.)\nЗагроза обстрілу! Перейдіть в укриття!"
+    )
+    ev.message.id = 501
+    ev.message.date = datetime.datetime(2026, 9, 6, 13, 0, tzinfo=datetime.timezone.utc)
+
+    with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
+        await handler(ev)
+        await _drain_background_tasks()
+        mock_send.assert_awaited_once_with(
+            8001, "nikopol", "threat_of_shelling", source_type="fallback"
+        )
+
+
+@pytest.mark.asyncio
+async def test_nikopol_shelling_auto_reset_on_general_all_clear(mock_redis, mock_pg_pool):
+    mock_pool, mock_conn = mock_pg_pool
+    fallback_id = 11112222
+    channels = {"nikopol": 8001}
+    handler = build_message_handler(channels, fallback_source=fallback_id)
+
+    # 1. Simulate active shelling in redis
+    mock_redis.hget.side_effect = lambda key, field: (
+        "true" if key == "threat:shellings:nikopol" and field == "status" else None
+    )
+
+    ev_cancel = MagicMock()
+    ev_cancel.chat_id = fallback_id
+    ev_cancel.message.message = (
+        "🟢 Нікополь (Дніпропетровська обл.)\nВідбій тривоги. Будьте обережні!"
+    )
+    ev_cancel.message.id = 502
+    ev_cancel.message.date = datetime.datetime(2026, 9, 6, 13, 30, tzinfo=datetime.timezone.utc)
+
+    with (
+        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send,
+        patch("alerts.main.push_telemetry_to_kv", new_callable=AsyncMock) as mock_kv,
+    ):
+        await handler(ev_cancel)
+        await _drain_background_tasks()
+
+        mock_send.assert_awaited_once_with(
+            8001, "nikopol", "air_raid_alert_cancelled", source_type="fallback"
+        )
+        hset_calls = [
+            c
+            for c in mock_redis.hset.await_args_list
+            if c.args and c.args[0] == "threat:shellings:nikopol"
+        ]
+        assert len(hset_calls) >= 1
+        assert hset_calls[0].kwargs["mapping"]["status"] == "false"
+        mock_conn.execute.assert_awaited()
+        assert any(
+            "threat_of_shelling_cancelled" in str(call)
+            for call in mock_conn.execute.await_args_list
+        )
+        mock_kv.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_record_alert_state_auto_resets_nikopol_shelling(mock_redis, mock_pg_pool):
+    mock_pool, mock_conn = mock_pg_pool
+    mock_redis.hget.side_effect = lambda key, field: (
+        "true" if key == "threat:shellings:nikopol" and field == "status" else None
+    )
+    with patch("alerts.main.push_telemetry_to_kv", new_callable=AsyncMock):
+        await alerts_main._record_alert_state(
+            8001,
+            "nikopol",
+            "air_raid_alert_cancelled",
+            message_id=999,
+            source_type="fallback",
+        )
+        hset_calls = [
+            c
+            for c in mock_redis.hset.await_args_list
+            if c.args and c.args[0] == "threat:shellings:nikopol"
+        ]
+        assert len(hset_calls) >= 1
+        assert hset_calls[0].kwargs["mapping"]["status"] == "false"
+        mock_conn.execute.assert_awaited()
+        assert any(
+            "threat_of_shelling_cancelled" in str(call)
+            for call in mock_conn.execute.await_args_list
+        )
+
+
+def test_vidbiy_chervonoyi_tryvohy_transitions_to_yellow():
+    # Cancellation of red alert transitions district to yellow alert
+    msg1 = "🟢 Відбій червоної тривоги\nПокровський район (Донецька обл.)"
+    assert match_districts(msg1) == {"pokrovsk": AlertEvent("air_raid_alert", "yellow")}
+
+    msg2 = "🟢 Відбій червоного рівня тривоги\nКраматорський район (Донецька обл.)"
+    assert match_districts(msg2) == {"kramatorsk": AlertEvent("air_raid_alert", "yellow")}
+
+    msg3 = "🟢 Відбій червоного рівня\nБахмутський район (Донецька обл.)"
+    assert match_districts(msg3) == {"bakhmut": AlertEvent("air_raid_alert", "yellow")}
+
+
+def test_donetsk_oblast_combined_and_individual_districts():
+    donetsk_districts = {
+        "volnovakha",
+        "bakhmut",
+        "donetsk",
+        "horlivka",
+        "pokrovsk",
+        "kramatorsk",
+        "mariupol",
+    }
+
+    # Combined triggers for Donetsk Oblast with red level
+    combined_red = "🔴 Донецька область\nЧервоний рівень тривоги. Прямуйте в укриття!"
+    matched_red = match_districts(combined_red)
+    assert set(matched_red.keys()) == donetsk_districts
+    assert all(ev == AlertEvent("air_raid_alert", "red") for ev in matched_red.values())
+
+    # Combined triggers for Donetsk Oblast with yellow level
+    combined_yellow = "🟡 Донецька область\nЖовтий рівень тривоги. Прямуйте в укриття!"
+    matched_yellow = match_districts(combined_yellow)
+    assert set(matched_yellow.keys()) == donetsk_districts
+    assert all(ev == AlertEvent("air_raid_alert", "yellow") for ev in matched_yellow.values())
+
+    # Combined all-clear for Donetsk Oblast
+    combined_cancel = "🟢 Донецька область\nВідбій тривоги. Будьте обережні!"
+    matched_cancel = match_districts(combined_cancel)
+    assert set(matched_cancel.keys()) == donetsk_districts
+    assert all(ev == AlertEvent("air_raid_alert_cancelled", None) for ev in matched_cancel.values())
+
+    # Combined base alert (no level keyword)
+    combined_base = "🔴 Повітряна тривога\nДонецька область"
+    matched_base = match_districts(combined_base)
+    assert set(matched_base.keys()) == donetsk_districts
+    assert all(ev == AlertEvent("air_raid_alert", None) for ev in matched_base.values())
+
+    # Individual district triggers
+    district_samples = [
+        ("Волноваський район", "volnovakha"),
+        ("Бахмутський район", "bakhmut"),
+        ("Донецький район", "donetsk"),
+        ("Горлівський район", "horlivka"),
+        ("Покровський район", "pokrovsk"),
+        ("Краматорський район", "kramatorsk"),
+        ("Маріупольський район", "mariupol"),
+    ]
+
+    for d_name, d_key in district_samples:
+        red_text = f"🔴 {d_name} (Донецька обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!"
+        assert match_districts(red_text) == {d_key: AlertEvent("air_raid_alert", "red")}
+
+        yellow_text = f"🟡 {d_name} (Донецька обл.)\nЖовтий рівень тривоги. Прямуйте в укриття!"
+        assert match_districts(yellow_text) == {d_key: AlertEvent("air_raid_alert", "yellow")}
+
+        cancel_text = f"🟢 {d_name} (Донецька обл.)\nВідбій тривоги. Будьте обережні!"
+        assert match_districts(cancel_text) == {d_key: AlertEvent("air_raid_alert_cancelled", None)}

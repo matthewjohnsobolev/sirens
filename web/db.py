@@ -529,6 +529,40 @@ async def update_alert_status(
                 },
             )
 
+        if district_key == "nikopol" and is_active is False:
+            raw_shelling = redis_client.hget("threat:shellings:nikopol", "status")
+            if raw_shelling == "true":
+                redis_client.hset(
+                    "threat:shellings:nikopol",
+                    mapping={
+                        "status": "false",
+                        "time": current_time,
+                        "source": source,
+                        "updated_at": now_epoch,
+                    },
+                )
+                try:
+                    with get_pg_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """INSERT INTO alert_history
+                                   (recorded_at, district, event_type, level,
+                                    channel_id, message_id, source)
+                                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                                (
+                                    now,
+                                    "nikopol",
+                                    "threat_of_shelling_cancelled",
+                                    None,
+                                    channel_id,
+                                    message_id,
+                                    source,
+                                ),
+                            )
+                        conn.commit()
+                except Exception:
+                    log.exception("Failed to record shelling cancellation for nikopol")
+
     if event_type:
         try:
             with get_pg_conn() as conn:

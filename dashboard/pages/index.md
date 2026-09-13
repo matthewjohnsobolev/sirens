@@ -44,6 +44,81 @@ title: Sirens Network Analytics
         ': </span><span style="float: right; margin-left: 10px;">' +
         value +
         '</span>';
+
+    // Computes synchronized dual-axis limits so alerts=0 and net_change=0 share the
+    // exact same horizontal baseline (X axis), preventing alert bars from sinking below zero.
+    const calcDualAxes = (data) => {
+        if (!data || !data.length) {
+            return {
+                y0Min: undefined,
+                y0Max: undefined,
+                y0Interval: undefined,
+                y1Min: 0,
+                y1Max: undefined,
+                y1Interval: undefined,
+                hasNeg: false
+            };
+        }
+        let minNet = 0;
+        let maxNet = 1;
+        let maxAlerts = 1;
+        for (let i = 0; i < data.length; i++) {
+            const row = data[i];
+            const net = row.net_change ?? 0;
+            const alerts = (row.yellow_alerts ?? 0) + (row.red_alerts ?? 0);
+            if (net < minNet) minNet = net;
+            if (net > maxNet) maxNet = net;
+            if (alerts > maxAlerts) maxAlerts = alerts;
+        }
+        if (minNet >= 0) {
+            return {
+                y0Min: undefined,
+                y0Max: undefined,
+                y0Interval: undefined,
+                y1Min: 0,
+                y1Max: undefined,
+                y1Interval: undefined,
+                hasNeg: false
+            };
+        }
+        const range = maxNet - minNet;
+        const roughStep = range / 5;
+        const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
+        const norm = roughStep / mag;
+        let step = 10 * mag;
+        if (norm <= 1) step = 1 * mag;
+        else if (norm <= 2) step = 2 * mag;
+        else if (norm <= 2.5) step = 2.5 * mag;
+        else if (norm <= 5) step = 5 * mag;
+
+        const nNeg = Math.ceil(Math.abs(minNet) / step);
+        const nPos = Math.ceil(maxNet / step);
+        const y0Min = -nNeg * step;
+        const y0Max = nPos * step;
+
+        const roughAlertStep = maxAlerts / nPos;
+        const alertMag = Math.pow(10, Math.floor(Math.log10(roughAlertStep || 1)));
+        const normAlert = roughAlertStep / alertMag;
+        let alertStep = 10 * alertMag;
+        if (normAlert <= 1) alertStep = 1 * alertMag;
+        else if (normAlert <= 2) alertStep = 2 * alertMag;
+        else if (normAlert <= 2.5) alertStep = 2.5 * alertMag;
+        else if (normAlert <= 5) alertStep = 5 * alertMag;
+        alertStep = Math.max(1, Math.round(alertStep));
+
+        const y1Max = nPos * alertStep;
+        const y1Min = -nNeg * alertStep;
+
+        return {
+            y0Min: y0Min,
+            y0Max: y0Max,
+            y0Interval: step,
+            y1Min: y1Min,
+            y1Max: y1Max,
+            y1Interval: alertStep,
+            hasNeg: true
+        };
+    };
 </script>
 
 Total audience reach and growth dynamics across all Sirens alert channels.
@@ -192,20 +267,23 @@ view_all as (
         strftime(date, '%b %-d') as label
     from latest_per_day
 ),
+chosen_timeframe as (
+    select case
+        when '${inputs.timeframe}' in ('24h', '7d', '30d', 'all')
+            then '${inputs.timeframe}'
+        when '${inputs.timeframe.value}' in ('24h', '7d', '30d', 'all')
+            then '${inputs.timeframe.value}'
+        else '7d'
+    end as tf
+),
 selected as (
-    select * from view_24h
-    where '${inputs.timeframe.value}' = '24h' or '${inputs.timeframe}' = '24h'
+    select v.* from view_24h v, chosen_timeframe c where c.tf = '24h'
     union all
-    select * from view_7d
-    where ('${inputs.timeframe.value}' = '7d' or '${inputs.timeframe}' = '7d')
-       or ('${inputs.timeframe.value}' is null and '${inputs.timeframe}' is null)
-       or (coalesce('${inputs.timeframe.value}', '${inputs.timeframe}', '') not in ('24h', '7d', '30d', 'all'))
+    select v.* from view_7d v, chosen_timeframe c where c.tf = '7d'
     union all
-    select * from view_30d
-    where '${inputs.timeframe.value}' = '30d' or '${inputs.timeframe}' = '30d'
+    select v.* from view_30d v, chosen_timeframe c where c.tf = '30d'
     union all
-    select * from view_all
-    where '${inputs.timeframe.value}' = 'all' or '${inputs.timeframe}' = 'all'
+    select v.* from view_all v, chosen_timeframe c where c.tf = 'all'
 )
 -- The step back is over the points actually plotted, so on a day with no
 -- snapshot the tooltip compares against the previous point it can name rather
@@ -369,20 +447,23 @@ view_all as (
     from daily_delta d
     left join daily_alerts a on a.day_date = d.date
 ),
+chosen_timeframe as (
+    select case
+        when '${inputs.impact_timeframe}' in ('24h', '7d', '30d', 'all')
+            then '${inputs.impact_timeframe}'
+        when '${inputs.impact_timeframe.value}' in ('24h', '7d', '30d', 'all')
+            then '${inputs.impact_timeframe.value}'
+        else '7d'
+    end as tf
+),
 selected as (
-    select * from view_24h
-    where '${inputs.impact_timeframe.value}' = '24h' or '${inputs.impact_timeframe}' = '24h'
+    select v.* from view_24h v, chosen_timeframe c where c.tf = '24h'
     union all
-    select * from view_7d
-    where ('${inputs.impact_timeframe.value}' = '7d' or '${inputs.impact_timeframe}' = '7d')
-       or ('${inputs.impact_timeframe.value}' is null and '${inputs.impact_timeframe}' is null)
-       or (coalesce('${inputs.impact_timeframe.value}', '${inputs.impact_timeframe}', '') not in ('24h', '7d', '30d', 'all'))
+    select v.* from view_7d v, chosen_timeframe c where c.tf = '7d'
     union all
-    select * from view_30d
-    where '${inputs.impact_timeframe.value}' = '30d' or '${inputs.impact_timeframe}' = '30d'
+    select v.* from view_30d v, chosen_timeframe c where c.tf = '30d'
     union all
-    select * from view_all
-    where '${inputs.impact_timeframe.value}' = 'all' or '${inputs.impact_timeframe}' = 'all'
+    select v.* from view_all v, chosen_timeframe c where c.tf = 'all'
 )
 select
     date,
@@ -404,7 +485,6 @@ order by 1
     chartAreaHeight=280
     yAxisTitle="net change"
     y2AxisTitle="alerts"
-    y2Min=0
     echartsOptions={{
         useUTC: true,
         grid: {
@@ -418,7 +498,11 @@ order by 1
             type: 'time',
             min: 'dataMin',
             max: 'dataMax',
-            ...(inputs.impact_timeframe?.value === '24h' || inputs.impact_timeframe === '24h'
+            axisLine: {
+                show: true,
+                onZero: true
+            },
+            ...(inputs.impact_timeframe === '24h' || inputs.impact_timeframe?.value === '24h'
                 ? {
                     minInterval: 3600 * 1000,
                     maxInterval: 4 * 3600 * 1000
@@ -430,44 +514,57 @@ order by 1
             top: 0,
             type: 'scroll'
         },
-        yAxis: [
-            {
-                type: 'value',
-                name: 'net change',
-                position: 'left',
-                scale: false,
-                nameTextStyle: {
-                    align: 'left',
-                    verticalAlign: 'bottom',
-                    padding: [0, 0, 4, 0]
-                },
-                nameGap: 6,
-                axisLine: {
-                    show: true,
-                    onZero: true
-                },
-                splitLine: {
-                    show: true,
-                    lineStyle: {
-                        color: 'rgba(255, 255, 255, 0.1)'
+        ...(() => {
+            const ax = calcDualAxes(alert_impact);
+            return {
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: 'net change',
+                        position: 'left',
+                        scale: false,
+                        min: ax.y0Min,
+                        max: ax.y0Max,
+                        interval: ax.y0Interval,
+                        nameTextStyle: {
+                            align: 'left',
+                            verticalAlign: 'bottom',
+                            padding: [0, 0, 4, 0]
+                        },
+                        nameGap: 6,
+                        axisLine: {
+                            show: true,
+                            onZero: true
+                        },
+                        splitLine: {
+                            show: true,
+                            lineStyle: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
+                    },
+                    {
+                        type: 'value',
+                        name: 'alerts',
+                        position: 'right',
+                        min: ax.y1Min,
+                        max: ax.y1Max,
+                        interval: ax.y1Interval,
+                        minInterval: 1,
+                        axisLabel: ax.hasNeg
+                            ? { formatter: (val) => (val >= 0 ? val : '') }
+                            : undefined,
+                        nameTextStyle: {
+                            align: 'right',
+                            verticalAlign: 'bottom',
+                            padding: [0, 0, 4, 0]
+                        },
+                        nameGap: 6,
+                        splitLine: { show: false }
                     }
-                }
-            },
-            {
-                type: 'value',
-                name: 'alerts',
-                position: 'right',
-                min: 0,
-                minInterval: 1,
-                nameTextStyle: {
-                    align: 'right',
-                    verticalAlign: 'bottom',
-                    padding: [0, 0, 4, 0]
-                },
-                nameGap: 6,
-                splitLine: { show: false }
-            }
-        ],
+                ]
+            };
+        })(),
         series: [
             {
                 name: 'Yellow Alerts',
@@ -475,7 +572,7 @@ order by 1
                 stack: 'alerts',
                 yAxisIndex: 1,
                 z: 2,
-                barWidth: (inputs.impact_timeframe?.value === '24h' || inputs.impact_timeframe === '24h')
+                barWidth: (inputs.impact_timeframe === '24h' || inputs.impact_timeframe?.value === '24h')
                     ? (alert_impact && alert_impact.length ? Math.min(24, Math.max(12, Math.round(140 / alert_impact.length))) : 20)
                     : undefined,
                 barMaxWidth: 30,
@@ -489,7 +586,7 @@ order by 1
                 stack: 'alerts',
                 yAxisIndex: 1,
                 z: 2,
-                barWidth: (inputs.impact_timeframe?.value === '24h' || inputs.impact_timeframe === '24h')
+                barWidth: (inputs.impact_timeframe === '24h' || inputs.impact_timeframe === '24h')
                     ? (alert_impact && alert_impact.length ? Math.min(24, Math.max(12, Math.round(140 / alert_impact.length))) : 20)
                     : undefined,
                 barMaxWidth: 30,

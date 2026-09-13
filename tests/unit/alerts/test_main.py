@@ -132,6 +132,20 @@ def test_log_alert_received_falls_back_to_capitalized_region(caplog):
     assert "Air raid alert received for Atlantis" in caplog.text
 
 
+def test_log_alert_received_non_broadcast_district(caplog):
+    caplog.set_level(logging.INFO)
+    log_alert_received("boryspil", "air_raid_alert")
+    assert "Air raid alert received for Boryspil" in caplog.text
+
+
+def test_district_label_returns_english_for_all_configured_districts():
+    from alerts.main import district_label
+
+    assert district_label("kyiv") == "Kyiv"
+    assert district_label("boryspil") == "Boryspil"
+    assert district_label("kamianetspodilskyi") == "Kamianets-Podilskyi"
+
+
 @pytest.mark.asyncio
 async def test_update_channel_photo_sends_edit_photo_request(mock_telegram_client):
     mock_telegram_client.upload_file.return_value = "mock_uploaded_file"
@@ -1577,7 +1591,7 @@ async def test_record_map_only_alert_skips_duplicates(
 
     mock_redis.set.assert_awaited_once_with("district_state:vyshhorod", "air_raid_alert", get=True)
     mock_redis.hset.assert_not_awaited()
-    assert "Duplicate air_raid_alert ignored for Вишгородський район" in caplog.text
+    assert "Duplicate air_raid_alert ignored for Vyshhorod: already in this state" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -1610,7 +1624,10 @@ async def test_record_map_only_alert_survives_a_redis_outage(mock_redis, mock_pg
 
     await record_map_only_alert("vyshhorod", "air_raid_alert")
 
-    assert "Redis unavailable for Вишгородський район" in caplog.text
+    assert (
+        "Redis unavailable for Vyshhorod; announcing air_raid_alert without dedup check"
+        in caplog.text
+    )
     mock_conn.execute.assert_awaited_once()
 
 

@@ -214,11 +214,11 @@ def spawn_tracked_task(coro, description: str):
 
 
 def district_label(district_key: str) -> str:
-    """Label for logging: latin for broadcast channels, Ukrainian for the rest."""
+    """English label for logging."""
     conf = DISTRICT_CONFIG.get(district_key)
     if not conf:
-        return district_key.capitalize()
-    return conf.get("display_name") or conf["name"]
+        return district_key.replace("_", " ").title()
+    return conf.get("display_name") or district_key.replace("_", " ").title()
 
 
 def city_or_district_name(district_key: str) -> str:

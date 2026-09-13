@@ -74,11 +74,7 @@ CLOUDFLARE_R2_BI_WEB_BUCKET = (
     or os.getenv("R2_WEB_BUCKET")
     or "sirens-bi-web"
 )
-CLOUDFLARE_R2_S3_ENDPOINT = (
-    os.getenv("CLOUDFLARE_R2_S3_ENDPOINT")
-    or os.getenv("R2_ENDPOINT")
-    or ""
-)
+CLOUDFLARE_R2_S3_ENDPOINT = os.getenv("CLOUDFLARE_R2_S3_ENDPOINT") or os.getenv("R2_ENDPOINT") or ""
 if not CLOUDFLARE_R2_S3_ENDPOINT and CLOUDFLARE_ACCOUNT_ID:
     CLOUDFLARE_R2_S3_ENDPOINT = f"https://{CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
 

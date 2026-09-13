@@ -89,7 +89,6 @@ def test_config_cloudflare_r2_fallback_keys(monkeypatch):
     assert config.CLOUDFLARE_R2_S3_ENDPOINT == "https://fallback.endpoint"
 
 
-
 def test_config_cloudflare_kv_keys(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-api-token-test")
     monkeypatch.setenv("CLOUDFLARE_TELEMETRY_NAMESPACE_ID", "cf-kv-namespace-id")

@@ -2,6 +2,16 @@
 title: Sirens Network Analytics
 ---
 
+<style>
+    :global(h2.markdown) {
+        margin-top: 2.25rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    :global(.chart-container) {
+        margin-bottom: 2rem !important;
+    }
+</style>
+
 <script>
     // Tooltip helpers. Backtick templates are avoided on purpose: the page is
     // parsed as markdown before Svelte sees it, and backticks read as code spans.
@@ -488,7 +498,7 @@ order by 1
     echartsOptions={{
         useUTC: true,
         grid: {
-            top: 36,
+            top: 48,
             bottom: 25,
             left: '1%',
             right: '3%',
@@ -666,15 +676,6 @@ from sirens.subscriber_snapshots
 order by day_date desc
 ```
 
-<Dropdown
-    data={movement_days}
-    name=movement_date
-    value=day_value
-    label=day_label
-    order="day_value desc"
-    title="Date"
-/>
-
 ```sql movement_window
 with target_day as (
     select case
@@ -704,6 +705,15 @@ from target_run, previous_day_run
 ```
 
 Net subscriber change per channel between {movement_window[0].earlier} and {movement_window[0].later} (Kyiv time).
+
+<Dropdown
+    data={movement_days}
+    name=movement_date
+    value=day_value
+    label=day_label
+    order="day_value desc"
+    title="Date"
+/>
 
 ```sql movement
 with target_day as (

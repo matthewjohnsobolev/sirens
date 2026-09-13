@@ -121,7 +121,14 @@ window.SirensThreats = SirensThreats;
     // /api віддає Cache-Control: max-age=2, тож такт частіший за пару
     // секунд однаково впирався б у той самий кеш. П'ятнадцять — компроміс
     // між «майже одразу» і чергою запитів від кожної відкритої вкладки.
-    const POLL_MS = 15000;
+    const ACTIVE_POLL_MS = 15000;
+
+    // У фоні питаємо рідше — раз на 90 секунд: це заощаджує батарею та трафік,
+    // але не дає даним застигнути, щоб після 10–15 хвилин простою не з'являлася
+    // помилкова плашка «Дані не оновлюються».
+    const BACKGROUND_POLL_MS = 90000;
+
+    let timer = null;
 
     // Провал не показуємо: час на плитці просто не зрушить, і це вже
     // відповідь. Наступний такт спробує ще раз.
@@ -129,27 +136,41 @@ window.SirensThreats = SirensThreats;
         SirensThreats.load().catch(() => {});
     }
 
-    // Позачергові приводи — повернення на вкладку і повернення мережі —
-    // трапляються пачками: між двома вікнами перемикаються по кілька разів
-    // поспіль. Тож питаємо лише те, чого ще не питали цього такту.
-    function pollIfDue() {
-        const at = SirensThreats.at();
-        if (!at || Date.now() - at.getTime() >= POLL_MS) poll();
+    function schedule(delay) {
+        if (timer) clearTimeout(timer);
+        const ms = delay !== undefined
+            ? delay
+            : (document.hidden ? BACKGROUND_POLL_MS : ACTIVE_POLL_MS);
+        timer = setTimeout(tick, ms);
     }
 
-    // У фоні не питаємо: невидима вкладка нікому не показує нову
-    // відповідь, а на телефоні за неї платить батарея. Зате щойно на
-    // вкладку повернулись — питаємо одразу, не чекаючи такту: побачити на
-    // екрані годинну правду гірше, ніж не побачити жодної.
-    setInterval(() => { if (!document.hidden) poll(); }, POLL_MS);
+    function tick() {
+        poll();
+        schedule();
+    }
 
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) pollIfDue();
-    });
+    // Позачергові приводи — повернення на вкладку, зміна видимості й повернення мережі.
+    // Якщо минуло більше за цільовий такт — питаємо одразу; інакше плануємо на залишок.
+    function onStateChange() {
+        const at = SirensThreats.at();
+        const elapsed = at ? Date.now() - at.getTime() : Infinity;
+        const targetInterval = document.hidden ? BACKGROUND_POLL_MS : ACTIVE_POLL_MS;
+
+        if (elapsed >= targetInterval) {
+            poll();
+            schedule(targetInterval);
+        } else {
+            schedule(targetInterval - elapsed);
+        }
+    }
+
+    schedule(ACTIVE_POLL_MS);
+
+    document.addEventListener('visibilitychange', onStateChange);
 
     // Зв'язок міг зникнути надовго — тоді дані застаріли рівно на весь час
     // без мережі, і чекати такту нема чого.
-    window.addEventListener('online', pollIfDue);
+    window.addEventListener('online', onStateChange);
 })();
 
 SirensThreats.load().catch(error => { console.error('Error fetching data:', error); });

@@ -1495,10 +1495,42 @@ def test_oblast_popup_districts_sorted_chronologically_with_latest_event_on_top(
     )
     names = json.loads(res.stdout.strip())
     assert names == [
-        "Фастівський район",  # updated_at: 300 (latest event on top)
-        "Бориспільський район",  # updated_at: 200
-        "Бучанський район",  # updated_at: 100
-        "Білоцерківський район",  # updated_at: null (at the bottom)
+        "Фастівський район",  # active alert, updated_at: 300
+        "Бучанський район",  # active alert, updated_at: 100
+        "Бориспільський район",  # cancelled alert, updated_at: 200
+        "Білоцерківський район",  # cancelled alert, updated_at: null
+    ]
+
+    # Test that active alerts precede all-clears even if the all-clear is more recent
+    precedence_script = """
+    const { getOblastPopupContent } = require('./web/static/js/oblasts.js');
+    const data = {
+      title: 'Київська область',
+      districts: {
+        bucha: { title: 'Бучанський район', alert: { status: true, level: 'yellow', updated_at: 200 } },
+        fastiv: { title: 'Фастівський район', alert: { status: false, updated_at: 500 } }
+      }
+    };
+    const html = getOblastPopupContent(data);
+    const re = /class="popup-city-name">([^<]+)<\\/div>/g;
+    const names = [];
+    let match;
+    while ((match = re.exec(html)) !== null) {
+      names.push(match[1]);
+    }
+    console.log(JSON.stringify(names));
+    """
+    res_precedence = subprocess.run(
+        [node, "-e", precedence_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    names_precedence = json.loads(res_precedence.stdout.strip())
+    assert names_precedence == [
+        "Бучанський район",  # active alert at 200 comes before cancellation at 500
+        "Фастівський район",
     ]
 
     # Test tie-breaking by alphabetical order when timestamps match

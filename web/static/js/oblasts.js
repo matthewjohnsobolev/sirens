@@ -303,10 +303,25 @@ function getOblastPopupContent(oblastData) {
         };
     });
 
+    const isAlertActive = (item) => {
+        const d = item.district;
+        if (d && ((d.alert && d.alert.status) || (d.shelling && d.shelling.status))) return true;
+        const v = item.pill && item.pill.variant;
+        return Boolean(v && v !== 'idle' && v !== 'unknown');
+    };
+
     items.sort((a, b) => {
+        const aActive = isAlertActive(a) ? 1 : 0;
+        const bActive = isAlertActive(b) ? 1 : 0;
+
+        if (bActive !== aActive) {
+            return bActive - aActive;
+        }
+
         if (b.time !== a.time) {
             return b.time - a.time;
         }
+
         return a.districtName.localeCompare(b.districtName, 'uk');
     });
 

@@ -663,7 +663,7 @@ def test_get_all_threats_data_defaults_empty_and_missing_keys(threats_store):
     result = get_all_threats_data()
 
     assert result["crimea"] == {"title": "Автономна Республіка Крим", "districts": {}}
-    assert result["sevastopol"] == {"title": "м. Севастополь", "districts": {}}
+    assert result["sevastopol"] == {"title": "Севастополь", "districts": {}}
     assert result["luhansk_oblast"] == {"title": "Луганська область", "districts": {}}
     assert len(result["donetsk_oblast"]["districts"]) == 7
 

@@ -660,7 +660,7 @@ OBLAST_NAMES = {
     "odesa_oblast": "Одеська область",
     "poltava_oblast": "Полтавська область",
     "rivne_oblast": "Рівненська область",
-    "sevastopol": "м. Севастополь",
+    "sevastopol": "Севастополь",
     "sumy_oblast": "Сумська область",
     "ternopil_oblast": "Тернопільська область",
     "vinnytsia_oblast": "Вінницька область",

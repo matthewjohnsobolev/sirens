@@ -45,7 +45,7 @@ def test_domain_oblast_names_covers_all_regions():
     assert domain.OBLAST_NAMES["kyiv_oblast"] == "Київська область"
     assert domain.OBLAST_NAMES["kyiv"] == "м. Київ"
     assert domain.OBLAST_NAMES["crimea"] == "Автономна Республіка Крим"
-    assert domain.OBLAST_NAMES["sevastopol"] == "м. Севастополь"
+    assert domain.OBLAST_NAMES["sevastopol"] == "Севастополь"
     assert set(domain.DISTRICTS_BY_OBLAST.keys()) <= set(domain.OBLAST_NAMES.keys())
 
 

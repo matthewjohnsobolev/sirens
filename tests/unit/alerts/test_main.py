@@ -33,6 +33,7 @@ from alerts.main import (
     build_message_handler,
     build_message_link,
     delete_photo_update_service_message,
+    is_nikopol_district_all_clear,
     log_alert_received,
     log_unrecognised_districts,
     main,
@@ -2919,6 +2920,24 @@ def test_nikopol_two_level_alerts():
     # Nikopol city air raid alert does NOT trigger district
     assert match_districts("🔴 Нікополь (Дніпропетровська обл.)\nЧервоний рівень тривоги.") == {}
 
+    # City air raid all-clear broadcasts cancel, but is NOT a district all-clear
+    city_cancel_msg = "🟢 Нікополь (Дніпропетровська обл.)\nВідбій тривоги. Будьте обережні!"
+    assert match_districts(city_cancel_msg) == {
+        "nikopol": AlertEvent("air_raid_alert_cancelled", None)
+    }
+    assert not is_nikopol_district_all_clear(city_cancel_msg)
+
+    hromada_cancel_msg = (
+        "🟡 08:01 Відбій тривоги в м. Нікополь та Нікопольська територіальна громада."
+    )
+    assert match_districts(hromada_cancel_msg) == {
+        "nikopol": AlertEvent("air_raid_alert_cancelled", None)
+    }
+    assert not is_nikopol_district_all_clear(hromada_cancel_msg)
+
+    # District all-clear is recognized as district all-clear
+    assert is_nikopol_district_all_clear(cancel_msg)
+
 
 @pytest.mark.asyncio
 async def test_fallback_nikopol_shelling_alert_broadcast():
@@ -2957,7 +2976,7 @@ async def test_nikopol_shelling_auto_reset_on_general_all_clear(mock_redis, mock
     ev_cancel = MagicMock()
     ev_cancel.chat_id = fallback_id
     ev_cancel.message.message = (
-        "🟢 Нікополь (Дніпропетровська обл.)\nВідбій тривоги. Будьте обережні!"
+        "🟢 Нікопольський район (Дніпропетровська обл.)\nВідбій тривоги. Будьте обережні!"
     )
     ev_cancel.message.id = 502
     ev_cancel.message.date = datetime.datetime(2026, 9, 6, 13, 30, tzinfo=datetime.timezone.utc)
@@ -2985,6 +3004,97 @@ async def test_nikopol_shelling_auto_reset_on_general_all_clear(mock_redis, mock
             for call in mock_conn.execute.await_args_list
         )
         mock_kv.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_nikopol_shelling_not_reset_on_city_all_clear(mock_redis, mock_pg_pool):
+    mock_pool, mock_conn = mock_pg_pool
+    fallback_id = 11112222
+    channels = {"nikopol": 8001}
+    handler = build_message_handler(channels, fallback_source=fallback_id)
+
+    mock_redis.hget.side_effect = lambda key, field: (
+        "true" if key == "threat:shellings:nikopol" and field == "status" else None
+    )
+
+    ev_city_cancel = MagicMock()
+    ev_city_cancel.chat_id = fallback_id
+    ev_city_cancel.message.message = (
+        "🟢 Нікополь (Дніпропетровська обл.)\nВідбій тривоги. Будьте обережні!"
+    )
+    ev_city_cancel.message.id = 503
+    ev_city_cancel.message.date = datetime.datetime(
+        2026, 9, 6, 13, 30, tzinfo=datetime.timezone.utc
+    )
+
+    with (
+        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send,
+        patch("alerts.main.push_telemetry_to_kv", new_callable=AsyncMock),
+    ):
+        await handler(ev_city_cancel)
+        await _drain_background_tasks()
+
+        # City all-clear still broadcasts the air raid cancellation
+        mock_send.assert_awaited_once_with(
+            8001, "nikopol", "air_raid_alert_cancelled", source_type="fallback"
+        )
+        # But shelling is NOT reset — only district/oblast all-clears reset shelling
+        hset_calls = [
+            c
+            for c in mock_redis.hset.await_args_list
+            if c.args and c.args[0] == "threat:shellings:nikopol"
+        ]
+        assert len(hset_calls) == 0
+        shelling_pg_calls = [
+            call
+            for call in mock_conn.execute.await_args_list
+            if "threat_of_shelling_cancelled" in str(call)
+        ]
+        assert len(shelling_pg_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_nikopol_shelling_reset_on_oblast_all_clear(mock_redis, mock_pg_pool):
+    mock_pool, mock_conn = mock_pg_pool
+    fallback_id = 11112222
+    channels = {"nikopol": 8001}
+    handler = build_message_handler(channels, fallback_source=fallback_id)
+
+    mock_redis.hget.side_effect = lambda key, field: (
+        "true" if key == "threat:shellings:nikopol" and field == "status" else None
+    )
+
+    ev_oblast_cancel = MagicMock()
+    ev_oblast_cancel.chat_id = fallback_id
+    ev_oblast_cancel.message.message = (
+        "🟢 Дніпропетровська область\nВідбій тривоги. Будьте обережні!"
+    )
+    ev_oblast_cancel.message.id = 504
+    ev_oblast_cancel.message.date = datetime.datetime(
+        2026, 9, 6, 14, 0, tzinfo=datetime.timezone.utc
+    )
+
+    with (
+        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send,
+        patch("alerts.main.push_telemetry_to_kv", new_callable=AsyncMock),
+    ):
+        await handler(ev_oblast_cancel)
+        await _drain_background_tasks()
+
+        mock_send.assert_awaited_once_with(
+            8001, "nikopol", "air_raid_alert_cancelled", source_type="fallback"
+        )
+        hset_calls = [
+            c
+            for c in mock_redis.hset.await_args_list
+            if c.args and c.args[0] == "threat:shellings:nikopol"
+        ]
+        assert len(hset_calls) >= 1
+        assert hset_calls[0].kwargs["mapping"]["status"] == "false"
+        assert any(
+            "threat_of_shelling_cancelled" in str(call)
+            for call in mock_conn.execute.await_args_list
+        )
 
 
 @pytest.mark.asyncio

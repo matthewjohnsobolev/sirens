@@ -353,12 +353,10 @@ async def maybe_reset_nikopol_shelling_on_all_clear(
     message_id: int | None = None,
     channel_id: int | None = None,
 ) -> bool:
-    """Resets Nikopol shelling status after the first general all-clear after shelling."""
+    """Resets Nikopol shelling status after the first district or oblast all-clear."""
     if not redis_client:
         return False
-    if "Відбій тривоги" not in message_text:
-        return False
-    if "Нікополь" not in message_text and "Дніпропетровськ" not in message_text:
+    if not is_nikopol_district_all_clear(message_text):
         return False
 
     try:
@@ -488,7 +486,7 @@ async def _record_alert_state(
                     await redis_client.hdel(f"threat:alerts:city:{district_key}", "level")
                     if district_key == "nikopol":
                         await maybe_reset_nikopol_shelling_on_all_clear(
-                            "Відбій тривоги Нікополь",
+                            "Відбій тривоги в Нікопольський район",
                             source=source,
                             message_id=message_id,
                             channel_id=channel_id,
@@ -973,6 +971,29 @@ def match_districts(message_text: str) -> dict[str, AlertEvent]:
     return matched
 
 
+def is_nikopol_district_all_clear(message_text: str) -> bool:
+    """Returns True iff message_text is a district- or oblast-level all-clear for Nikopol.
+
+    City-level all-clears (м. Нікополь, Нікопольська громада, etc.) are NOT
+    considered district all-clears and will return False here, so active shelling
+    is preserved through them.
+    """
+    if "Відбій тривоги" not in message_text:
+        return False
+    # Check for the Nikopol district trigger directly
+    district_hit = any(
+        pattern.search(message_text) for pattern in DISTRICT_PATTERNS.get("nikopol", ())
+    )
+    if district_hit:
+        return True
+    # Check for the Dnipropetrovsk oblast trigger (oblast-wide all-clear)
+    cleaned = OBLAST_PARENTHESIS_RE.sub("", message_text)
+    oblast_hit = any(
+        pattern.search(cleaned) for pattern in OBLAST_PATTERNS.get("dnipropetrovsk_oblast", ())
+    )
+    return oblast_hit
+
+
 KNOWN_DISTRICT_TRIGGERS = frozenset(
     name
     for conf in DISTRICT_CONFIG.values()
@@ -1333,9 +1354,7 @@ def build_message_handler(
             return
 
         message_text = strip_ongoing_notice(event.message.message)
-        if "Відбій тривоги" in message_text and (
-            "Нікополь" in message_text or "Дніпропетровськ" in message_text
-        ):
+        if is_nikopol_district_all_clear(message_text):
             source_ref_reset = await source_reference(event)
             await maybe_reset_nikopol_shelling_on_all_clear(
                 message_text,

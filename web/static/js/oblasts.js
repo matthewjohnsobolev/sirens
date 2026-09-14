@@ -27,17 +27,22 @@ function oblastState(data) {
 
     const coverage = activeKeys.length >= districtKeys.length ? 'full' : 'partial';
 
+    const alertLevelFn = typeof alertLevel !== 'undefined'
+        ? alertLevel
+        : (typeof require !== 'undefined' ? require('./districts.js').alertLevel : () => 'red');
+    const defaultLevel = typeof DEFAULT_ALERT_LEVEL !== 'undefined' ? DEFAULT_ALERT_LEVEL : 'red';
+
     const levels = new Set();
     for (const key of activeKeys) {
         const d = districts[key];
         if (d && d.alert) {
-            levels.add(alertLevel(d.alert));
+            levels.add(alertLevelFn(d.alert));
         }
     }
 
     if (levels.size > 1) return 'mixed';
 
-    const level = levels.values().next().value || DEFAULT_ALERT_LEVEL;
+    const level = levels.values().next().value || defaultLevel;
     return coverage === 'partial' ? level + '-partial' : level;
 }
 
@@ -257,10 +262,17 @@ function attachOblastScrollbar(view) {
 }
 
 function getOblastPopupContent(oblastData) {
+    const renderPillFn = typeof renderPill !== 'undefined'
+        ? renderPill
+        : (typeof require !== 'undefined' ? require('./districts.js').renderPill : () => '');
+    const districtPillStateFn = typeof districtPillState !== 'undefined'
+        ? districtPillState
+        : (typeof require !== 'undefined' ? require('./districts.js').districtPillState : () => ({ variant: 'unknown' }));
+
     if (!oblastData) {
         return `
       <div class="container">
-          ${renderPill({ variant: 'unknown', showTime: false })}
+          ${renderPillFn({ variant: 'unknown', showTime: false })}
       </div>`;
     }
 
@@ -270,18 +282,40 @@ function getOblastPopupContent(oblastData) {
     if (!districtKeys.length) {
         return `
       <div class="container">
-          ${renderPill({ variant: 'unknown', showTime: false })}
+          ${renderPillFn({ variant: 'unknown', showTime: false })}
       </div>`;
     }
 
-    let rows = '';
-    for (const key of districtKeys) {
+    const items = districtKeys.map(key => {
         const district = districts[key] || {};
         const districtName = district.title || district.name || key;
+        const pill = districtPillStateFn(district);
+        const rawTime = pill && pill.updatedAt;
+        const time = (typeof rawTime === 'number' && Number.isFinite(rawTime))
+            ? rawTime
+            : (rawTime && Number.isFinite(Number(rawTime)) ? Number(rawTime) : 0);
+        return {
+            key,
+            district,
+            districtName,
+            pill,
+            time
+        };
+    });
+
+    items.sort((a, b) => {
+        if (b.time !== a.time) {
+            return b.time - a.time;
+        }
+        return a.districtName.localeCompare(b.districtName, 'uk');
+    });
+
+    let rows = '';
+    for (const item of items) {
         rows += `
               <div class="popup-city">
-                  <div class="popup-city-name">${districtName}</div>
-                  ${renderPill(districtPillState(district))}
+                  <div class="popup-city-name">${item.districtName}</div>
+                  ${renderPillFn(item.pill)}
               </div>`;
     }
 
@@ -296,7 +330,10 @@ function getOblastPopupContent(oblastData) {
 // Розповідати про нього двічі й по-різному нема про що, тож картку полігона
 // збираємо тим самим кодом, що й картку маркера.
 const CITY_REGIONS = {};
-for (const marker of DISTRICT_MARKERS) {
+const _districtMarkers = (typeof DISTRICT_MARKERS !== 'undefined')
+    ? DISTRICT_MARKERS
+    : (typeof require !== 'undefined' ? require('./districts.js').DISTRICT_MARKERS : []);
+for (const marker of _districtMarkers) {
     if (marker.oblast === marker.district) CITY_REGIONS[marker.oblast] = marker;
 }
 
@@ -382,12 +419,21 @@ function paintOblasts(data) {
 
 // Межі приходять з окремого джерела й не змінюються, тож качаються раз.
 // Малювальник реєструється лише коли вони є: без меж фарбувати нічого.
-fetch('https://geo.sirens.live/ukraine.geojson')
-    .then(res => res.json())
-    .then(geoData => {
-        SirensThreats.onPaint(function(data) {
-            if (!oblastLayer) buildOblasts(geoData);
-            paintOblasts(data);
-        });
-    })
-    .catch(error => { console.error('Error fetching data:', error); });
+if (typeof window !== 'undefined' && typeof fetch !== 'undefined' && typeof SirensThreats !== 'undefined') {
+    fetch('https://geo.sirens.live/ukraine.geojson')
+        .then(res => res.json())
+        .then(geoData => {
+            SirensThreats.onPaint(function(data) {
+                if (!oblastLayer) buildOblasts(geoData);
+                paintOblasts(data);
+            });
+        })
+        .catch(error => { console.error('Error fetching data:', error); });
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        oblastState,
+        getOblastPopupContent
+    };
+}

@@ -1449,3 +1449,89 @@ def test_missing_dsn_is_announced_at_startup(caplog):
     create_app(init_db=False, start_healthcheck=False)
 
     assert "issue reports will not be delivered anywhere" in caplog.text
+
+
+def test_oblast_popup_districts_sorted_chronologically_with_latest_event_on_top(app):
+    """Oblast popup sorts districts chronologically with the latest event on top,
+    breaking ties alphabetically and placing events without timestamps at the bottom."""
+    import shutil
+    import subprocess
+
+    js_path = Path(app.static_folder) / "js" / "oblasts.js"
+    content = js_path.read_text(encoding="utf-8")
+    assert "b.time - a.time" in content
+    assert "localeCompare" in content
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+
+    script = """
+    const { getOblastPopupContent } = require('./web/static/js/oblasts.js');
+    const data = {
+      title: 'Київська область',
+      districts: {
+        bucha: { title: 'Бучанський район', alert: { status: true, level: 'yellow', updated_at: 100 } },
+        fastiv: { title: 'Фастівський район', alert: { status: true, level: 'red', updated_at: 300 } },
+        boryspil: { title: 'Бориспільський район', alert: { status: false, updated_at: 200 } },
+        bilatserkva: { title: 'Білоцерківський район', alert: { status: false, updated_at: null } }
+      }
+    };
+    const html = getOblastPopupContent(data);
+    const re = /class="popup-city-name">([^<]+)<\\/div>/g;
+    const names = [];
+    let match;
+    while ((match = re.exec(html)) !== null) {
+      names.push(match[1]);
+    }
+    console.log(JSON.stringify(names));
+    """
+    res = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    names = json.loads(res.stdout.strip())
+    assert names == [
+        "Фастівський район",   # updated_at: 300 (latest event on top)
+        "Бориспільський район", # updated_at: 200
+        "Бучанський район",    # updated_at: 100
+        "Білоцерківський район" # updated_at: null (at the bottom)
+    ]
+
+    # Test tie-breaking by alphabetical order when timestamps match
+    tie_script = """
+    const { getOblastPopupContent } = require('./web/static/js/oblasts.js');
+    const data = {
+      title: 'Київська область',
+      districts: {
+        fastiv: { title: 'Фастівський район', alert: { status: true, level: 'red', updated_at: 500 } },
+        boryspil: { title: 'Бориспільський район', alert: { status: true, level: 'red', updated_at: 500 } },
+        bucha: { title: 'Бучанський район', alert: { status: true, level: 'yellow', updated_at: 500 } }
+      }
+    };
+    const html = getOblastPopupContent(data);
+    const re = /class="popup-city-name">([^<]+)<\\/div>/g;
+    const names = [];
+    let match;
+    while ((match = re.exec(html)) !== null) {
+      names.push(match[1]);
+    }
+    console.log(JSON.stringify(names));
+    """
+    res_tie = subprocess.run(
+        [node, "-e", tie_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    names_tie = json.loads(res_tie.stdout.strip())
+    assert names_tie == [
+        "Бориспільський район",
+        "Бучанський район",
+        "Фастівський район"
+    ]
+

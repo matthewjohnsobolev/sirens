@@ -1495,10 +1495,10 @@ def test_oblast_popup_districts_sorted_chronologically_with_latest_event_on_top(
     )
     names = json.loads(res.stdout.strip())
     assert names == [
-        "Фастівський район",   # updated_at: 300 (latest event on top)
-        "Бориспільський район", # updated_at: 200
-        "Бучанський район",    # updated_at: 100
-        "Білоцерківський район" # updated_at: null (at the bottom)
+        "Фастівський район",  # updated_at: 300 (latest event on top)
+        "Бориспільський район",  # updated_at: 200
+        "Бучанський район",  # updated_at: 100
+        "Білоцерківський район",  # updated_at: null (at the bottom)
     ]
 
     # Test tie-breaking by alphabetical order when timestamps match
@@ -1529,9 +1529,4 @@ def test_oblast_popup_districts_sorted_chronologically_with_latest_event_on_top(
         check=True,
     )
     names_tie = json.loads(res_tie.stdout.strip())
-    assert names_tie == [
-        "Бориспільський район",
-        "Бучанський район",
-        "Фастівський район"
-    ]
-
+    assert names_tie == ["Бориспільський район", "Бучанський район", "Фастівський район"]

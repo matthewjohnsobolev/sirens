@@ -60,6 +60,7 @@
         <link rel="stylesheet" href="{{ static_url('css/mobile.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/oblasts.css') }}">
         <link rel="stylesheet" href="{{ static_url('css/channels.css') }}">
+        <link rel="stylesheet" href="{{ static_url('css/districts-map.css') }}">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=flag&display=swap" rel="stylesheet">
 
@@ -69,8 +70,11 @@
              threats.js одразу, щойно виконається. -->
         <script src="{{ static_url('js/districts.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/threats.js') }}" type="text/javascript"></script>
-        <script src="{{ static_url('js/cities.js') }}" type="text/javascript"></script>
-        <script src="{{ static_url('js/oblasts.js') }}" type="text/javascript"></script>
+        <script>
+            window.GEO_DISTRICTS_URL = {{ geo_districts_url | tojson }};
+            window.GEO_OBLASTS_URL = {{ geo_oblasts_url | tojson }};
+        </script>
+        <script src="{{ static_url('js/districts-map.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/map-ui.js') }}" defer></script>
         <script src="{{ static_url('js/pwa.js') }}" defer></script>
         <script src="{{ static_url('js/analytics.js') }}" defer></script>
@@ -131,6 +135,7 @@
         // Кнопки й плашку стану збирає map-ui.js: він виконується після
         // цього блока, тож мапа має бути доступна йому за іменем.
         window.sirensMap = map;
+        window.map = map;
         window.addEventListener('resize', function () {
             map.invalidateSize();
         });

@@ -22,6 +22,11 @@ def test_index_route(client):
     response = client.get("/")
     assert response.status_code == 200
     assert response.headers.get("Cache-Control") == "no-cache, must-revalidate"
+    html = response.get_data(as_text=True)
+    assert "districts-map.js" in html
+    assert "districts-map.css" in html
+    assert "https://geo.sirens.live/districts.geojson" in html
+    assert "https://geo.sirens.live/oblasts.geojson" in html
 
 
 def test_egg_route(client):

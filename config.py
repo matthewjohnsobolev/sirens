@@ -147,6 +147,10 @@ GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "G-JC48ZJGBHM").strip()
 # is meaningless, so the public origin has to be known server-side.
 SITE_URL = os.getenv("SITE_URL", "https://sirens.live").strip().rstrip("/")
 STATUS_URL = os.getenv("STATUS_URL", "https://status.sirens.live").strip().rstrip("/")
+GEO_DISTRICTS_URL = os.getenv(
+    "GEO_DISTRICTS_URL", "https://geo.sirens.live/districts.geojson"
+).strip()
+GEO_OBLASTS_URL = os.getenv("GEO_OBLASTS_URL", "https://geo.sirens.live/oblasts.geojson").strip()
 OCI_PAR_URL = os.getenv("OCI_PAR_URL", "")
 GITHUB_PAT = os.getenv("GITHUB_PAT", "")
 _raw_repo = os.getenv("GITHUB_REPO", "matthewjohnsobolev/sirens")

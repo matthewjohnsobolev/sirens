@@ -27,6 +27,8 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 from config import (
     APP_ENV,
     GA_MEASUREMENT_ID,
+    GEO_DISTRICTS_URL,
+    GEO_OBLASTS_URL,
     HEALTHCHECKS_WEB_PING_URL,
     LOGS_PATH,
     MAP_TILES_ATTRIBUTION,
@@ -488,6 +490,8 @@ def create_app(*, init_db: bool = True, start_healthcheck: bool = True) -> Flask
             "ga_measurement_id": GA_MEASUREMENT_ID,
             "map_tiles_url": MAP_TILES_URL,
             "map_tiles_attribution": MAP_TILES_ATTRIBUTION,
+            "geo_districts_url": GEO_DISTRICTS_URL,
+            "geo_oblasts_url": GEO_OBLASTS_URL,
         }
 
     app.after_request(add_caching_headers)

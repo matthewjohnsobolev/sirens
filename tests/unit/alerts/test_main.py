@@ -3146,6 +3146,7 @@ def test_donetsk_oblast_combined_and_individual_districts():
         "pokrovsk",
         "kramatorsk",
         "mariupol",
+        "kalmiuske",
     }
 
     # Combined triggers for Donetsk Oblast with red level
@@ -3181,6 +3182,7 @@ def test_donetsk_oblast_combined_and_individual_districts():
         ("Покровський район", "pokrovsk"),
         ("Краматорський район", "kramatorsk"),
         ("Маріупольський район", "mariupol"),
+        ("Кальміуський район", "kalmiuske"),
     ]
 
     for d_name, d_key in district_samples:
@@ -3191,4 +3193,48 @@ def test_donetsk_oblast_combined_and_individual_districts():
         assert match_districts(yellow_text) == {d_key: AlertEvent("air_raid_alert", "yellow")}
 
         cancel_text = f"🟢 {d_name} (Донецька обл.)\nВідбій тривоги. Будьте обережні!"
+        assert match_districts(cancel_text) == {d_key: AlertEvent("air_raid_alert_cancelled", None)}
+
+
+def test_luhansk_oblast_combined_and_individual_districts():
+    luhansk_districts = {
+        "alchevsk",
+        "dovzhansk",
+        "luhansk",
+        "rovenky",
+        "svatove",
+        "siverskodonetsk",
+        "starobilsk",
+        "shchastia",
+    }
+
+    # Combined triggers for Luhansk Oblast with red level
+    combined_red = "🔴 Луганська область\nЧервоний рівень тривоги. Прямуйте в укриття!"
+    matched_red = match_districts(combined_red)
+    assert set(matched_red.keys()) == luhansk_districts
+    assert all(ev == AlertEvent("air_raid_alert", "red") for ev in matched_red.values())
+
+    # Combined all-clear for Luhansk Oblast
+    combined_cancel = "🟢 Луганська область\nВідбій тривоги. Будьте обережні!"
+    matched_cancel = match_districts(combined_cancel)
+    assert set(matched_cancel.keys()) == luhansk_districts
+    assert all(ev == AlertEvent("air_raid_alert_cancelled", None) for ev in matched_cancel.values())
+
+    # Individual district triggers
+    district_samples = [
+        ("Алчевський район", "alchevsk"),
+        ("Довжанський район", "dovzhansk"),
+        ("Луганський район", "luhansk"),
+        ("Ровеньківський район", "rovenky"),
+        ("Сватівський район", "svatove"),
+        ("Сіверськодонецький район", "siverskodonetsk"),
+        ("Старобільський район", "starobilsk"),
+        ("Щастинський район", "shchastia"),
+    ]
+
+    for d_name, d_key in district_samples:
+        red_text = f"🔴 {d_name} (Луганська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!"
+        assert match_districts(red_text) == {d_key: AlertEvent("air_raid_alert", "red")}
+
+        cancel_text = f"🟢 {d_name} (Луганська обл.)\nВідбій тривоги. Будьте обережні!"
         assert match_districts(cancel_text) == {d_key: AlertEvent("air_raid_alert_cancelled", None)}

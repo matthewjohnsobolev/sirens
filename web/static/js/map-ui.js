@@ -245,11 +245,11 @@
         L.DomEvent.disableClickPropagation(link);
         L.DomEvent.disableScrollPropagation(link);
 
-        // Якщо зв'язку немає (offline) або він щойно відновився (ok) — не пускаємо
-        // на зовнішню сторінку статусу, яка без інтернету однаково не завантажиться.
-        // Клік натомість ініціює повторну перевірку зв'язку.
+        // Якщо зв'язку немає (offline), він щойно відновився (ok) або активна плашка (beta) —
+        // не пускаємо на зовнішню сторінку статусу.
+        // Клік при offline натомість ініціює повторну перевірку зв'язку.
         L.DomEvent.on(link, 'click', function (e) {
-            if (link.dataset.state === 'offline' || link.dataset.state === 'ok') {
+            if (link.dataset.state === 'offline' || link.dataset.state === 'ok' || link.dataset.state === 'beta') {
                 L.DomEvent.stop(e);
                 if (link.dataset.state === 'offline') {
                     poll();
@@ -273,7 +273,7 @@
         chip.root.dataset.state = alarm.state;
         chip.text.textContent = alarm.text;
 
-        if (alarm.state === 'offline' || alarm.state === 'ok') {
+        if (alarm.state === 'offline' || alarm.state === 'ok' || alarm.state === 'beta') {
             chip.root.removeAttribute('href');
             chip.root.setAttribute('role', 'status');
         } else {
@@ -425,7 +425,7 @@
             }
         }
 
-        return null;
+        return { state: 'beta', text: 'БЕТА' };
     }
 
     function isStale(iso) {
@@ -446,9 +446,9 @@
         var info = STATES[indicator] || UNKNOWN;
         var alarm = alarmFor(info);
 
-        // Якщо сервер щойно відновився після збою ('down' → 'ok') — показуємо
+        // Якщо сервер щойно відновився після збою ('down' → 'ok' / 'beta') — показуємо
         // плашку «ДАНІ ОНОВЛЕНО» на 4 секунди.
-        if (!alarm && lastAlarmState === 'down' && isClientOnline) {
+        if (alarm && alarm.state === 'beta' && lastAlarmState === 'down' && isClientOnline) {
             triggerRestored('ДАНІ ОНОВЛЕНО');
             alarm = { state: 'ok', text: 'ДАНІ ОНОВЛЕНО' };
         }
@@ -533,12 +533,12 @@
     statusChip();
 
     // Поки перша відповідь не прийшла: якщо браузер уже знає про відсутність інтернету —
-    // одразу показуємо плашку; інакше мовчки, щоб не кричати про аварію без даних.
+    // одразу показуємо плашку збою; інакше відображаємо БЕТА.
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         isClientOnline = false;
         render(UNKNOWN, alarmFor(UNKNOWN));
     } else {
-        render(UNKNOWN, null);
+        render(UNKNOWN, alarmFor(UNKNOWN));
     }
 
     poll();

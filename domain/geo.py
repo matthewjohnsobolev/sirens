@@ -601,6 +601,58 @@ DISTRICT_CONFIG = {
         "oblast": "donetsk_oblast",
         "display_name": "Mariupol",
     },
+    "kalmiuske": {
+        "name": "Кальміуський район",
+        "oblast": "donetsk_oblast",
+        "display_name": "Kalmiuske",
+    },
+    "alchevsk": {
+        "name": "Алчевський район",
+        "oblast": "luhansk_oblast",
+        "display_name": "Alchevsk",
+    },
+    "dovzhansk": {
+        "name": "Довжанський район",
+        "oblast": "luhansk_oblast",
+        "display_name": "Dovzhansk",
+    },
+    "luhansk": {
+        "name": "Луганський район",
+        "oblast": "luhansk_oblast",
+        "display_name": "Luhansk",
+    },
+    "rovenky": {
+        "name": "Ровеньківський район",
+        "oblast": "luhansk_oblast",
+        "display_name": "Rovenky",
+    },
+    "svatove": {
+        "name": "Сватівський район",
+        "oblast": "luhansk_oblast",
+        "display_name": "Svatove",
+    },
+    "siverskodonetsk": {
+        "name": "Сіверськодонецький район",
+        "aliases": ["Сєвєродонецький район"],
+        "oblast": "luhansk_oblast",
+        "display_name": "Siverskodonetsk",
+    },
+    "starobilsk": {
+        "name": "Старобільський район",
+        "oblast": "luhansk_oblast",
+        "display_name": "Starobilsk",
+    },
+    "shchastia": {
+        "name": "Щастинський район",
+        "oblast": "luhansk_oblast",
+        "display_name": "Shchastia",
+    },
+    "crimea": {
+        "name": "Крим",
+        "aliases": ["Автономна Республіка Крим", "АР Крим"],
+        "oblast": "crimea",
+        "display_name": "Crimea",
+    },
 }
 
 for _key, _conf in DISTRICT_CONFIG.items():
@@ -626,6 +678,7 @@ OBLAST_TRIGGERS = {
     "khmelnytskyi_oblast": ["Хмельницька область"],
     "kirovohrad_oblast": ["Кіровоградська область"],
     "kyiv_oblast": ["Київська область"],
+    "luhansk_oblast": ["Луганська область"],
     "lviv_oblast": ["Львівська область"],
     "mykolaiv_oblast": ["Миколаївська область"],
     "odesa_oblast": ["Одеська область"],
@@ -644,7 +697,7 @@ OBLAST_NAMES = {
     "cherkasy_oblast": "Черкаська область",
     "chernihiv_oblast": "Чернігівська область",
     "chernivtsi_oblast": "Чернівецька область",
-    "crimea": "Автономна Республіка Крим",
+    "crimea": "Крим",
     "dnipropetrovsk_oblast": "Дніпропетровська область",
     "donetsk_oblast": "Донецька область",
     "ivanofrankivsk_oblast": "Івано-Франківська область",
@@ -717,6 +770,16 @@ LOCATION_LOCATIVE = {
     "pokrovsk": "у Покровському районі",
     "kramatorsk": "у Краматорському районі",
     "mariupol": "у Маріупольському районі",
+    "kalmiuske": "у Кальміуському районі",
+    "alchevsk": "в Алчевському районі",
+    "dovzhansk": "у Довжанському районі",
+    "luhansk": "у Луганському районі",
+    "rovenky": "у Ровеньківському районі",
+    "svatove": "у Сватівському районі",
+    "siverskodonetsk": "у Сіверськодонецькому районі",
+    "starobilsk": "у Старобільському районі",
+    "shchastia": "у Щастинському районі",
+    "crimea": "у Криму",
 }
 
 DISTRICTS_BY_OBLAST = {}

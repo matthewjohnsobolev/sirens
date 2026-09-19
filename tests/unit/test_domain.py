@@ -31,9 +31,8 @@ def test_domain_districts_by_oblast_covers_every_district():
 
 
 def test_domain_occupied_regions_have_no_districts():
-    """Crimea, Sevastopol, and Luhansk regions remain outside the directory."""
-    for region in ("crimea", "sevastopol", "luhansk_oblast"):
-        assert region not in domain.DISTRICTS_BY_OBLAST
+    """Sevastopol remains outside the directory as Crimea is unified and Luhansk/Donetsk have districts."""
+    assert "sevastopol" not in domain.DISTRICTS_BY_OBLAST
 
 
 def test_domain_oblast_names_covers_all_regions():
@@ -44,7 +43,7 @@ def test_domain_oblast_names_covers_all_regions():
         assert isinstance(name, str) and name
     assert domain.OBLAST_NAMES["kyiv_oblast"] == "Київська область"
     assert domain.OBLAST_NAMES["kyiv"] == "м. Київ"
-    assert domain.OBLAST_NAMES["crimea"] == "Автономна Республіка Крим"
+    assert domain.OBLAST_NAMES["crimea"] == "Крим"
     assert domain.OBLAST_NAMES["sevastopol"] == "Севастополь"
     assert set(domain.DISTRICTS_BY_OBLAST.keys()) <= set(domain.OBLAST_NAMES.keys())
 
@@ -116,12 +115,37 @@ def test_domain_donetsk_oblast_districts():
         "pokrovsk",
         "kramatorsk",
         "mariupol",
+        "kalmiuske",
     }
     for d in expected_districts:
         assert d in domain.DISTRICT_CONFIG
         assert domain.DISTRICT_CONFIG[d]["oblast"] == "donetsk_oblast"
     assert "donetsk_oblast" in domain.OBLAST_TRIGGERS
     assert "Донецька область" in domain.OBLAST_TRIGGERS["donetsk_oblast"]
+
+
+def test_domain_luhansk_oblast_districts():
+    expected_districts = {
+        "alchevsk",
+        "dovzhansk",
+        "luhansk",
+        "rovenky",
+        "svatove",
+        "siverskodonetsk",
+        "starobilsk",
+        "shchastia",
+    }
+    for d in expected_districts:
+        assert d in domain.DISTRICT_CONFIG
+        assert domain.DISTRICT_CONFIG[d]["oblast"] == "luhansk_oblast"
+    assert "luhansk_oblast" in domain.OBLAST_TRIGGERS
+    assert "Луганська область" in domain.OBLAST_TRIGGERS["luhansk_oblast"]
+
+
+def test_domain_crimea_district():
+    assert "crimea" in domain.DISTRICT_CONFIG
+    assert domain.DISTRICT_CONFIG["crimea"]["oblast"] == "crimea"
+    assert domain.DISTRICT_CONFIG["crimea"]["name"] == "Крим"
 
 
 def test_domain_triggers_cover_both_apostrophes():

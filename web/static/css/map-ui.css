@@ -534,7 +534,8 @@
 }
 
 .map-chip[data-state="offline"],
-.map-chip[data-state="ok"] {
+.map-chip[data-state="ok"],
+.map-chip[data-state="beta"] {
     cursor: default;
 }
 
@@ -558,6 +559,7 @@
 .map-chip[data-state="down"] .map-chip-dot    { background: var(--status-red-bar); }
 .map-chip[data-state="nodata"] .map-chip-dot  { background: var(--status-gray-bar); }
 .map-chip[data-state="offline"] .map-chip-dot { background: var(--status-gray-bar); }
+.map-chip[data-state="beta"] .map-chip-dot    { background: var(--status-blue-bar); }
 
 /* ── Атрибуція мапи ─────────────────────────────────────────────────── */
 

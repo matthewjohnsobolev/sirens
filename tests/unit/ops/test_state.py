@@ -780,3 +780,52 @@ def test_apply_threat_change_with_alert_level():
         if c.args and c.args[0] == "threat:alerts:kyiv_oblast"
     ][0]
     assert obl_call.kwargs["mapping"]["level"] == "yellow"
+    assert result["level"] == "yellow"
+
+
+def test_get_all_districts_statuses_with_level_and_filter():
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_redis.pipeline.return_value = mock_pipe
+
+    # District 1: yellow alert; District 2: red alert; District 3: clear
+    mock_pipe.execute.return_value = [
+        {"status": "true", "level": "yellow", "time": "10:00", "updated_at": "123"},
+        {"status": "false", "time": "None"},
+        {"status": "true", "level": "red", "time": "10:05", "updated_at": "124"},
+        {"status": "false", "time": "None"},
+    ] + [{"status": "false", "time": "None"}, {"status": "false", "time": "None"}] * 300
+
+    # No level filter
+    res = get_all_districts_statuses(redis_conn=mock_redis, active_only=True)
+    assert len(res) >= 2
+    assert res[0]["alert"]["level"] == "yellow"
+    assert res[1]["alert"]["level"] == "red"
+
+    # Filter yellow only
+    res_yellow = get_all_districts_statuses(
+        redis_conn=mock_redis, active_only=True, filter_level="yellow"
+    )
+    assert len(res_yellow) == 1
+    assert res_yellow[0]["alert"]["level"] == "yellow"
+
+    # Filter red only
+    res_red = get_all_districts_statuses(
+        redis_conn=mock_redis, active_only=True, filter_level="red"
+    )
+    assert len(res_red) == 1
+    assert res_red[0]["alert"]["level"] == "red"
+
+
+def test_get_history_with_level_filter():
+    mock_pg = MagicMock()
+    mock_cur = MagicMock()
+    mock_pg.cursor.return_value.__enter__.return_value = mock_cur
+    mock_cur.fetchall.return_value = []
+
+    get_history(district_key="bucha", level="yellow", pg_conn=mock_pg)
+    mock_cur.execute.assert_called_once()
+    query, params = mock_cur.execute.call_args[0]
+    assert "level = %s" in query
+    assert "district = %s" in query
+    assert "yellow" in params

@@ -157,13 +157,24 @@ def render_status_table(districts: list[dict[str, Any]]) -> Group:
         for d in o_districts:
             is_alert = d["alert"]["status"]
             is_shelling = d["shelling"]["status"]
+            alert_lvl = str(d["alert"].get("level") or "").lower()
+
+            if alert_lvl == "yellow":
+                a_dot = "bold yellow"
+                a_badge = "[bold yellow]alert (yellow)[/]"
+            elif alert_lvl == "red":
+                a_dot = "bold red"
+                a_badge = "[bold red]alert (red)[/]"
+            else:
+                a_dot = "bold red"
+                a_badge = "[bold red]alert[/]"
 
             if is_alert and is_shelling:
                 a_time = d["alert"].get("time", "-")
                 a_for = format_duration(d["alert"].get("updated_at"), a_time)
                 sub_table.add_row(
-                    f"  [bold red]●[/] {d['key']}",
-                    "[bold red]alert[/]",
+                    f"  [{a_dot}]●[/] {d['key']}",
+                    a_badge,
                     a_time if a_time != "None" else "-",
                     a_for,
                 )
@@ -179,8 +190,8 @@ def render_status_table(districts: list[dict[str, Any]]) -> Group:
                 a_time = d["alert"].get("time", "-")
                 a_for = format_duration(d["alert"].get("updated_at"), a_time)
                 sub_table.add_row(
-                    f"  [bold red]●[/] {d['key']}",
-                    "[bold red]alert[/]",
+                    f"  [{a_dot}]●[/] {d['key']}",
+                    a_badge,
                     a_time if a_time != "None" else "-",
                     a_for,
                 )
@@ -249,7 +260,13 @@ def print_show_detail(data: dict[str, Any]) -> None:
             if a_elapsed
             else ""
         )
-        status_lines.append(f"[bold red]● air raid alert[/] {since_str}".strip())
+        a_lvl = str(alert.get("level") or "").lower()
+        if a_lvl == "yellow":
+            status_lines.append(f"[bold yellow]● air raid alert (yellow)[/] {since_str}".strip())
+        elif a_lvl == "red":
+            status_lines.append(f"[bold red]● air raid alert (red)[/] {since_str}".strip())
+        else:
+            status_lines.append(f"[bold red]● air raid alert[/] {since_str}".strip())
     if shelling.get("status"):
         s_time = shelling.get("time", "-")
         s_elapsed = format_elapsed(shelling.get("updated_at"), s_time)
@@ -475,6 +492,7 @@ class SirensOpsGroup(click.Group):
             "EXAMPLES\n"
             "  sirens-ops status\n"
             "  sirens-ops alert kyiv on\n"
+            "  sirens-ops alert kyiv on -l yellow\n"
             "  sirens-ops shelling nikopol on -b\n"
             "  sirens-ops show bucha\n"
             "  sirens-ops history\n"
@@ -491,8 +509,9 @@ class AlertCommand(click.Command):
             "  sirens-ops alert <district> <on|off> [options]\n\n"
             "ARGUMENTS\n"
             "  DISTRICT         District key or city name (e.g. bucha, kyiv, nikopol)\n"
-            "  STATE            Alert state: on | off\n\n"
+            "  STATE            Alert state: on | off (or yellow | red)\n\n"
             "OPTIONS\n"
+            "  -l, --level      Alert level: yellow | red (default: red)\n"
             "  -s, --source     Source link, operator, or label (default: manual)\n"
             "  -d, --date       Event date in Kyiv timezone (DD.MM or YYYY-MM-DD, default: today)\n"
             "  -t, --time       Event time in Kyiv timezone (HH:MM, default: now)\n"
@@ -502,6 +521,7 @@ class AlertCommand(click.Command):
             "EXAMPLES\n"
             "  sirens-ops alert kyiv on\n"
             "  sirens-ops alert bucha off\n"
+            "  sirens-ops alert kyiv on -l yellow\n"
             "  sirens-ops alert bucha on -b\n"
             "  sirens-ops alert nikopol on -t 14:30 -d 04.09\n"
         )
@@ -539,10 +559,12 @@ class StatusCommand(click.Command):
             "OPTIONS\n"
             "  -a, --all        Show all districts (default: active threats only)\n"
             "      --oblast     Filter by oblast key (e.g. dnipropetrovsk_oblast)\n"
+            "  -l, --level      Filter by alert level: yellow | red\n"
             "  -h, --help       Show this help message and exit\n\n"
             "EXAMPLES\n"
             "  sirens-ops status\n"
             "  sirens-ops status -a\n"
+            "  sirens-ops status -l yellow\n"
             "  sirens-ops status --oblast kyiv_oblast\n"
         )
         formatter.write(help_text)
@@ -572,11 +594,13 @@ class HistoryCommand(click.Command):
             "ARGUMENTS\n"
             "  DISTRICT         Filter events by district key or city (optional)\n\n"
             "OPTIONS\n"
+            "  -l, --level      Filter events by alert level: yellow | red\n"
             "  -n, --limit      Number of recent records to display (default: 10)\n"
             "  -h, --help       Show this help message and exit\n\n"
             "EXAMPLES\n"
             "  sirens-ops history\n"
             "  sirens-ops history bucha\n"
+            "  sirens-ops history -l yellow\n"
             "  sirens-ops history -n 25\n"
         )
         formatter.write(help_text)
@@ -734,6 +758,7 @@ def _apply_and_print(
     time_str: str | None = None,
     broadcast: bool = False,
     yes: bool = False,
+    alert_level: str | None = None,
 ) -> None:
     env = ctx.obj["mode"]
     resolved = state.resolve_district(district_query)
@@ -761,6 +786,7 @@ def _apply_and_print(
             time_str=time_str,
             dry_run=False,
             env=env,
+            alert_level=alert_level,
         )
     except Exception as e:
         console.print(f"[red]error updating status:[/] {e}")
@@ -782,7 +808,10 @@ def _apply_and_print(
                 )
 
             try:
-                tg_res = run_broadcast_sync(target_cid, target_event)
+                if alert_active and alert_level:
+                    tg_res = run_broadcast_sync(target_cid, target_event, level=alert_level)
+                else:
+                    tg_res = run_broadcast_sync(target_cid, target_event)
                 link = tg_res.get("message_link")
                 link_str = f" [dim]({link})[/]" if link else ""
                 broadcast_msg = f"[cyan]broadcast sent[/] ({target_cid}){link_str}"
@@ -796,7 +825,12 @@ def _apply_and_print(
     target_val = f"{district_key} ({target_type})"
 
     if alert_active is True:
-        status_val = "[bold red]● air raid alert on[/]"
+        if alert_level == "yellow":
+            status_val = "[bold yellow]● air raid alert (yellow) on[/]"
+        elif alert_level == "red":
+            status_val = "[bold red]● air raid alert (red) on[/]"
+        else:
+            status_val = "[bold red]● air raid alert on[/]"
     elif alert_active is False:
         status_val = "[dim green]○ air raid alert off[/]"
     elif shelling_active is True:
@@ -821,7 +855,17 @@ def _apply_and_print(
 
 @cli.command(name="alert", cls=AlertCommand, context_settings=CONTEXT_SETTINGS)
 @click.argument("district")
-@click.argument("state_val", type=click.Choice(["on", "off"], case_sensitive=False))
+@click.argument(
+    "state_val",
+    type=click.Choice(["on", "off", "yellow", "red"], case_sensitive=False),
+)
+@click.option(
+    "-l",
+    "--level",
+    type=click.Choice(["yellow", "red"], case_sensitive=False),
+    default=None,
+    help="Alert level: yellow | red (default: red)",
+)
 @click.option(
     "-s", "--source", default=None, help="Source link, operator, or label (default: manual)"
 )
@@ -854,14 +898,34 @@ def alert_cmd(
     ctx: click.Context,
     district: str,
     state_val: str,
+    level: str | None,
     source: str | None,
     date_str: str | None,
     time_str: str | None,
     broadcast: bool,
     yes: bool,
 ):
-    """Set air raid alert state (on/off) for a district or city."""
-    active = state_val.lower() == "on"
+    """Set air raid alert state (on/off, yellow/red) for a district or city."""
+    val_lower = state_val.lower()
+    if val_lower == "off":
+        if level is not None:
+            raise click.BadParameter(
+                "Cannot specify alert level when turning alert off.", param_hint="--level"
+            )
+        active = False
+        alert_level = None
+    elif val_lower in ("yellow", "red"):
+        if level is not None and level.lower() != val_lower:
+            raise click.BadParameter(
+                f"Conflicting alert levels: argument '{state_val}' vs option '--level {level}'.",
+                param_hint="--level",
+            )
+        active = True
+        alert_level = val_lower
+    else:  # "on"
+        active = True
+        alert_level = level.lower() if level else None
+
     _apply_and_print(
         ctx,
         district,
@@ -872,6 +936,7 @@ def alert_cmd(
         time_str=time_str,
         broadcast=broadcast,
         yes=yes,
+        alert_level=alert_level,
     )
 
 
@@ -948,8 +1013,15 @@ def shelling_cmd(
     help="Show all districts (default: active threats only)",
 )
 @click.option("--oblast", default=None, help="Filter by oblast key (e.g. dnipropetrovsk_oblast)")
+@click.option(
+    "-l",
+    "--level",
+    type=click.Choice(["yellow", "red"], case_sensitive=False),
+    default=None,
+    help="Filter by alert level (yellow | red)",
+)
 @click.pass_context
-def status_cmd(ctx: click.Context, show_all: bool, oblast: str | None):
+def status_cmd(ctx: click.Context, show_all: bool, oblast: str | None, level: str | None):
     """Show threat status overview grouped by oblast (active threats by default; use -a for all)."""
     env = ctx.obj["mode"]
     try:
@@ -957,6 +1029,7 @@ def status_cmd(ctx: click.Context, show_all: bool, oblast: str | None):
             filter_oblast=oblast,
             active_only=not show_all,
             env=env,
+            filter_level=level.lower() if level else None,
         )
     except Exception as e:
         console.print(f"[red]error connecting to Redis:[/] {e}")
@@ -1000,7 +1073,7 @@ def show_cmd(ctx: click.Context, district: str):
     try:
         data = state.get_district_status(district_key, env=env)
     except Exception as e:
-        console.print(f"[red]error fetching status:[/] {e}")
+        console.print(f"[red]error fetching status for '{district}':[/] {e}")
         sys.exit(1)
 
     print_show_detail(data)
@@ -1008,9 +1081,16 @@ def show_cmd(ctx: click.Context, district: str):
 
 @cli.command(name="history", cls=HistoryCommand, context_settings=CONTEXT_SETTINGS)
 @click.argument("district", required=False, default=None)
+@click.option(
+    "-l",
+    "--level",
+    type=click.Choice(["yellow", "red"], case_sensitive=False),
+    default=None,
+    help="Filter events by alert level (yellow | red)",
+)
 @click.option("-n", "--limit", default=10, help="Number of recent records to display (default: 10)")
 @click.pass_context
-def history_cmd(ctx: click.Context, district: str | None, limit: int):
+def history_cmd(ctx: click.Context, district: str | None, level: str | None, limit: int):
     """Show recent threat event history log from PostgreSQL."""
     district_key = None
     if district:
@@ -1021,7 +1101,11 @@ def history_cmd(ctx: click.Context, district: str | None, limit: int):
         district_key = resolved[0]
 
     try:
-        rows = state.get_history(district_key=district_key, limit=limit)
+        rows = state.get_history(
+            district_key=district_key,
+            limit=limit,
+            level=level.lower() if level else None,
+        )
     except Exception as e:
         console.print(f"[red]error querying PostgreSQL:[/] {e}")
         sys.exit(1)

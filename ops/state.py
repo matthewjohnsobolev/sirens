@@ -167,6 +167,7 @@ def get_all_districts_statuses(
     filter_oblast: str | None = None,
     active_only: bool = False,
     env: str | None = None,
+    filter_level: str | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch status for all districts using pipelined Redis queries."""
     client = redis_conn or get_redis_client()
@@ -196,6 +197,21 @@ def get_all_districts_statuses(
         if active_only and not (alert_status or shelling_status):
             continue
 
+        alert_lvl = (
+            (
+                alert_raw.get("level")
+                or (
+                    alert_raw.get("type", "").split(":")[1]
+                    if ":" in alert_raw.get("type", "")
+                    else "red"
+                )
+            )
+            if alert_status
+            else None
+        )
+        if filter_level and alert_lvl != filter_level.lower():
+            continue
+
         conf = DISTRICT_CONFIG[d_key]
         districts.append(
             {
@@ -207,6 +223,7 @@ def get_all_districts_statuses(
                 "has_channel": d_key in channels,
                 "alert": {
                     "status": alert_status,
+                    "level": alert_lvl,
                     "time": alert_raw.get("time", "None"),
                     "source": alert_raw.get("source", "None"),
                     "updated_at": int(alert_raw.get("updated_at", 0) or 0),
@@ -376,6 +393,8 @@ def apply_threat_change(
         "date": str(target_date),
         "source": source_tag,
     }
+    if alert_active:
+        result["level"] = alert_level or "red"
 
     if dry_run:
         return result
@@ -449,7 +468,12 @@ def apply_threat_change(
                 if channel_id is not None
                 else f"district_state:{district_key}"
             )
-            client.set(state_key, change["event_type"])
+            state_val = (
+                f"{change['event_type']}:{alert_level}"
+                if alert_active and alert_level
+                else change["event_type"]
+            )
+            client.set(state_key, state_val)
 
         elif change["component"] == "shelling":
             st_str = "true" if shelling_active else "false"
@@ -513,6 +537,7 @@ def get_history(
     district_key: str | None = None,
     limit: int = 15,
     pg_conn=None,
+    level: str | None = None,
 ) -> list[dict[str, Any]]:
     """Retrieve recent alert history records from PostgreSQL."""
     conn = pg_conn
@@ -523,29 +548,26 @@ def get_history(
 
     try:
         with conn.cursor() as cur:
+            conditions = []
+            params: list[Any] = []
             if district_key:
-                cur.execute(
-                    """
-                    SELECT id, recorded_at, district, event_type, level,
-                           channel_id, message_id, source
-                    FROM alert_history
-                    WHERE district = %s
-                    ORDER BY recorded_at DESC, id DESC
-                    LIMIT %s
-                    """,
-                    (district_key, limit),
-                )
-            else:
-                cur.execute(
-                    """
-                    SELECT id, recorded_at, district, event_type, level,
-                           channel_id, message_id, source
-                    FROM alert_history
-                    ORDER BY recorded_at DESC, id DESC
-                    LIMIT %s
-                    """,
-                    (limit,),
-                )
+                conditions.append("district = %s")
+                params.append(district_key)
+            if level:
+                conditions.append("level = %s")
+                params.append(level.lower())
+
+            where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+            query = f"""
+                SELECT id, recorded_at, district, event_type, level,
+                       channel_id, message_id, source
+                FROM alert_history
+                {where_clause}
+                ORDER BY recorded_at DESC, id DESC
+                LIMIT %s
+            """
+            params.append(limit)
+            cur.execute(query, tuple(params))
             rows = cur.fetchall()
             history = []
             for row in rows:

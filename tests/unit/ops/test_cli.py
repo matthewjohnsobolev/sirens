@@ -764,3 +764,179 @@ def test_status_with_active_maintenance_banner(mock_get_all, mock_get_mnt, runne
     assert res.exit_code == 0
     assert "MAINTENANCE ACTIVE" in res.output
     assert "Scheduled cluster maintenance" in res.output
+
+
+@patch("ops.state.apply_threat_change")
+def test_alert_on_with_level_yellow(mock_apply, runner):
+    mock_apply.return_value = {
+        "district_key": "bucha",
+        "time": "19:40",
+        "date": "2026-09-04",
+        "channel_id": -1001754447620,
+        "level": "yellow",
+    }
+
+    result = runner.invoke(cli, ["alert", "bucha", "on", "-l", "yellow"])
+    assert result.exit_code == 0
+    assert "bucha" in result.output
+    assert "air raid alert (yellow) on" in result.output
+    mock_apply.assert_called_once()
+    assert mock_apply.call_args.kwargs["alert_level"] == "yellow"
+
+
+@patch("ops.state.apply_threat_change")
+def test_alert_on_with_level_red(mock_apply, runner):
+    mock_apply.return_value = {
+        "district_key": "bucha",
+        "time": "19:40",
+        "date": "2026-09-04",
+        "channel_id": -1001754447620,
+        "level": "red",
+    }
+
+    result = runner.invoke(cli, ["alert", "bucha", "on", "--level", "red"])
+    assert result.exit_code == 0
+    assert "bucha" in result.output
+    assert "air raid alert (red) on" in result.output
+    mock_apply.assert_called_once()
+    assert mock_apply.call_args.kwargs["alert_level"] == "red"
+
+
+@patch("ops.state.apply_threat_change")
+def test_alert_positional_levels(mock_apply, runner):
+    mock_apply.return_value = {
+        "district_key": "bucha",
+        "time": "19:40",
+        "date": "2026-09-04",
+        "channel_id": -1001754447620,
+    }
+
+    # Positional yellow
+    res_y = runner.invoke(cli, ["alert", "bucha", "yellow"])
+    assert res_y.exit_code == 0
+    assert "air raid alert (yellow) on" in res_y.output
+    assert mock_apply.call_args.kwargs["alert_level"] == "yellow"
+
+    mock_apply.reset_mock()
+    # Positional red
+    res_r = runner.invoke(cli, ["alert", "bucha", "red"])
+    assert res_r.exit_code == 0
+    assert "air raid alert (red) on" in res_r.output
+    assert mock_apply.call_args.kwargs["alert_level"] == "red"
+
+
+def test_alert_level_validations(runner):
+    # Off with level should be rejected
+    res_off = runner.invoke(cli, ["alert", "bucha", "off", "-l", "yellow"])
+    assert res_off.exit_code != 0
+    assert "Cannot specify alert level when turning alert off" in res_off.output
+
+    # Conflicting level argument and option
+    res_conflict = runner.invoke(cli, ["alert", "bucha", "yellow", "-l", "red"])
+    assert res_conflict.exit_code != 0
+    assert "Conflicting alert levels" in res_conflict.output
+
+
+@patch("ops.broadcast.run_broadcast_sync")
+@patch("ops.state.apply_threat_change")
+def test_alert_broadcast_with_level(mock_apply, mock_broadcast, runner):
+    mock_apply.return_value = {
+        "district_key": "bucha",
+        "time": "19:40",
+        "date": "2026-09-04",
+        "channel_id": -1001754447620,
+    }
+    mock_broadcast.return_value = {"message_link": "https://t.me/c/1754447620/123"}
+
+    result = runner.invoke(cli, ["alert", "bucha", "on", "-l", "yellow", "-b"])
+    assert result.exit_code == 0
+    assert "broadcast sent" in result.output
+    mock_broadcast.assert_called_once_with(-1001754447620, "air_raid_alert", level="yellow")
+
+
+@patch("ops.state.get_all_districts_statuses")
+def test_status_with_level_filter(mock_get_all, runner):
+    mock_get_all.return_value = [
+        {
+            "key": "bucha",
+            "name": "Бучанський район",
+            "display_name": "Bucha",
+            "oblast_key": "kyiv_oblast",
+            "channel_id": -1001754447620,
+            "has_channel": True,
+            "alert": {
+                "status": True,
+                "level": "yellow",
+                "time": "19:15",
+                "source": "tg",
+                "updated_at": 12345,
+            },
+            "shelling": {"status": False, "time": "None", "source": "None", "updated_at": 0},
+        }
+    ]
+
+    res = runner.invoke(cli, ["status", "-l", "yellow"])
+    assert res.exit_code == 0
+    assert "bucha" in res.output
+    assert "alert (yellow)" in res.output
+    mock_get_all.assert_called_once_with(
+        filter_oblast=None,
+        active_only=True,
+        env="dev",
+        filter_level="yellow",
+    )
+
+
+@patch("ops.state.get_history")
+def test_history_with_level_filter(mock_get_hist, runner):
+    mock_get_hist.return_value = [
+        {
+            "id": 1,
+            "date": "2026-09-04",
+            "time": "19:15",
+            "district_key": "bucha",
+            "type": "air_raid_alert",
+            "level": "yellow",
+            "channel_id": -1001754447620,
+            "source": "manual:cli",
+        }
+    ]
+
+    res = runner.invoke(cli, ["history", "-l", "yellow"])
+    assert res.exit_code == 0
+    assert "bucha" in res.output
+    assert "air raid alert (yellow)" in res.output
+    mock_get_hist.assert_called_once_with(
+        district_key=None,
+        limit=10,
+        level="yellow",
+    )
+
+
+@patch("ops.state.get_district_status")
+def test_show_with_alert_levels(mock_get_status, runner):
+    mock_get_status.return_value = {
+        "key": "bucha",
+        "name": "Бучанський район",
+        "display_name": "Bucha",
+        "oblast_key": "kyiv_oblast",
+        "channel_id": -1001754447620,
+        "has_channel": True,
+        "alert": {
+            "status": True,
+            "level": "yellow",
+            "time": "19:15",
+            "source": "manual",
+            "updated_at": 12345,
+        },
+        "shelling": {"status": False, "time": "None", "source": "None", "updated_at": 0},
+    }
+
+    res_y = runner.invoke(cli, ["show", "bucha"])
+    assert res_y.exit_code == 0
+    assert "air raid alert (yellow)" in res_y.output
+
+    mock_get_status.return_value["alert"]["level"] = "red"
+    res_r = runner.invoke(cli, ["show", "bucha"])
+    assert res_r.exit_code == 0
+    assert "air raid alert (red)" in res_r.output

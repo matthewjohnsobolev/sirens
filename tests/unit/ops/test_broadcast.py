@@ -163,3 +163,81 @@ def test_run_broadcast_sync():
         res = run_broadcast_sync(-100123, "air_raid_alert", update_photo=False)
         assert res["message_id"] == 1
         mock_async.assert_called_once_with(-100123, "air_raid_alert", False)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_alert_with_yellow_level():
+    mock_client = AsyncMock()
+    mock_client.is_user_authorized.return_value = True
+    mock_entity = MagicMock()
+    mock_entity.username = "sirens_test"
+    mock_client.get_entity.return_value = mock_entity
+
+    mock_msg = MagicMock()
+    mock_msg.id = 555
+    mock_client.send_message.return_value = mock_msg
+    mock_client.upload_file.return_value = "uploaded_photo"
+
+    mock_service_msg = MagicMock(spec=MessageService)
+    mock_service_msg.id = 666
+    mock_service_msg.action = MagicMock(spec=MessageActionChatEditPhoto)
+    mock_update = MagicMock(spec=UpdateNewChannelMessage)
+    mock_update.message = mock_service_msg
+    mock_edit_res = MagicMock()
+    mock_edit_res.updates = [mock_update]
+    mock_client.return_value = mock_edit_res
+
+    with (
+        patch("ops.broadcast.TELEGRAM_API_ID", "12345"),
+        patch("ops.broadcast.TELEGRAM_API_HASH", "hash123"),
+        patch("ops.broadcast.TelegramClient", return_value=mock_client),
+    ):
+        res = await broadcast_alert_to_telegram(
+            -1001234567, "air_raid_alert", update_photo=True, level="yellow"
+        )
+        assert res["level"] == "yellow"
+        assert res["message_id"] == 555
+        assert res["photo_updated"] is True
+        mock_client.send_message.assert_called_once_with(mock_entity, "🟡 Жовтий рівень тривоги!")
+        assert "threat-of-shelling.png" in mock_client.upload_file.call_args[1]["file"]
+
+
+@pytest.mark.asyncio
+async def test_broadcast_alert_with_red_level():
+    mock_client = AsyncMock()
+    mock_client.is_user_authorized.return_value = True
+    mock_entity = MagicMock()
+    mock_entity.username = "sirens_test"
+    mock_client.get_entity.return_value = mock_entity
+
+    mock_msg = MagicMock()
+    mock_msg.id = 777
+    mock_client.send_message.return_value = mock_msg
+    mock_client.upload_file.return_value = "uploaded_photo"
+
+    mock_edit_res = MagicMock()
+    mock_edit_res.updates = []
+    mock_client.return_value = mock_edit_res
+
+    with (
+        patch("ops.broadcast.TELEGRAM_API_ID", "12345"),
+        patch("ops.broadcast.TELEGRAM_API_HASH", "hash123"),
+        patch("ops.broadcast.TelegramClient", return_value=mock_client),
+    ):
+        res = await broadcast_alert_to_telegram(
+            -1001234567, "air_raid_alert:red", update_photo=True
+        )
+        assert res["level"] == "red"
+        mock_client.send_message.assert_called_once_with(mock_entity, "🔴 Червоний рівень тривоги!")
+        assert "explosions.png" in mock_client.upload_file.call_args[1]["file"]
+
+
+def test_run_broadcast_sync_with_level():
+    with patch(
+        "ops.broadcast.broadcast_alert_to_telegram",
+        new_callable=AsyncMock,
+        return_value={"message_id": 42, "level": "yellow"},
+    ) as mock_async:
+        res = run_broadcast_sync(-100123, "air_raid_alert", update_photo=True, level="yellow")
+        assert res["level"] == "yellow"
+        mock_async.assert_called_once_with(-100123, "air_raid_alert", True, level="yellow")

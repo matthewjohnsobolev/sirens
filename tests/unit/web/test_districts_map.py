@@ -260,3 +260,55 @@ def test_css_design_system_typography():
 
     # Перевірка: відсутність забороненого filter: brightness
     assert "filter: brightness" not in content
+
+    # Перевірка: @media (hover: none) для мобільних пристроїв
+    assert "@media (hover: none)" in content
+
+
+def test_district_touch_target_scoping():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+
+    test_script = """
+    const { findNearbyMarker } = require('./web/static/js/districts-map.js');
+
+    const mockMap = {
+        latLngToContainerPoint: (coords) => {
+            const lat = Array.isArray(coords) ? coords[0] : coords.lat;
+            const lng = Array.isArray(coords) ? coords[1] : coords.lng;
+            return { x: lng * 100, y: lat * 100 };
+        }
+    };
+
+    // Точка поруч із маркером Білої Церкви (49.7968, 30.1311)
+    const nearBilatserkva = { lat: 49.7968, lng: 30.1311 };
+    const farCoords = { lat: 46.4825, lng: 30.7233 }; // Одеса
+
+    // 1. Клік на районі 'bilatserkva' поруч із маркером знаходить маркер Білої Церкви
+    const mSelf = findNearbyMarker(nearBilatserkva, mockMap, 'bilatserkva');
+
+    // 2. Клік на сусідньому районі 'obukhiv' поруч із межею/маркером НЕ чіпляє маркер Білої Церкви
+    const mNeighbor = findNearbyMarker(nearBilatserkva, mockMap, 'obukhiv');
+
+    // 3. Клік далеко від маркера повертає null
+    const mFar = findNearbyMarker(farCoords, mockMap, 'bilatserkva');
+
+    console.log(JSON.stringify({
+        selfDistrict: mSelf ? mSelf.district : null,
+        neighborDistrict: mNeighbor ? mNeighbor.district : null,
+        farDistrict: mFar ? mFar.district : null
+    }));
+    """
+
+    res = subprocess.run(
+        [node, "-e", test_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    results = json.loads(res.stdout.strip())
+    assert results["selfDistrict"] == "bilatserkva"
+    assert results["neighborDistrict"] is None
+    assert results["farDistrict"] is None

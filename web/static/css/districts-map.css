@@ -312,10 +312,29 @@
 .map-pin--yellow    { --pin-fill: var(--map-pin-yellow, #F5B600); }
 .map-pin--shelling  { --pin-fill: var(--map-pin-shelling, var(--alert)); }
 .map-pin--red       { --pin-fill: var(--map-pin-red, var(--explosion)); }
-.map-pin--explosion { --pin-fill: var(--map-pin-explosion, var(--map-crimson)); }
+@media (hover: none) {
+    .map-district--idle:hover:not(.map-district--selected) {
+        fill-opacity: 0.05;
+        stroke-opacity: 0;
+        stroke-width: 0.75px;
+    }
+    .map-district--yellow:hover:not(.map-district--selected) {
+        fill-opacity: var(--map-yellow-alpha);
+        stroke-width: 1.05px;
+    }
+    .map-district--red:hover:not(.map-district--selected) {
+        fill-opacity: var(--map-red-alpha);
+        stroke-width: 1.25px;
+    }
+    .map-district--shelling:hover:not(.map-district--selected) {
+        fill-opacity: 0.38;
+        stroke-width: 1.35px;
+    }
+}
 
 @media (prefers-reduced-motion: reduce) {
     .map-district {
         transition: none;
     }
 }
+

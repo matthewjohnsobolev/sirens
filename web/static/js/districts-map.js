@@ -289,7 +289,9 @@
 
     /* Знаходження маркера поблизу точки кліку:
        - На мобільному: більший радіус (28px) під дотик пальця
-       - На десктопі: невеликий радіус (14px) для точного кліку поруч із маркером */
+       - На десктопі: невеликий радіус (14px) для точного кліку поруч із маркером
+       - Якщо передано districtId: шукаємо тільки маркер цього конкретного району,
+         щоб клік по сусідньому району не чіпляв чужий якорний маркер */
     function findNearbyMarker(latlng, targetMap, districtId) {
         if (!latlng || !targetMap || !targetMap.latLngToContainerPoint) return null;
         const markersList = typeof DISTRICT_MARKERS !== 'undefined'
@@ -303,6 +305,7 @@
         let nearest = null;
         let minDist = Infinity;
         for (const m of markersList) {
+            if (districtId && m.district !== districtId) continue;
             const mPt = targetMap.latLngToContainerPoint([m.lat, m.lng]);
             const d = Math.hypot(clickPt.x - mPt.x, clickPt.y - mPt.y);
             if (d <= maxDistPx && d < minDist) {
@@ -472,6 +475,9 @@
                 // інакше — відкриваємо точно за координатами кліку на районі.
                 layer.off('click', layer._openPopup, layer);
                 layer.on('click', function (e) {
+                    if (e && e.originalEvent && typeof L !== 'undefined' && L.DomEvent) {
+                        L.DomEvent.stopPropagation(e.originalEvent);
+                    }
                     const nearby = findNearbyMarker(e && e.latlng, map, feature.properties.id);
                     if (nearby) {
                         openDistrictPopupForMarker(nearby, map);
@@ -494,15 +500,6 @@
 
         map.on('popupclose', function (e) {
             clearSelectedDistrict();
-        });
-
-        map.on('click', function (e) {
-            if (isMobileClient() && e && e.latlng) {
-                const nearby = findNearbyMarker(e.latlng, map);
-                if (nearby) {
-                    openDistrictPopupForMarker(nearby, map);
-                }
-            }
         });
 
         buildCities(currentThreatsData, map);

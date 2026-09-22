@@ -28,7 +28,7 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-console = Console(force_terminal=True, legacy_windows=False)
+console = Console(force_terminal=True, legacy_windows=False, highlight=False)
 
 
 def format_source_by(source: str | None, default: str = "manual") -> str:

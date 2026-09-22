@@ -204,25 +204,31 @@ def test_district_popup_content_rendering_and_styling():
     assert "Підписатися на сповіщення" in html_with_ch
     assert "tg://resolve?domain=bilatserkva_alert" in html_with_ch
 
-    # Перевірка 2: Район без локального каналу (отримує загальний канал для єдиного розміру)
+    # Перевірка 2: Район без локального каналу (кнопка відсутня, лише плашка статусу)
     assert '<div class="district-popup-name">Обухівський район</div>' in html_no_ch
     assert '<div class="district-popup">' in html_no_ch
-    assert "channel-popup-button" in html_no_ch
-    assert "Підписатися на сповіщення" in html_no_ch
-    assert "tg://resolve?domain=sirens_live" in html_no_ch
+    assert "channel-popup-button" not in html_no_ch
+    assert "Підписатися на сповіщення" not in html_no_ch
+    assert "tg://resolve?domain=" not in html_no_ch
 
     # Перевірка 3: Місто Київ
     assert '<div class="district-popup-name">Київ</div>' in html_kyiv
     assert "Підписатися на сповіщення" in html_kyiv
 
-    # Перевірка 4: Крим як єдине ціле — тільки "Крим"
+    # Перевірка 4: Крим як єдине ціле — тільки "Крим" (без кнопки каналу)
     assert '<div class="district-popup-name">Крим</div>' in html_crimea
+    assert "channel-popup-button" not in html_crimea
+    assert "Підписатися на сповіщення" not in html_crimea
 
-    # Перевірка 5: Кальміуський район Донеччини
+    # Перевірка 5: Кальміуський район Донеччини (без кнопки каналу)
     assert '<div class="district-popup-name">Кальміуський район</div>' in html_kalmiuske
+    assert "channel-popup-button" not in html_kalmiuske
+    assert "Підписатися на сповіщення" not in html_kalmiuske
 
-    # Перевірка 6: Район Луганщини
+    # Перевірка 6: Район Луганщини (без кнопки каналу)
     assert '<div class="district-popup-name">Сіверськодонецький район</div>' in html_siversk
+    assert "channel-popup-button" not in html_siversk
+    assert "Підписатися на сповіщення" not in html_siversk
 
     # Перевірка 7: Жодної підписи областей у попапах
     for h in (html_with_ch, html_no_ch, html_kyiv, html_crimea, html_kalmiuske, html_siversk):

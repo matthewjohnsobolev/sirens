@@ -98,6 +98,7 @@ function nameElement(entry) {
 }
 
 function subscribeButtonHtml(channel) {
+    if (!channel) return '';
     return `
         <div class="info-block">
             <a href="tg://resolve?domain=${channel}" class="oblast-button-link">
@@ -114,6 +115,7 @@ function subscribeButtonHtml(channel) {
 function getMarkerPopupContent(marker, threats) {
     const dominant = pickDominant(threats) || 'idle';
     const winner = threats[dominant] || threats.alert || {};
+    const channelHtml = subscribeButtonHtml(marker.channel);
 
     return `<div class='channel-popup-name'>${marker.name}</div>`
          + renderPill({
@@ -121,7 +123,7 @@ function getMarkerPopupContent(marker, threats) {
                updatedAt: winner.updated_at,
                source: winner.source
            })
-         + subscribeButtonHtml(marker.channel);
+         + (channelHtml ? '\n' + channelHtml : '');
 }
 
 var customOptions = {'maxWidth': '310', 'width': '310'};

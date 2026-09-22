@@ -154,12 +154,12 @@
 
         const pillState = districtPillStateFn(districtData);
 
-        // Пошук каналу у переліку маркерів або єдиний резервний канал
+        // Пошук каналу у переліку маркерів (тільки для районів із налаштованим оповіщенням)
         const markersList = typeof DISTRICT_MARKERS !== 'undefined'
             ? DISTRICT_MARKERS
             : (typeof require !== 'undefined' ? require('./districts.js').DISTRICT_MARKERS : []);
-        const marker = markersList.find(m => m.district === districtId);
-        const channel = (marker && marker.channel) ? marker.channel : 'sirens_live';
+        const marker = markersList.find(m => m.district === districtId || (districtId && districtId.endsWith('_raion') && m.district === districtId.replace('_raion', '')));
+        const channel = (marker && marker.channel) ? marker.channel : null;
         const channelHtml = subscribeButtonHtml(channel);
 
         return `
@@ -167,8 +167,7 @@
                 <div class="district-popup-header">
                     <div class="district-popup-name">${districtName}</div>
                 </div>
-                ${renderPillFn(pillState)}
-                ${channelHtml}
+                ${renderPillFn(pillState)}${channelHtml ? '\n                ' + channelHtml : ''}
             </div>
         `.trim();
     }

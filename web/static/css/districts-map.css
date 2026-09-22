@@ -162,17 +162,27 @@
     stroke-width: 2.25px;
 }
 
-/* ── 2. Попапи районів: суворо фіксований єдиний розмір (340x146px) ───── */
+/* ── 2. Попапи районів: суворо фіксована ширина (310px) та точна висота (68px без каналу / 116px з каналом) ───── */
 
 .district-popup {
     width: 310px;
     min-width: 310px;
     max-width: 310px;
+    height: auto;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.district-popup:has(.channel-popup-button) {
     height: 116px;
     min-height: 116px;
     max-height: 116px;
-    box-sizing: border-box;
-    overflow: hidden;
+}
+
+.district-popup:not(:has(.channel-popup-button)) {
+    height: 68px;
+    min-height: 68px;
+    max-height: 68px;
 }
 
 .district-leaflet-popup .leaflet-popup-content,
@@ -180,9 +190,9 @@
     width: 310px !important;
     min-width: 310px !important;
     max-width: 310px !important;
-    height: 116px !important;
-    min-height: 116px !important;
-    max-height: 116px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     margin: 15px !important;
     box-sizing: border-box;
     overflow: hidden;
@@ -192,32 +202,11 @@
     width: 340px !important;
     min-width: 340px !important;
     max-width: 340px !important;
-    height: 146px !important;
-    min-height: 146px !important;
-    max-height: 146px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     box-sizing: border-box;
     border-radius: 14px;
-}
-
-/* Верстка без кнопки каналу: без зайвого простору внизу (68px контент, 98px обгортка) */
-.district-popup:not(:has(.channel-popup-button)) {
-    height: 68px;
-    min-height: 68px;
-    max-height: 68px;
-}
-
-.district-leaflet-popup .leaflet-popup-content:has(.district-popup:not(:has(.channel-popup-button))),
-.leaflet-popup-content:has(.district-popup:not(:has(.channel-popup-button))) {
-    height: 68px !important;
-    min-height: 68px !important;
-    max-height: 68px !important;
-}
-
-.district-leaflet-popup:has(.district-popup:not(:has(.channel-popup-button))) .leaflet-popup-content-wrapper,
-.leaflet-popup-content-wrapper:has(.district-popup:not(:has(.channel-popup-button))) {
-    height: 98px !important;
-    min-height: 98px !important;
-    max-height: 98px !important;
 }
 
 .district-popup-header {

@@ -246,11 +246,11 @@ def test_css_design_system_typography():
     assert ".district-popup-name" in content
     assert "var(--font)" in content
 
-    # Перевірка: Фіксований єдиний розмір поп-апа (310x116px контент, 340x146px обгортка)
+    # Перевірка: Фіксований єдиний розмір поп-апа (310x116px з каналом, 310x68px без каналу, 340px обгортка)
     assert "width: 310px" in content
     assert "height: 116px" in content
+    assert "height: 68px" in content
     assert "340px" in content
-    assert "146px" in content
     assert ".district-popup" in content
 
     # Перевірка: Підвищена контрастність підписів міст завдяки чіткому ореолу

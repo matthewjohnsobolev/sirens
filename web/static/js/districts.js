@@ -113,6 +113,7 @@ function formatDuration(updatedAt) {
         return minutes ? `${hours} год ${minutes} хв` : `${hours} год`;
     }
     const days = Math.floor(seconds / DAY);
+    if (days >= 14) return `${days} дн`;
     const hours = Math.floor((seconds % DAY) / HOUR);
     return hours ? `${days} дн ${hours} год` : `${days} дн`;
 }

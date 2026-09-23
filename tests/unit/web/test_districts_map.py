@@ -312,3 +312,37 @@ def test_district_touch_target_scoping():
     assert results["selfDistrict"] == "bilatserkva"
     assert results["neighborDistrict"] is None
     assert results["farDistrict"] is None
+
+
+def test_format_duration_days_threshold():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+
+    test_script = """
+    const { formatDuration } = require('./web/static/js/districts.js');
+    const now = Math.floor(Date.now() / 1000);
+
+    const res13d = formatDuration(now - (13 * 86400 + 5 * 3600));
+    const res14d0h = formatDuration(now - (14 * 86400));
+    const res14d5h = formatDuration(now - (14 * 86400 + 5 * 3600));
+    const res15d = formatDuration(now - (15 * 86400 + 3 * 3600));
+    const res30d = formatDuration(now - (30 * 86400 + 12 * 3600));
+
+    console.log(JSON.stringify({ res13d, res14d0h, res14d5h, res15d, res30d }));
+    """
+
+    res = subprocess.run(
+        [node, "-e", test_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    results = json.loads(res.stdout.strip())
+    assert results["res13d"] == "13 дн 5 год"
+    assert results["res14d0h"] == "14 дн"
+    assert results["res14d5h"] == "14 дн"
+    assert results["res15d"] == "15 дн"
+    assert results["res30d"] == "30 дн"
+

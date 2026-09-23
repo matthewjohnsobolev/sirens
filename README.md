@@ -2,14 +2,14 @@
 
 A comprehensive, real-time web-based monitoring tool designed to track and report emergency events across Ukraine, including air raid alerts, threats of shelling, and explosions.
 
-> **Disclaimer:** This project parses official Telegram channels to aggregate data about life-threatening situations (air raid alerts, shellings, etc.). As with any automated parsing pipeline, technical errors, delays, or service disruptions may occur. **This tool is NOT a replacement for official state emergency notification systems.** Rely on it at your own risk.
+> **Disclaimer:** This project aggregates data about life-threatening situations (air raid alerts, shellings, etc.) via official APIs (Ukraine Alert API 3.0) and fallback Telegram channels. As with any automated parsing pipeline, technical errors, delays, or service disruptions may occur. **This tool is NOT a replacement for official state emergency notification systems.** Rely on it at your own risk.
 
-The system ingests real-time data from official Telegram channels, stores it in a robust relational database, and exposes it through both a RESTful API and a Live Threat Map.
+The system ingests real-time data from the official Ukraine Alert API 3.0 (with fallback to official Telegram channels), stores it in a robust relational database, and exposes it through both a RESTful API and a Live Threat Map.
 
 ## Key Features
 
 * **Real-time Event Tracking:** Continuously monitors air raid alerts, artillery shelling threats, and local emergency events across every district of the government-controlled Ukrainian regions. Districts with their own channel are broadcast to; the rest are tracked for the map alone.
-* **Telegram Integration:** Utilizes `Telethon` to parse official emergency notification channels with minimal latency.
+* **Ukraine Alert API 3.0 & Telegram Integration:** Ingests official alerts directly from the Ukraine Alert API 3.0 (Stfalcon / Ministry of Digital Transformation) with low-latency polling and automatic diff resolution, broadcasting active alerts to dedicated Telegram channels via `Telethon`.
 * **RESTful API:** Provides structured JSON endpoints for consuming data regarding active threats across regions.
 * **Live Threat Map:** A Flask-powered, dynamic GIS-based web interface built with **Leaflet** and **OpenStreetMap**, highlighting regions and cities under active air raid alerts or shelling threats in real-time.
 
@@ -17,7 +17,7 @@ The system ingests real-time data from official Telegram channels, stores it in 
 
 The project operates as a robust multi-container application comprising the following components:
 * **Web Service (`web/`)**: A Flask web application served by Gunicorn, providing the user interface, GIS map rendering, and API endpoints.
-* **Alerts Worker (`alerts/`)**: An asynchronous Python worker utilizing `Telethon` to monitor Telegram channels and process incoming alerts.
+* **Alerts Worker (`alerts/`)**: An asynchronous Python worker monitoring the Ukraine Alert API 3.0 (or fallback Telegram channels) and broadcasting incoming alerts to Telegram channels.
 * **Subscriber Snapshot (`bi/`)**: A one-shot job that records how many subscribers each network channel has. Started by cron, not a long-running service.
 * **Dashboard (`dashboard/`)**: An [Evidence](https://evidence.dev) project that turns those snapshots into a published site. Built in CI, served from Cloudflare R2 by a small Worker — it never runs on the server.
 * **PostgreSQL**: The primary relational database used for reliable data storage.
@@ -34,7 +34,13 @@ The recommended method for deploying the Sirens project is via **Docker** and **
 ### 1. Configuration
 Create a `.env` file in the root directory of the project based on `.env.example`:
 ```env
-# Telegram API Credentials
+# Ukraine Alert API 3.0 (Official alerts source: https://api.ukrainealarm.com)
+UKRAINE_ALARM_API_KEY=your_ukraine_alarm_api_key
+UKRAINE_ALARM_API_URL=https://api.ukrainealarm.com/api/v3
+UKRAINE_ALARM_POLL_INTERVAL=5.0
+UKRAINE_ALARM_RESYNC_INTERVAL=30.0
+
+# Telegram API Credentials (used for broadcasting alerts to network channels)
 TELEGRAM_API_ID=your_api_id
 TELEGRAM_API_HASH=your_api_hash
 
@@ -179,24 +185,18 @@ because two different monitoring models feed it:
 |---|---|---|
 | Мапа тривог | UptimeRobot `GET /` | the site opens for a visitor: DNS, TLS, Cloudflare, nginx, render |
 | API | UptimeRobot `GET /api` | the endpoint answers with real JSON, not a 200 full of nothing |
-| Джерело тривог | healthchecks `sirens-alerts-source` | posts from the source channel are reaching us |
+| Джерело тривог | healthchecks `sirens-alerts-source` | alerts source (API poll response or source channel post) is reaching us |
 | Розсилка в Telegram | healthchecks `sirens-alerts-broadcast` | our broadcasts into the network channels go through |
 
 The last two are the two ends of the same chain, and they break independently.
-A source channel that stopped posting, an account thrown out of it, a handler
+An upstream API outage, a source channel that stopped posting, an account thrown out of it, a handler
 that missed a migrated chat — none of those touch our ability to send, and a
 `FloodWaitError` or a lost admin right in one of our channels says nothing about
 the source. One check could not honestly stand for both.
 
 ### How the two ends are measured
 
-**Input.** The worker records the timestamp of every post it sees in the source
-channel (`service:alerts:last_source_message_at` in Redis, so a restart does not
-reset the clock). The healthcheck ping goes out only while that mark is fresher
-than `SOURCE_SILENCE_THRESHOLD` — three hours; past that the worker sends an
-explicit `/fail` and raises one Sentry event per episode of silence. Before this
-existed, the check only proved the Telegram socket was connected, which a
-silently dead source looks exactly like.
+**Input.** When Ukraine Alert API 3.0 is configured, the worker records the timestamp of every successful polling response (`service:alerts:last_source_message_at` in Redis, so a restart does not reset the clock). In legacy Telegram source mode, it records the timestamp of every post seen in the source channel. The healthcheck ping goes out only while that mark is fresher than `SOURCE_SILENCE_THRESHOLD` — three hours; past that the worker sends an explicit `/fail` and raises one Sentry event per episode of silence. Before this existed, the check only proved the connection socket was alive, which a silently dead source looks exactly like.
 
 **Output.** Every broadcast attempt records its verdict
 (`service:alerts:last_broadcast_ok`). The check carries the verdict of the *last*

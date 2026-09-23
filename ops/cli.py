@@ -38,7 +38,10 @@ def format_source_by(source: str | None, default: str = "manual") -> str:
     s_low = str(source).lower()
     if any(k in s_low for k in ("manual", "cli", "operator")):
         return "manual"
-    if any(k in s_low for k in ("mon_channel", "telegram", "tg", "auto", "t.me", "channel")):
+    if any(
+        k in s_low
+        for k in ("mon_channel", "telegram", "tg", "auto", "t.me", "channel", "api", "ukrainealarm")
+    ):
         return "auto"
     return default
 

@@ -51,6 +51,10 @@ for var in TELEGRAM_API_ID TELEGRAM_API_HASH POSTGRES_USER POSTGRES_PASSWORD; do
     [[ -n "${!var:-}" ]] || die "$var is not set in .env (see .env.example)"
 done
 
+if [[ -z "${UKRAINE_ALARM_API_KEY:-}" ]]; then
+    printf '\033[1;33mwarning:\033[0m UKRAINE_ALARM_API_KEY is not set - worker will fall back to legacy Telegram channel monitoring\n'
+fi
+
 case "${APP_ENV:-}" in
     prod|production) ;;
     *) die "APP_ENV must be 'prod' (or 'production') in .env, got '${APP_ENV:-<unset>}'" ;;

@@ -47,6 +47,12 @@ from telethon.tl.types import (
 )
 
 from alerts import cli
+from alerts.api_client import (
+    UkraineAlarmAuthError,
+    UkraineAlarmClient,
+    UkraineAlarmNetworkError,
+    UkraineAlarmRateLimitError,
+)
 from config import (
     ALERT_BROADCAST_SOURCES,
     CLOUDFLARE_ACCOUNT_ID,
@@ -54,7 +60,6 @@ from config import (
     CLOUDFLARE_TELEMETRY_NAMESPACE_ID,
     DATABASE_URL,
     HEALTHCHECKS_ALERTS_BROADCAST_PING_URL,
-    HEALTHCHECKS_ALERTS_SOURCE_FALLBACK_PING_URL,
     HEALTHCHECKS_ALERTS_SOURCE_PING_URL,
     IMAGES_PATH,
     LOGS_PATH,
@@ -63,6 +68,11 @@ from config import (
     SESSION_PATH,
     TELEGRAM_API_HASH,
     TELEGRAM_API_ID,
+    UKRAINE_ALARM_API_KEY,
+    UKRAINE_ALARM_API_URL,
+    UKRAINE_ALARM_MAP_SOURCE_URL,
+    UKRAINE_ALARM_POLL_INTERVAL,
+    UKRAINE_ALARM_RESYNC_INTERVAL,
     VERSION,
 )
 from domain import (
@@ -73,6 +83,12 @@ from domain import (
     MESSAGES,
     OBLAST_TRIGGERS,
     alert_message_key,
+)
+from domain.ukraine_alarm import (
+    TargetAlert,
+    UkraineAlarmGeoResolver,
+    compute_alerts_diff,
+    extract_active_threats_by_district,
 )
 from web.db import DEFAULT_SOURCE, ensure_pg_tables, rehydrate_state_from_db
 
@@ -96,6 +112,12 @@ running_tasks: set[asyncio.Task] = set()
 redis_client = None
 pg_pool = None
 client: TelegramClient = None
+
+geo_resolver: UkraineAlarmGeoResolver = UkraineAlarmGeoResolver()
+last_action_index: int | None = None
+last_api_poll_at: float | None = None
+active_threats_by_district: dict[str, dict[str, TargetAlert]] = {}
+api_client: UkraineAlarmClient | None = None
 
 last_source_message_at: float | None = None
 last_primary_message_at: float | None = None
@@ -191,7 +213,8 @@ async def broadcast_reference(channel_id: int, message) -> tuple[int | None, str
 
 async def source_reference(event) -> tuple[int | None, str | None]:
     """Source message ID and link for map-only updates."""
-    message_id = getattr(event.message, "id", None)
+    message = getattr(event, "message", None)
+    message_id = getattr(message, "id", None)
     chat_id = getattr(event, "chat_id", None)
     if not isinstance(message_id, int) or not isinstance(chat_id, int):
         log.warning("Source message has no id; map-only districts recorded without a link")
@@ -1148,18 +1171,23 @@ def request_telemetry_sync(delay: float | None = None) -> asyncio.Task:
     return task
 
 
+_last_source_redis_sync_at: float = 0.0
+
+
 async def record_source_message(
-    moment: datetime.datetime | None = None, source_type: str = "primary"
+    moment: datetime.datetime | None = None, source_type: str = "primary", force_sync: bool = False
 ) -> None:
-    """Records the timestamp of the latest source message received from primary or fallback source."""
+    """Records the timestamp of the latest source message received from primary, fallback, or api source."""
     global \
         last_source_message_at, \
         last_primary_message_at, \
         last_fallback_message_at, \
-        active_source_name
+        active_source_name, \
+        _last_source_redis_sync_at
 
     seen_at = moment.timestamp() if isinstance(moment, datetime.datetime) else time.time()
     last_source_message_at = seen_at
+    prev_source = active_source_name
     active_source_name = source_type
 
     if source_type == "fallback":
@@ -1170,6 +1198,17 @@ async def record_source_message(
     if not redis_client:
         return
 
+    now_ts = time.time()
+    source_changed = prev_source != source_type
+    if (
+        source_type == "api"
+        and not force_sync
+        and not source_changed
+        and (now_ts - _last_source_redis_sync_at) < 30.0
+    ):
+        return
+
+    _last_source_redis_sync_at = now_ts
     try:
         seen_str = str(int(seen_at))
         await redis_client.set(LAST_SOURCE_MESSAGE_KEY, seen_str)
@@ -1201,25 +1240,13 @@ async def record_broadcast(succeeded: bool) -> None:
     request_telemetry_sync()
 
 
-async def _prime_monitoring_state(primary_source: int, fallback_source: int | None = None) -> None:
-    """Restores the monitoring state for input and output silence clocks on startup."""
-    global \
-        last_broadcast_at, \
-        last_source_message_at, \
-        last_primary_message_at, \
-        last_fallback_message_at, \
-        last_alert_payload, \
-        active_source_name
+async def _restore_stored_alert_payload() -> None:
+    """Restores last_broadcast_at, active_source_name, and last_alert_payload from Redis and PostgreSQL."""
+    global last_broadcast_at, last_alert_payload, active_source_name
 
-    stored_source_seen_at = None
-    stored_primary_seen_at = None
-    stored_fallback_seen_at = None
     stored_broadcast_at = None
     if redis_client:
         try:
-            raw_seen_at = await redis_client.get(LAST_SOURCE_MESSAGE_KEY)
-            raw_primary_at = await redis_client.get(LAST_PRIMARY_MESSAGE_KEY)
-            raw_fallback_at = await redis_client.get(LAST_FALLBACK_MESSAGE_KEY)
             raw_bcast_at = await redis_client.get(LAST_BROADCAST_AT_KEY)
             raw_alert_json = await redis_client.get(LAST_ALERT_INFO_KEY)
             raw_active_src = await redis_client.get(ACTIVE_SOURCE_KEY)
@@ -1232,18 +1259,6 @@ async def _prime_monitoring_state(primary_source: int, fallback_source: int | No
         except Exception:
             log.warning("Redis unreachable while restoring monitoring state", exc_info=True)
         else:
-            try:
-                stored_source_seen_at = float(raw_seen_at) if raw_seen_at else None
-            except (TypeError, ValueError):
-                log.warning("Stored source message timestamp is malformed: %r", raw_seen_at)
-            try:
-                stored_primary_seen_at = float(raw_primary_at) if raw_primary_at else None
-            except (TypeError, ValueError):
-                pass
-            try:
-                stored_fallback_seen_at = float(raw_fallback_at) if raw_fallback_at else None
-            except (TypeError, ValueError):
-                pass
             try:
                 stored_broadcast_at = float(raw_bcast_at) if raw_bcast_at else None
             except (TypeError, ValueError):
@@ -1285,6 +1300,255 @@ async def _prime_monitoring_state(primary_source: int, fallback_source: int | No
         last_broadcast_at = stored_broadcast_at
     else:
         last_broadcast_at = time.time()
+
+
+async def _prime_api_state(
+    api_cli: UkraineAlarmClient,
+    region_channels: dict | None = None,
+) -> None:
+    """Initializes geo resolver, syncs active alerts from Ukraine Alert API, and primes telemetry."""
+    global last_action_index, last_api_poll_at, active_threats_by_district, last_source_message_at
+
+    await _restore_stored_alert_payload()
+
+    if redis_client:
+        try:
+            raw_seen_at = await redis_client.get(LAST_SOURCE_MESSAGE_KEY)
+            if raw_seen_at:
+                last_source_message_at = float(raw_seen_at)
+        except Exception:
+            pass
+
+    try:
+        regions_data = await api_cli.get_regions()
+        geo_resolver.load_regions_tree(regions_data)
+        log.info("Loaded regional hierarchy from Ukraine Alert API")
+    except Exception as e:
+        log.warning("Could not load regions tree from API, using static mappings: %s", e)
+
+    try:
+        last_action_index = await api_cli.get_status()
+    except Exception as e:
+        log.warning("Could not fetch initial status index from API: %s", e)
+
+    try:
+        alerts_data = await api_cli.get_active_alerts()
+        active_threats_by_district = extract_active_threats_by_district(alerts_data, geo_resolver)
+        now_ts = time.time()
+        last_api_poll_at = now_ts
+        await record_source_message(source_type="api", force_sync=True)
+        log.info(
+            "Primed initial active alerts from API: %d districts active",
+            len(active_threats_by_district),
+        )
+
+        prev_threats: dict[str, dict[str, TargetAlert]] = {}
+        if pg_pool:
+            try:
+                async with pg_pool.acquire() as conn:
+                    rows = await conn.fetch(
+                        """
+                        SELECT district, event_type, level
+                        FROM (
+                            SELECT DISTINCT ON (district) district, event_type, level, recorded_at
+                            FROM alert_history
+                            WHERE district IS NOT NULL
+                            ORDER BY district, recorded_at DESC
+                        ) latest
+                        WHERE event_type IN ('air_raid_alert', 'threat_of_shelling')
+                        """
+                    )
+                    for row in rows:
+                        d_k = row["district"]
+                        e_t = row["event_type"]
+                        lvl = row["level"]
+                        if d_k:
+                            prev_threats.setdefault(d_k, {})[e_t] = TargetAlert(
+                                alert_type=e_t, level=lvl
+                            )
+            except Exception as e:
+                log.warning(
+                    "Could not query active alerts from PostgreSQL for offline clearance: %s", e
+                )
+
+        if prev_threats:
+            _, to_cancel = compute_alerts_diff(prev_threats, active_threats_by_district)
+            for district_key, cancel_event_type, prev_level in to_cancel:
+                ch_id = region_channels.get(district_key) if region_channels else None
+                log.info(
+                    "Resolving offline-ended stuck alert %s for %s on startup",
+                    cancel_event_type,
+                    district_key,
+                )
+                if ch_id:
+                    spawn_tracked_task(
+                        send_alert(
+                            ch_id,
+                            district_key,
+                            cancel_event_type,
+                            source_type="api",
+                            level=prev_level,
+                        ),
+                        f"Startup clearance of {cancel_event_type} to {district_key} via api",
+                    )
+                else:
+                    spawn_tracked_task(
+                        record_map_only_alert(
+                            district_key,
+                            cancel_event_type,
+                            message_link=UKRAINE_ALARM_MAP_SOURCE_URL,
+                            source_type="api",
+                            level=prev_level,
+                        ),
+                        f"Startup map clearance of {cancel_event_type} for {district_key} via api",
+                    )
+    except Exception as e:
+        log.warning("Could not fetch initial active alerts from API: %s", e)
+
+    global _last_periodic_sync
+    _last_periodic_sync = time.time()
+    spawn_tracked_task(push_telemetry_to_kv(), "Initial telemetry sync on start")
+
+
+async def _api_poll_loop(
+    api_cli: UkraineAlarmClient,
+    region_channels: dict[str, int],
+) -> None:
+    """Polls Ukraine Alert API for status changes and dispatches alerts."""
+    global last_action_index, last_api_poll_at, active_threats_by_district
+    last_full_resync_at = time.time()
+
+    while True:
+        try:
+            await asyncio.sleep(UKRAINE_ALARM_POLL_INTERVAL)
+            now_ts = time.time()
+
+            try:
+                current_action_index = await api_cli.get_status()
+                last_api_poll_at = now_ts
+                await record_source_message(source_type="api")
+            except UkraineAlarmAuthError as e:
+                log.critical("Ukraine Alert API auth failed in poll loop: %s", e)
+                await asyncio.to_thread(_ping_healthcheck, "/fail")
+                await asyncio.sleep(10)
+                continue
+            except (UkraineAlarmRateLimitError, UkraineAlarmNetworkError, Exception) as e:
+                log.warning("Failed to poll Ukraine Alert API status: %s", e)
+                continue
+
+            needs_sync = (
+                last_action_index is None
+                or current_action_index != last_action_index
+                or (now_ts - last_full_resync_at) >= UKRAINE_ALARM_RESYNC_INTERVAL
+            )
+
+            if not needs_sync:
+                continue
+
+            try:
+                alerts_data = await api_cli.get_active_alerts()
+            except Exception as e:
+                log.warning("Failed to fetch active alerts from Ukraine Alert API: %s", e)
+                continue
+
+            current_threats = extract_active_threats_by_district(alerts_data, geo_resolver)
+            to_trigger, to_cancel = compute_alerts_diff(active_threats_by_district, current_threats)
+
+            for district_key, target_alert in to_trigger:
+                ch_id = region_channels.get(district_key)
+                log_alert_received(district_key, target_alert.alert_type, level=target_alert.level)
+                if ch_id:
+                    spawn_tracked_task(
+                        send_alert(
+                            ch_id,
+                            district_key,
+                            target_alert.alert_type,
+                            source_type="api",
+                            level=target_alert.level,
+                        ),
+                        f"Alert broadcast of {target_alert.alert_type} to {district_key} via api",
+                    )
+                else:
+                    spawn_tracked_task(
+                        record_map_only_alert(
+                            district_key,
+                            target_alert.alert_type,
+                            message_link=UKRAINE_ALARM_MAP_SOURCE_URL,
+                            source_type="api",
+                            level=target_alert.level,
+                        ),
+                        f"Map-only record of {target_alert.alert_type} for {district_key} via api",
+                    )
+
+            for district_key, cancel_event_type, prev_level in to_cancel:
+                ch_id = region_channels.get(district_key)
+                log_alert_received(district_key, cancel_event_type, level=prev_level)
+                if ch_id:
+                    spawn_tracked_task(
+                        send_alert(
+                            ch_id,
+                            district_key,
+                            cancel_event_type,
+                            source_type="api",
+                            level=prev_level,
+                        ),
+                        f"Alert broadcast of {cancel_event_type} to {district_key} via api",
+                    )
+                else:
+                    spawn_tracked_task(
+                        record_map_only_alert(
+                            district_key,
+                            cancel_event_type,
+                            message_link=UKRAINE_ALARM_MAP_SOURCE_URL,
+                            source_type="api",
+                            level=prev_level,
+                        ),
+                        f"Map-only record of {cancel_event_type} for {district_key} via api",
+                    )
+
+            last_action_index = current_action_index
+            active_threats_by_district = current_threats
+            last_full_resync_at = now_ts
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            log.exception("Unexpected error in Ukraine Alert API poll loop: %s", e)
+
+
+async def _prime_monitoring_state(primary_source: int, fallback_source: int | None = None) -> None:
+    """Restores the monitoring state for input and output silence clocks on startup."""
+    global \
+        last_source_message_at, \
+        last_primary_message_at, \
+        last_fallback_message_at, \
+        active_source_name
+
+    await _restore_stored_alert_payload()
+
+    stored_source_seen_at = None
+    stored_primary_seen_at = None
+    stored_fallback_seen_at = None
+    if redis_client:
+        try:
+            raw_seen_at = await redis_client.get(LAST_SOURCE_MESSAGE_KEY)
+            raw_primary_at = await redis_client.get(LAST_PRIMARY_MESSAGE_KEY)
+            raw_fallback_at = await redis_client.get(LAST_FALLBACK_MESSAGE_KEY)
+        except Exception:
+            log.warning("Redis unreachable while restoring monitoring state", exc_info=True)
+        else:
+            try:
+                stored_source_seen_at = float(raw_seen_at) if raw_seen_at else None
+            except (TypeError, ValueError):
+                log.warning("Stored source message timestamp is malformed: %r", raw_seen_at)
+            try:
+                stored_primary_seen_at = float(raw_primary_at) if raw_primary_at else None
+            except (TypeError, ValueError):
+                pass
+            try:
+                stored_fallback_seen_at = float(raw_fallback_at) if raw_fallback_at else None
+            except (TypeError, ValueError):
+                pass
 
     if stored_primary_seen_at is not None:
         last_primary_message_at = stored_primary_seen_at
@@ -1452,6 +1716,7 @@ TRANSIENT_CONNECTION_ERRORS = (OSError, asyncio.TimeoutError, ConnectionError)
 
 HEALTHCHECK_PING_INTERVAL = 60
 HEALTHCHECK_PING_TIMEOUT = 10
+SOURCE_SILENCE_THRESHOLD = 3 * 3600
 
 
 def _ping_url(base: str, suffix: str = "") -> None:
@@ -1467,21 +1732,18 @@ def _ping_healthcheck(suffix: str = "") -> None:
     _ping_url(HEALTHCHECKS_ALERTS_SOURCE_PING_URL, suffix)
 
 
-def _ping_fb_healthcheck(suffix: str = "") -> None:
-    _ping_url(HEALTHCHECKS_ALERTS_SOURCE_FALLBACK_PING_URL, suffix)
-
-
 def _ping_tg_healthcheck(suffix: str = "") -> None:
     _ping_url(HEALTHCHECKS_ALERTS_BROADCAST_PING_URL, suffix)
 
 
 async def _healthcheck_loop(
-    client: TelegramClient,
+    client: TelegramClient | None = None,
     primary_source: int | None = None,
     fallback_source: int | None = None,
     has_fallback: bool = True,
+    api_cli: UkraineAlarmClient | None = None,
 ) -> None:
-    """Active health check for the source channel, polled once every minute."""
+    """Active health check for the source channel or API, polled once every minute."""
     if not HEALTHCHECKS_ALERTS_SOURCE_PING_URL:
         log.warning("HEALTHCHECKS_ALERTS_SOURCE_PING_URL not set; skipping healthcheck pings")
 
@@ -1493,6 +1755,23 @@ async def _healthcheck_loop(
 
     while True:
         await asyncio.sleep(HEALTHCHECK_PING_INTERVAL)
+
+        if api_cli is not None:
+            try:
+                await api_cli.get_status()
+                await asyncio.to_thread(_ping_healthcheck)
+            except UkraineAlarmAuthError as e:
+                log.critical("Ukraine Alarm API token invalid during healthcheck: %s", e)
+                await asyncio.to_thread(_ping_healthcheck, "/fail")
+            except Exception as e:
+                log.warning("Ukraine Alarm API healthcheck poll failed: %s", e)
+                now_ts = time.time()
+                if (
+                    last_source_message_at is not None
+                    and (now_ts - last_source_message_at) > SOURCE_SILENCE_THRESHOLD
+                ):
+                    await asyncio.to_thread(_ping_healthcheck, "/fail")
+            continue
 
         if not client or not client.is_connected():
             log.warning("Telegram client not connected; skipping source health check")
@@ -1551,7 +1830,7 @@ async def _broadcast_watchdog_loop(client: TelegramClient) -> None:
 
 
 async def main():
-    global client, redis_client, pg_pool
+    global client, redis_client, pg_pool, api_client
 
     args = cli.get_args()
 
@@ -1599,31 +1878,52 @@ async def main():
                 )
             log.info("Sirens started in %s mode", args.mode)
 
-            client.add_event_handler(
-                build_message_handler(
-                    region_channels,
-                    primary_source=primary_source,
-                    fallback_source=fallback_source,
-                ),
-                events.NewMessage(chats=monitored_chats),
-            )
-
-            await _prime_monitoring_state(primary_source, fallback_source=fallback_source)
-
-            monitoring_tasks = [
-                asyncio.create_task(
-                    _healthcheck_loop(
-                        client,
+            if UKRAINE_ALARM_API_KEY:
+                api_client = UkraineAlarmClient(
+                    api_key=UKRAINE_ALARM_API_KEY,
+                    base_url=UKRAINE_ALARM_API_URL,
+                )
+                await _prime_api_state(api_client, region_channels)
+                monitoring_tasks = [
+                    asyncio.create_task(_api_poll_loop(api_client, region_channels)),
+                    asyncio.create_task(
+                        _healthcheck_loop(
+                            client=client,
+                            api_cli=api_client,
+                        )
+                    ),
+                    asyncio.create_task(_broadcast_watchdog_loop(client)),
+                ]
+            else:
+                log.warning(
+                    "UKRAINE_ALARM_API_KEY not set; falling back to Telegram source channels"
+                )
+                client.add_event_handler(
+                    build_message_handler(
+                        region_channels,
                         primary_source=primary_source,
                         fallback_source=fallback_source,
-                        has_fallback=(fallback_source is not None),
-                    )
-                ),
-                asyncio.create_task(_broadcast_watchdog_loop(client)),
-            ]
+                    ),
+                    events.NewMessage(chats=monitored_chats),
+                )
+                await _prime_monitoring_state(primary_source, fallback_source=fallback_source)
+                monitoring_tasks = [
+                    asyncio.create_task(
+                        _healthcheck_loop(
+                            client=client,
+                            primary_source=primary_source,
+                            fallback_source=fallback_source,
+                            has_fallback=(fallback_source is not None),
+                        )
+                    ),
+                    asyncio.create_task(_broadcast_watchdog_loop(client)),
+                ]
+
             try:
                 await client.run_until_disconnected()
             finally:
+                if api_client:
+                    await api_client.close()
                 for task in monitoring_tasks:
                     task.cancel()
                 await asyncio.gather(*monitoring_tasks, return_exceptions=True)

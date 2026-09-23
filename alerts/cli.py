@@ -32,7 +32,7 @@ Options:
   --version                     Show program version and exit
 
 The bot will:
-  • Monitor source channels (primary & fallback) for air raid alerts
+  • Ingest alerts from Ukraine Alert API 3.0 (https://api.ukrainealarm.com)
   • Update channel photos based on alert status
   • Send alert messages to appropriate city channels
 

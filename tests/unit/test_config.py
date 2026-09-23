@@ -189,3 +189,27 @@ def test_config_github_repo_normalization(monkeypatch):
     monkeypatch.setenv("GITHUB_REPO", "git@github.com:matthewjohnsobolev/sirens")
     importlib.reload(config)
     assert config.GITHUB_REPO == "matthewjohnsobolev/sirens"
+
+
+def test_config_ukraine_alarm_settings(monkeypatch):
+    monkeypatch.setenv("UKRAINE_ALARM_API_KEY", "token123")
+    monkeypatch.setenv("UKRAINE_ALARM_API_URL", "https://api.ukrainealarm.com/")
+    monkeypatch.setenv("UKRAINE_ALARM_POLL_INTERVAL", "3.5")
+    monkeypatch.setenv("UKRAINE_ALARM_RESYNC_INTERVAL", "600")
+
+    importlib.reload(config)
+
+    assert config.UKRAINE_ALARM_API_KEY == "token123"
+    assert config.UKRAINE_ALARM_API_URL == "https://api.ukrainealarm.com"
+    assert config.UKRAINE_ALARM_POLL_INTERVAL == 3.5
+    assert config.UKRAINE_ALARM_RESYNC_INTERVAL == 600.0
+
+
+def test_config_ukraine_alarm_invalid_floats_fallback(monkeypatch):
+    monkeypatch.setenv("UKRAINE_ALARM_POLL_INTERVAL", "not_a_float")
+    monkeypatch.setenv("UKRAINE_ALARM_RESYNC_INTERVAL", "invalid")
+
+    importlib.reload(config)
+
+    assert config.UKRAINE_ALARM_POLL_INTERVAL == 2.5
+    assert config.UKRAINE_ALARM_RESYNC_INTERVAL == 300.0

@@ -640,12 +640,8 @@ echartsOptions={{
                 return res;
             }
         }
-    }}
-
->
-
+    }}>
     <Bar
-
         y="Yellow Alerts"
         name="Yellow Alerts"
         stackName="alerts"
@@ -665,7 +661,6 @@ echartsOptions={{
         lineColor="#22c55e"
         lineWidth=2
     />
-
 </Chart>
 
 ## Daily Channel Movement

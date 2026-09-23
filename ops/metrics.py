@@ -138,7 +138,6 @@ def _fallback_system_metrics() -> dict[str, Any]:
         except Exception:
             pass
 
-    # Read /proc/meminfo on Linux
     if os.path.exists("/proc/meminfo"):
         try:
             meminfo: dict[str, int] = {}
@@ -149,7 +148,7 @@ def _fallback_system_metrics() -> dict[str, Any]:
                         k = parts[0].strip()
                         v = parts[1].strip().split()[0]
                         if v.isdigit():
-                            meminfo[k] = int(v) * 1024  # kB to bytes
+                            meminfo[k] = int(v) * 1024
             total = meminfo.get("MemTotal", 0)
             avail = meminfo.get("MemAvailable", meminfo.get("MemFree", 0))
             if total > 0:
@@ -288,7 +287,6 @@ def get_service_metrics(
         "postgres": None,
     }
 
-    # 1. Redis metrics
     if redis_error:
         services["redis"] = {"error": str(redis_error)}
     else:
@@ -312,7 +310,6 @@ def get_service_metrics(
             except Exception as e:
                 services["redis"] = {"error": str(e)}
 
-    # 2. PostgreSQL metrics
     if pg_error:
         services["postgres"] = {"error": str(pg_error)}
     else:

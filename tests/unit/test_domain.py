@@ -92,14 +92,12 @@ def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
     assert domain.DISTRICT_CONFIG["zaporizhzhia"]["triggers"] == expected_zaporizhzhia
     assert "Запорізький район" not in domain.DISTRICT_CONFIG["zaporizhzhia"]["triggers"]
 
-    # Nikopol triggers are reverted to district, while city triggers are preserved for shelling
     assert domain.DISTRICT_CONFIG["nikopol"]["triggers"] == ["Нікопольський район"]
     assert "Нікопольський район" in domain.REGION_CONFIG["nikopol"]["triggers"]
     assert "Дніпропетровська область" in domain.REGION_CONFIG["nikopol"]["triggers"]
     assert "м. Нікополь" in domain.DISTRICT_CONFIG["nikopol"]["city_triggers"]
     assert "Нікополь" in domain.DISTRICT_CONFIG["nikopol"]["city_triggers"]
 
-    # In REGION_CONFIG, oblast is appended but district names remain excluded for Kharkiv & Zaporizhzhia
     assert "Харківський район" not in domain.REGION_CONFIG["kharkiv"]["triggers"]
     assert "Запорізький район" not in domain.REGION_CONFIG["zaporizhzhia"]["triggers"]
     assert "Харківська область" in domain.REGION_CONFIG["kharkiv"]["triggers"]

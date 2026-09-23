@@ -1,12 +1,4 @@
-/* Палітра мапи лежить у tokens.css поряд із рештою дизайн-системи, а сюди
-   лише зчитується: колір стану потрібен і стилям (полігони, маркери,
-   плашки), і скриптам (патерни штрихування збираються в SVG, де змінної
-   CSS не підставиш). Два списки кольорів розійшлися б через тиждень, тож
-   джерело залишається одне.
 
-   Запасні значення — не марнослів'я: якщо стилі ще не приїхали або файл
-   віддали без tokens.css, мапа мусить намалюватися хоч якось, а не
-   лишитися безбарвною. */
 function mapColor(token, fallback) {
     if (typeof document === 'undefined' || !document.documentElement) return fallback;
     const root = document.documentElement;
@@ -19,10 +11,10 @@ function mapNumber(token, fallback) {
     return Number.isFinite(value) ? value : fallback;
 }
 
-// Колір рівня разом із його прозорістю: саме цією парою заливається і
-// суцільна область, і смуга штрихування. Одна пара на обидва випадки —
-// інакше «жовтий скрізь» і «жовтий у частині районів» вийдуть двома
-// різними жовтими.
+
+
+
+
 const MAP_TINTS = {
     yellow: {
         color: mapColor('--map-yellow', '#FFC53D'),
@@ -34,10 +26,7 @@ const MAP_TINTS = {
     }
 };
 
-/* Вибухи мапа поки не малює. Це рішення про те, що показувати, а не
-   обмеження даних: поле explosion лишається у відповіді й далі, просто
-   не бере участі ні у виборі стану, ні в кольорі. Повернути — одним
-   значенням тут. */
+
 const RENDER_EXPLOSIONS = false;
 
 const THREAT_ORDER = ['explosion', 'alert', 'shelling'];
@@ -58,15 +47,7 @@ function pickDominant(threats) {
     return best;
 }
 
-/* Дворівнева тривога: жовтий рівень попереджає, червоний жене в укриття.
-   Рівень приходить або окремим полем level, або хвостом типу
-   ('air_raid_alert:red') — беремо будь-який із двох, бо джерело може
-   говорити і так, і так.
 
-   Поки рівня немає в жодному вигляді, тривога вважається червоною. Це
-   свідомий вибір на користь обережності: до дворівневої системи
-   «Повітряна тривога» означала саме негайну загрозу, і применшити її
-   гірше, ніж перебільшити. */
 const DEFAULT_ALERT_LEVEL = 'red';
 const ALERT_LEVELS = { yellow: 'yellow', red: 'red' };
 
@@ -77,17 +58,13 @@ function alertLevel(alert) {
     return ALERT_LEVELS[raw] || DEFAULT_ALERT_LEVEL;
 }
 
-/* Стан загрози в один рядок для плашки, маркера й полігона: тривога
-   розкладається на свій рівень, решта загроз лишається собою. */
+
 function threatVariant(kind, threat) {
     if (kind === 'alert') return alertLevel(threat);
     return kind || 'idle';
 }
 
-/* Класи плашок названі за станом, а не за кольором. Кольори щойно
-   переїхали — помаранчевий із тривоги пішов в артобстріл, жовтий і
-   червоний стали рівнями тривоги, — і клас на кшталт .orange-oblast-button
-   після такого переїзду брехав би про те, що показує. */
+
 const PILL_VARIANTS = {
     idle:      { cls: 'pill--idle',      icon: 'air-raid-alert-cancelled-icon.svg', label: 'Відбій тривоги' },
     yellow:    { cls: 'pill--yellow',    icon: 'air-raid-alert-yellow-icon.svg',    label: 'Жовтий рівень тривоги' },
@@ -130,9 +107,9 @@ function renderPill({ variant, text, updatedAt, source, showTime = true }) {
     const v = PILL_VARIANTS[variant] || PILL_VARIANTS.unknown;
     const duration = (showTime && updatedAt) ? formatDuration(updatedAt) : '';
     const timeHtml = duration ? `<div class="oblast-description-time">${duration}</div>` : '';
-    // Стан їде окремим атрибутом, а не читається з класу: аналітика має
-    // рахувати те, що сталося, а не те, як воно пофарбоване. Кольори на
-    // мапі вже переїжджали — назви станів лишилися.
+    
+    
+    
     const body = `
         <button class="oblast-pill ${v.cls}" data-state="${variant || 'unknown'}">
             <div class="icon-container"><img class="icon" src="static/img/icons/${v.icon}" alt="" aria-hidden="true"></div>

@@ -1,41 +1,34 @@
-/* ── Токени ─────────────────────────────────────────────────────────── */
-
 :root {
-  /* Заливка плашки стану */
-  --status-green: #B9FFA8;
-  --status-orange: #FFCA9A;
-  --status-red: #FFB7B7;
-  --status-blue: #BFF0FF;
-  --status-gray: #E8E8E8;
+  --status-green: #b9ffa8;
+  --status-orange: #ffca9a;
+  --status-red: #ffb7b7;
+  --status-blue: #bff0ff;
+  --status-gray: #e8e8e8;
 
-  /* Смужки історії й крапка в тултипі */
-  --status-green-bar: #2EAD1A;
-  --status-orange-bar: #FF831A;
-  --status-red-bar: #FF1A1A;
-  --status-blue-bar: #0284C7;
-  --status-gray-bar: #D4D4D8;
+  --status-green-bar: #2ead1a;
+  --status-orange-bar: #ff831a;
+  --status-red-bar: #ff1a1a;
+  --status-blue-bar: #0284c7;
+  --status-gray-bar: #d4d4d8;
 
   --ink: #000;
   --ink-muted: #757575;
-  --hairline: #E8E8E8;
-  --hairline-hover: #D0D0D0;
-  --hairline-dark: #B0B0B0;
+  --hairline: #e8e8e8;
+  --hairline-hover: #d0d0d0;
+  --hairline-dark: #b0b0b0;
   --surface: #fff;
-  --surface-hover: #F4F4F4;
-  --page: #F4F4F4;
-  --ink-solid: #16181A;
+  --surface-hover: #f4f4f4;
+  --page: #f4f4f4;
+  --ink-solid: #16181a;
   --tip-ink: #fff;
 
-  /* Розміри */
   --control-h: 48px;
   --logo-size: 60px;
   --radius-control: 12px;
   --radius-card: 14px;
   --radius-bar: 2px;
-  --radius-badge: 6px; /* той самий радіус, що й у чіпа тултипа */
+  --radius-badge: 6px;
 
-  /* Шкала відступів із кроком 4px. Усі відступи беруться звідси:
-     значення поза шкалою — привід перевірити, чи воно справді потрібне. */
   --space-2: 2px;
   --space-4: 4px;
   --space-6: 6px;
@@ -46,14 +39,12 @@
   --space-24: 24px;
   --space-32: 32px;
 
-  /* Ролі відступів у ритмі сторінки */
-  --gap-tight: var(--space-8);    /* усередині блока */
-  --gap-block: var(--space-24);   /* між блоками картки */
-  --gap-section: var(--space-32); /* між секціями сторінки */
+  --gap-tight: var(--space-8);
+  --gap-block: var(--space-24);
+  --gap-section: var(--space-32);
 
-  /* Типографіка */
-  --font: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --text-title: 20px;
   --text-body: 16px;
   --text-ui: 14px;
@@ -62,35 +53,26 @@
   --weight-medium: 500;
   --weight-semibold: 600;
   --weight-bold: 700;
-  --leading-tight: 1.35; /* однорядкові підписи */
-  --leading-body: 1.45;  /* абзаци кеглем --text-ui */
-  --leading-small: 1.55; /* абзаци кеглем --text-footer */
-  --track-tight: -.01em; /* заголовки Inter */
-  --track-mono: .04em;   /* капітель JetBrains Mono */
+  --leading-tight: 1.35;
+  --leading-body: 1.45;
+  --leading-small: 1.55;
+  --track-tight: -0.01em;
+  --track-mono: 0.04em;
 
-  /* Фокус з клавіатури — однаковий на всіх інтерактивних елементах */
   --focus-ring: 2px solid var(--ink);
   --focus-offset: 2px;
 
   --motion: 0.15s ease;
-  --motion-fade: .14s ease-out;
+  --motion-fade: 0.14s ease-out;
 
-  /* Цикл «подиху» смужки поточної години. Довгий і рівний: сторінка має
-     виглядати живою, а не миготіти під рукою. Згасання довше за появу
-     тултипа (--motion-fade): пульс стихає, поки тултип виїжджає. */
   --pulse-cycle: 2.6s;
-  --pulse-fade: .3s ease;
+  --pulse-fade: 0.3s ease;
 
-  /* Підйом активної смужки, висота вказівника тултипа й відступ від смужки
-     до його вістря. Єдині значення для всіх екранів: у медіа-запитах не
-     перевизначаються, тож відступ однаковий на мобільних і на десктопі. */
   --bar-lift: 3px;
   --tip-arrow: 6px;
   --tip-arrow-w: 12px;
   --tip-gap: 5px;
 }
-
-/* ── Основа ─────────────────────────────────────────────────────────── */
 
 *,
 *::before,
@@ -99,7 +81,8 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html, body {
+html,
+body {
   margin: 0;
 }
 
@@ -121,8 +104,6 @@ body {
   margin: 0 auto;
 }
 
-/* ── Логотип ────────────────────────────────────────────────────────── */
-
 .logo {
   display: block;
   width: var(--logo-size);
@@ -143,8 +124,6 @@ body {
   display: block;
 }
 
-/* ── Картка ─────────────────────────────────────────────────────────── */
-
 .card {
   background: var(--surface);
   border: 1px solid var(--hairline);
@@ -160,8 +139,6 @@ body {
   letter-spacing: var(--track-tight);
   color: var(--ink);
 }
-
-/* ── Плашка стану ───────────────────────────────────────────────────── */
 
 .notice {
   margin: 0 0 var(--gap-block);
@@ -179,17 +156,27 @@ body {
   border-radius: var(--radius-control);
   background-color: var(--status-green);
   color: var(--ink);
-  transition: background-color var(--motion-fade), color var(--motion-fade);
+  transition:
+    background-color var(--motion-fade),
+    color var(--motion-fade);
 }
 
-.notice--ok .notice-pill      { background-color: var(--status-green); }
-.notice--warning .notice-pill { background-color: var(--status-orange); }
-.notice--error .notice-pill   { background-color: var(--status-red); }
-.notice--mnt .notice-pill     { background-color: var(--status-blue); }
-.notice--nodata .notice-pill  { background-color: var(--status-gray); }
+.notice--ok .notice-pill {
+  background-color: var(--status-green);
+}
+.notice--warning .notice-pill {
+  background-color: var(--status-orange);
+}
+.notice--error .notice-pill {
+  background-color: var(--status-red);
+}
+.notice--mnt .notice-pill {
+  background-color: var(--status-blue);
+}
+.notice--nodata .notice-pill {
+  background-color: var(--status-gray);
+}
 
-/* Квадрат на всю висоту плашки: іконка центрована в ньому, тож ліворуч
-   від неї лишається (--control-h - 24px) / 2 = 12px. */
 .notice-icon {
   flex: none;
   width: var(--control-h);
@@ -239,17 +226,13 @@ body {
   opacity: 0.8;
 }
 
-/* Висота цифр JetBrains Mono (0.665em) збігається з висотою великих літер
-   Inter (0.6625em), тож однаковий кегль дає однакову висоту на око. */
 .notice-desc .mono-time {
   font-family: var(--font-mono);
   font-size: 1em;
   font-weight: var(--weight-medium);
-  letter-spacing: .01em;
+  letter-spacing: 0.01em;
   color: inherit;
 }
-
-/* ── Список компонентів ─────────────────────────────────────────────── */
 
 .list {
   border-top: 1px solid var(--hairline);
@@ -285,9 +268,6 @@ body {
   line-height: var(--leading-body);
 }
 
-/* Обгортка значення в comp-head: сама не показник, лише тримає позицію
-   в сітці. Коли компонент не моніториться, у ній лишається звичайний
-   приглушений текст — той самий шрифт, що й в описах компонентів. */
 .comp-val {
   font-size: var(--text-ui);
   font-weight: var(--weight-regular);
@@ -296,9 +276,6 @@ body {
   flex-shrink: 0;
 }
 
-/* Бейдж останнього статусу компонента: заливка того самого кольору,
-   що й велика плашка стану вгорі сторінки, лише в масштабі підпису
-   (--text-footer/--track-mono — як у .scale й .tip). */
 .comp-badge {
   display: inline-flex;
   align-items: center;
@@ -314,11 +291,21 @@ body {
   white-space: nowrap;
 }
 
-.comp-badge--ok     { background-color: var(--status-green); }
-.comp-badge--minor  { background-color: var(--status-red); }
-.comp-badge--down   { background-color: var(--status-red); }
-.comp-badge--mnt    { background-color: var(--status-blue); }
-.comp-badge--nodata { background-color: var(--status-gray); }
+.comp-badge--ok {
+  background-color: var(--status-green);
+}
+.comp-badge--minor {
+  background-color: var(--status-red);
+}
+.comp-badge--down {
+  background-color: var(--status-red);
+}
+.comp-badge--mnt {
+  background-color: var(--status-blue);
+}
+.comp-badge--nodata {
+  background-color: var(--status-gray);
+}
 
 .val-full {
   display: inline;
@@ -327,8 +314,6 @@ body {
 .val-short {
   display: none;
 }
-
-/* ── Смужки історії ─────────────────────────────────────────────────── */
 
 .bars {
   display: grid;
@@ -349,23 +334,32 @@ body {
   background: var(--status-green-bar);
   cursor: pointer;
   position: relative;
-  transition: transform var(--motion),
-              box-shadow var(--motion);
+  transition:
+    transform var(--motion),
+    box-shadow var(--motion);
   transform-origin: center bottom;
   outline: none;
 }
 
-.bar[data-state="ok"]     { background: var(--status-green-bar); }
-.bar[data-state="minor"]  { background: var(--status-red-bar); }
-.bar[data-state="major"]  { background: var(--status-red-bar); }
-.bar[data-state="down"]   { background: var(--status-red-bar); }
-.bar[data-state="mnt"]    { background: var(--status-blue-bar); }
-.bar[data-state="nodata"] { background: var(--status-gray-bar); }
+.bar[data-state="ok"] {
+  background: var(--status-green-bar);
+}
+.bar[data-state="minor"] {
+  background: var(--status-red-bar);
+}
+.bar[data-state="major"] {
+  background: var(--status-red-bar);
+}
+.bar[data-state="down"] {
+  background: var(--status-red-bar);
+}
+.bar[data-state="mnt"] {
+  background: var(--status-blue-bar);
+}
+.bar[data-state="nodata"] {
+  background: var(--status-gray-bar);
+}
 
-/* Смужка вузька, тож замість outline контур малює внутрішня тінь —
-   вона не з'їдає проміжок між сусідніми смужками. Заокруглення
-   лишається успадкованим, щоб активна смужка не відрізнялася
-   від сусідніх на дотикових екранах. */
 .bar.is-active,
 .bar:focus-visible {
   transform: translateY(calc(-1 * var(--bar-lift)));
@@ -378,41 +372,30 @@ body {
   box-shadow: none !important;
 }
 
-/* Остання смужка — година, яка ще триває, тож вона «дихає»: сторінка
-   показує, що дані живі, а не застигли на моменті завантаження.
-   Анімація живе тільки в псевдоелементі, тому сама смужка не рухається
-   й не змінює розмір: тултип міряє ту саму рамку, що й у сусідів,
-   а обводка активної смужки (inset-тінь на .bar) лишається недоторканою.
-   Світло сильніше вгорі — смужка ніби підсвічена, а не вибілена. */
 .bar--live::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(180deg, #fff, rgba(255, 255, 255, .25));
+  background: linear-gradient(180deg, #fff, rgba(255, 255, 255, 0.25));
   opacity: 0;
   pointer-events: none;
   animation: bar-breath var(--pulse-cycle) ease-in-out infinite;
 
-  /* Гучність подиху окремо від самого подиху: opacity зайнята анімацією,
-     тож приглушує її filter — його можна плавно вести transition'ом,
-     не втручаючись у хід анімації. */
   filter: opacity(1);
   transition: filter var(--pulse-fade);
 }
 
 @keyframes bar-breath {
-  0%, 100% { opacity: 0; }
-  50%      { opacity: .5; }
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
-/* Поки відкрито тултип, пульс стихає: він не змагається з активною смужкою
-   за увагу й не блимає під вістрям указівника. Анімація при цьому й далі
-   крутиться — просто беззвучно. Знята анімація обірвала б подих на
-   півкроці (transition не бачить переходу від анімованого значення до
-   базового), а після повернення відлік почався б заново, і смужки різних
-   компонентів розійшлися б по фазі. Спільний таймлайн від завантаження
-   сторінки лишається спільним, тож усі вони дихають в один такт. */
 .bars.has-active .bar--live::after {
   filter: opacity(0);
 }
@@ -428,8 +411,6 @@ body {
   letter-spacing: var(--track-mono);
   text-transform: uppercase;
 }
-
-/* ── Заклик повідомити про збій ─────────────────────────────────────── */
 
 .card-action {
   margin-top: var(--gap-block);
@@ -466,9 +447,10 @@ body {
   font-weight: var(--weight-medium);
   text-decoration: none;
   cursor: pointer;
-  transition: border-color var(--motion),
-              background-color var(--motion),
-              transform var(--motion);
+  transition:
+    border-color var(--motion),
+    background-color var(--motion),
+    transform var(--motion);
 }
 
 .btn-report:hover {
@@ -486,8 +468,6 @@ body {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
 }
-
-/* ── Тултип смужки ──────────────────────────────────────────────────── */
 
 .tip {
   position: fixed;
@@ -507,12 +487,13 @@ body {
   text-transform: uppercase;
   white-space: nowrap;
   pointer-events: none;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .16))
-          drop-shadow(0 5px 14px rgba(0, 0, 0, .10));
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.16))
+    drop-shadow(0 5px 14px rgba(0, 0, 0, 0.1));
   opacity: 0;
   transform: translateY(3px);
-  transition: opacity var(--motion-fade),
-              transform var(--motion-fade);
+  transition:
+    opacity var(--motion-fade),
+    transform var(--motion-fade);
 }
 
 .tip[hidden] {
@@ -530,9 +511,6 @@ body {
   line-height: 1;
 }
 
-/* Вказівник — акуратний трикутник кольору тултипа, що плавно звужується
-   до вістря без сходинок чи зайвих кутів. Перекриття на 1px усуває
-   можливий субпіксельний просвіт на екранах будь-якої щільності. */
 .tip::after {
   content: "";
   position: absolute;
@@ -551,7 +529,13 @@ body {
   top: auto;
   bottom: calc(100% - 1px);
   transform: translateX(-50%);
-  clip-path: polygon(50% 0, 100% calc(100% - 1px), 100% 100%, 0 100%, 0 calc(100% - 1px));
+  clip-path: polygon(
+    50% 0,
+    100% calc(100% - 1px),
+    100% 100%,
+    0 100%,
+    0 calc(100% - 1px)
+  );
 }
 
 .tip-state {
@@ -574,14 +558,24 @@ body {
   box-sizing: border-box;
 }
 
-.tip-dot[data-state="ok"]     { background: var(--status-green-bar); }
-.tip-dot[data-state="minor"]  { background: var(--status-red-bar); }
-.tip-dot[data-state="major"]  { background: var(--status-red-bar); }
-.tip-dot[data-state="down"]   { background: var(--status-red-bar); }
-.tip-dot[data-state="mnt"]    { background: var(--status-blue-bar); }
-.tip-dot[data-state="nodata"] { background: var(--status-gray-bar); }
-
-/* ── Підвал ─────────────────────────────────────────────────────────── */
+.tip-dot[data-state="ok"] {
+  background: var(--status-green-bar);
+}
+.tip-dot[data-state="minor"] {
+  background: var(--status-red-bar);
+}
+.tip-dot[data-state="major"] {
+  background: var(--status-red-bar);
+}
+.tip-dot[data-state="down"] {
+  background: var(--status-red-bar);
+}
+.tip-dot[data-state="mnt"] {
+  background: var(--status-blue-bar);
+}
+.tip-dot[data-state="nodata"] {
+  background: var(--status-gray-bar);
+}
 
 .foot {
   margin-top: var(--gap-section);
@@ -651,8 +645,6 @@ body {
   color: var(--ink-muted);
 }
 
-/* ── Адаптив ────────────────────────────────────────────────────────── */
-
 @media (max-width: 600px) {
   body {
     padding-top: max(clamp(20px, 5vw, 36px), env(safe-area-inset-top));
@@ -688,8 +680,6 @@ body {
     width: 100%;
   }
 
-  /* Підвал перебудовується в одну центровану колонку: .foot-main
-     розчиняється, а його діти стають рядками .foot і шикуються за order. */
   .foot {
     margin-top: clamp(28px, 7vw, 36px);
     text-align: center;
@@ -749,7 +739,6 @@ body {
 }
 
 @media (pointer: coarse) {
-  /* Смужки тонші за проміжок між ними, тож заокруглення теж зменшуємо. */
   :root {
     --radius-bar: 1.5px;
   }
@@ -787,12 +776,9 @@ body {
     transform: none !important;
   }
 
-  /* Поточну годину лишаємо позначеною, але нерухомою: рівна ледь помітна
-     підсвітка замість подиху. Приглушення тултипом лишається — просто
-     миттєве, без згасання. */
   .bar--live::after {
     animation: none;
     transition: none;
-    opacity: .22;
+    opacity: 0.22;
   }
 }

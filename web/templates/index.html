@@ -17,7 +17,7 @@
 
         {% include "_analytics.html" %}
 
-        <!-- Open Graph / Facebook Meta Tags -->
+        
         <meta property="og:url" content="https://sirens.live">
         <meta property="og:type" content="website">
         <meta property="og:title" content="Сирени — мапа повітряних тривог України">
@@ -29,7 +29,7 @@
         <meta property="og:site_name" content="Сирени">
         <meta property="og:locale" content="uk_UA">
 
-        <!-- Twitter Meta Tags -->
+        
         <meta name="twitter:card" content="summary_large_image">
         <meta property="twitter:domain" content="sirens.live">
         <meta property="twitter:url" content="https://sirens.live">
@@ -65,9 +65,7 @@
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=flag&display=swap" rel="stylesheet">
 
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-        <!-- Порядок тут не випадковий. districts.js — це словник станів і
-             перелік міст, з нього починається все інше, а питає
-             threats.js одразу, щойно виконається. -->
+        
         <script src="{{ static_url('js/districts.js') }}" type="text/javascript"></script>
         <script src="{{ static_url('js/threats.js') }}" type="text/javascript"></script>
         <script>

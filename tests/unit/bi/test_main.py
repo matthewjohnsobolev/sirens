@@ -247,7 +247,7 @@ async def test_export_stats_csv(bi_pool):
 @pytest.mark.asyncio
 async def test_export_stats_csv_with_utc_timezone(bi_pool):
     pool, conn = bi_pool
-    # 12:00 UTC on Aug 19 is 15:00 in Kyiv (EEST, UTC+3)
+
     utc_dt = datetime.datetime(2026, 8, 19, 12, 0, 0, tzinfo=datetime.timezone.utc)
     conn.fetch.return_value = [{"channel": "kyiv", "collected_at": utc_dt, "subscriber_count": 100}]
     from bi.main import export_stats_csv

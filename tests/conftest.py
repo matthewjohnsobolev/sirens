@@ -15,9 +15,9 @@ for _external in (
 ):
     os.environ[_external] = ""
 
-from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest  # noqa: E402
+import pytest
 
 
 @pytest.fixture(autouse=True)

@@ -85,7 +85,6 @@ async def broadcast_alert_to_telegram(
     await client.connect()
     try:
         if not await client.is_user_authorized():
-            # Try fallback to alerts session if authorized there
             fallback_session = str(SESSION_PATH / "alerts")
             await client.disconnect()
             client = TelegramClient(fallback_session, int(TELEGRAM_API_ID), TELEGRAM_API_HASH)
@@ -98,12 +97,10 @@ async def broadcast_alert_to_telegram(
         entity = await client.get_entity(channel_id)
         username = getattr(entity, "username", None)
 
-        # 1. Send text message
         msg = await client.send_message(entity, message_text)
         result["message_id"] = msg.id
         result["message_link"] = build_message_link(channel_id, msg.id, username)
 
-        # 2. Update channel photo if required and available
         photo_key = f"{base_type}:{effective_level}" if effective_level else alert_type
         photo_path = (
             CHANNEL_PHOTO_PATHS.get(photo_key)
@@ -118,7 +115,6 @@ async def broadcast_alert_to_telegram(
                 )
                 result["photo_updated"] = True
 
-                # Clean up photo service message
                 for update in edit_res.updates:
                     if isinstance(update, UpdateNewChannelMessage):
                         update_msg = update.message

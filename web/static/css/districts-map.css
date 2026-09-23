@@ -1,18 +1,6 @@
-/* Експериментальний стиль мапи тривог за районами.
-   Сувора картографічна ієрархія меж:
-   1. Червоний домінує над жовтим: на стику червоного і жовтого районів межа ЧЕРВОНА.
-   2. Жовтий домінує над сірим: на стику жовтого і спокійного районів межа ЖОВТА.
-   3. Червоний домінує над сірим: на стику червоного і спокійного межа ЧЕРВОНА.
-   4. Плавна підсвітка та персистентний вибір без мерехтіння (без CSS-фільтрів).
-   5. Попапи районів за усталеною дизайн-системою головної версії:
-      - Головний заголовок: Inter, назва району.
-      - Підзаголовок: JetBrains Mono, назва області.
-      - Фіксований розмір кожного попапа (310px).
-      - Вивірені типографічні відступи (2px між назвою району та області, 10px до першої плашки).
-      - Без скролбарів.
-*/
 
-/* ── 0. Картографічний каркас областей (Нижній шар під районами, z-index: 350) ── */
+
+
 .map-oblast-border {
     fill: none;
     stroke: var(--map-idle-line);
@@ -39,7 +27,7 @@
     stroke-opacity: 0.55;
 }
 
-/* ── 1. Інтерактивні райони ────────────────────────────────────────── */
+
 .map-district {
     stroke-linejoin: round;
     stroke-linecap: round;
@@ -51,7 +39,7 @@
                 stroke-opacity 0.2s ease;
 }
 
-/* ── Спокійний район (Idle) ── */
+
 .map-district--idle {
     fill: var(--map-idle);
     fill-opacity: 0.05;
@@ -75,10 +63,10 @@
     stroke-opacity: 0.90;
 }
 
-/* ── Жовтий рівень попередження (Yellow) ── */
+
 .map-district--yellow {
     fill: var(--map-yellow);
-    fill-opacity: var(--map-yellow-alpha); /* 0.36 */
+    fill-opacity: var(--map-yellow-alpha); 
     stroke: var(--map-yellow-line);
     stroke-width: 1.05px;
     stroke-opacity: 1;
@@ -95,10 +83,10 @@
     stroke-width: 1.55px;
 }
 
-/* ── Червоний рівень тривоги (Red) ── */
+
 .map-district--red {
     fill: var(--map-red);
-    fill-opacity: var(--map-red-alpha); /* 0.40 */
+    fill-opacity: var(--map-red-alpha); 
     stroke: var(--map-red-line);
     stroke-width: 1.25px;
     stroke-opacity: 1;
@@ -115,7 +103,7 @@
     stroke-width: 1.75px;
 }
 
-/* ── Загроза артобстрілу (Shelling) ── */
+
 .map-district--shelling {
     fill: var(--alert);
     fill-opacity: 0.38;
@@ -135,7 +123,7 @@
     stroke-width: 1.85px;
 }
 
-/* ── Масштабування штрихів за зумом ── */
+
 [data-zoom="wide"] .map-district,
 [data-zoom="far"] .map-district {
     stroke-width: 0.85px;
@@ -162,7 +150,7 @@
     stroke-width: 2.25px;
 }
 
-/* ── 2. Попапи районів: суворо фіксована ширина (310px) та точна висота (68px без каналу / 116px з каналом) ───── */
+
 
 .district-popup {
     width: 310px;
@@ -212,17 +200,17 @@
 .district-popup-header {
     height: 18px;
     margin: 0 0 10px 0;
-    padding-right: 18px; /* Простір до кнопки закриття */
+    padding-right: 18px; 
     box-sizing: border-box;
     display: flex;
     align-items: center;
 }
 
-/* Головний заголовок: Inter, назва району */
+
 .district-popup-name {
     font-family: var(--font);
-    font-size: var(--text-control); /* 14px */
-    font-weight: var(--weight-title); /* 700 */
+    font-size: var(--text-control); 
+    font-weight: var(--weight-title); 
     line-height: 18px;
     color: var(--ink);
     margin: 0;
@@ -231,12 +219,12 @@
     text-overflow: ellipsis;
 }
 
-/* Підпис області приховано */
+
 .district-popup-oblast {
     display: none !important;
 }
 
-/* Суворо фіксовані плашки 310px */
+
 .district-popup .info-block {
     width: 310px;
     height: 40px;
@@ -259,7 +247,7 @@
     box-sizing: border-box;
 }
 
-/* ── 2.1. Підписи міст: шрифт Inter, товщина як у плашок попапу (500), чіткий ореол для читабельності ─── */
+
 .map-pin__name {
     position: absolute;
     top: 50%;
@@ -293,7 +281,7 @@
     margin-left: 0 !important;
 }
 
-/* ── 2.2. Маркери міст: охайні компактні кружки 8px з білою обводкою ─── */
+
 .map-pin__dot {
     position: absolute;
     left: 50%;

@@ -53,17 +53,14 @@ def resolve_district(query: str) -> tuple[str, dict[str, Any]] | None:
     if not cleaned:
         return None
 
-    # 1. Exact key match
     if cleaned in DISTRICT_CONFIG:
         return cleaned, DISTRICT_CONFIG[cleaned]
 
-    # 2. Check by display_name
     for key, conf in DISTRICT_CONFIG.items():
         disp = (conf.get("display_name") or "").lower()
         if disp == cleaned:
             return key, conf
 
-    # 3. Check by Ukrainian name and aliases
     for key, conf in DISTRICT_CONFIG.items():
         name = (conf.get("name") or "").lower()
         if name == cleaned:
@@ -77,12 +74,10 @@ def resolve_district(query: str) -> tuple[str, dict[str, Any]] | None:
         if city == cleaned:
             return key, conf
 
-    # 4. Check broadcast cities map
     for key, name in BROADCAST_CITIES.items():
         if name.lower() == cleaned:
             return key, DISTRICT_CONFIG[key]
 
-    # 5. Fuzzy prefix / substring match if unique
     candidates = []
     for key, conf in DISTRICT_CONFIG.items():
         candidates_pool = [
@@ -268,7 +263,6 @@ def parse_kyiv_datetime(
     """
     now_kyiv = get_kyiv_now()
 
-    # 1. Parse date
     target_date = now_kyiv.date()
     if date_str:
         clean_date = date_str.strip()
@@ -296,7 +290,6 @@ def parse_kyiv_datetime(
                 f"Invalid date format: '{date_str}'. Expected 'YYYY-MM-DD' or 'DD.MM'."
             )
 
-    # 2. Parse time
     target_time = now_kyiv.time()
     if time_str:
         clean_time = time_str.strip()
@@ -399,7 +392,6 @@ def apply_threat_change(
     if dry_run:
         return result
 
-    # 1. Apply to Redis
     for change in changes_plan:
         if change["component"] == "alert":
             st_str = "true" if alert_active else "false"
@@ -462,7 +454,6 @@ def apply_threat_change(
                 mapping=oblast_mapping,
             )
 
-            # Update channel state key
             state_key = (
                 f"channel_state:{channel_id}"
                 if channel_id is not None
@@ -487,7 +478,6 @@ def apply_threat_change(
                 },
             )
 
-    # 2. Record to PostgreSQL alert_history
     conn = pg_conn
     owns_conn = False
     if conn is None:
@@ -599,7 +589,6 @@ def get_history(
                         "channel_id": ch_id,
                         "message_id": msg_id,
                         "source": source,
-                        # Backwards-compatible aliases
                         "datetime": dt_str,
                         "date": d_str,
                         "time": t_str,
@@ -917,7 +906,6 @@ def sync_maintenance_state(redis_conn=None) -> dict[str, Any]:
             active_win = w
             break
 
-    # Prepare windows list for history on Cloudflare KV and status page
     recent_cutoff = now - 7 * 86400
     recent_windows = [
         {
@@ -1100,12 +1088,11 @@ def complete_maintenance_window(
                 target_win = w
                 break
     else:
-        # First, search for currently active window
         for w in schedule:
             if not w.get("completed") and w["start_epoch"] <= now <= w["end_epoch"]:
                 target_win = w
                 break
-        # If no currently active, find nearest upcoming
+
         if not target_win:
             for w in sorted(schedule, key=lambda x: x["start_epoch"]):
                 if not w.get("completed") and w["start_epoch"] > now:

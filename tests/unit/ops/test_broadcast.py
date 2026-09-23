@@ -11,15 +11,13 @@ from ops.broadcast import (
 
 
 def test_build_message_link():
-    # With username
+
     link = build_message_link(-1001234567, 42, username="sirens_kyiv")
     assert link == "https://t.me/sirens_kyiv/42"
 
-    # Without username, -100 prefix
     link = build_message_link(-1001234567, 42)
     assert link == "https://t.me/c/1234567/42"
 
-    # Without username, standard negative prefix
     link = build_message_link(-987654, 10)
     assert link == "https://t.me/c/987654/10"
 
@@ -54,7 +52,6 @@ async def test_broadcast_success_with_photo_update():
     mock_msg.id = 777
     mock_client.send_message.return_value = mock_msg
 
-    # Mock photo edit response with a service message
     mock_service_msg = MagicMock(spec=MessageService)
     mock_service_msg.id = 888
     mock_service_msg.action = MagicMock(spec=MessageActionChatEditPhoto)
@@ -83,7 +80,7 @@ async def test_broadcast_success_with_photo_update():
 
 @pytest.mark.asyncio
 async def test_broadcast_fallback_session_authorization():
-    # First client is not authorized, second (fallback) is
+
     client_primary = AsyncMock()
     client_primary.is_user_authorized.return_value = False
 

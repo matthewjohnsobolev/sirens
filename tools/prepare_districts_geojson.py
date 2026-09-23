@@ -22,7 +22,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from domain.geo import DISTRICT_CONFIG, OBLAST_NAMES  # noqa: E402
+from domain.geo import DISTRICT_CONFIG, OBLAST_NAMES
 
 POSSIBLE_ADMIN_DIRS = [
     os.path.join(PROJECT_ROOT, "web", "static"),
@@ -141,7 +141,6 @@ def match_district_key(props: dict, matched_keys: set) -> str | None:
     name_uk = props.get("adm2_name1", "").strip()
     name_en = props.get("adm2_name", "").strip()
 
-    # Chervonohrad was renamed to Sheptytskyi in 2024
     if "Шептицький" in name_uk or "Sheptytskyi" in name_en:
         if "chervonohrad" not in matched_keys and "chervonohrad" in DISTRICT_CONFIG:
             return "chervonohrad"
@@ -175,7 +174,6 @@ def prepare_districts(admin1_path: str, admin2_path: str, admin3_path: str) -> d
     a2_by_pcode = {f["properties"]["adm2_pcode"]: f for f in admin2_data.get("features", [])}
     a3_by_pcode = {f["properties"]["adm3_pcode"]: f for f in admin3_data.get("features", [])}
 
-    # 1. Merge Chernobyl Exclusion Zone (UA3200) into Vyshhorodskyi district (UA3210)
     if "UA3200" in a2_by_pcode and "UA3210" in a2_by_pcode:
         vyshhorod_geom = shape(a2_by_pcode["UA3210"]["geometry"])
         chernobyl_geom = shape(a2_by_pcode["UA3200"]["geometry"])
@@ -186,7 +184,6 @@ def prepare_districts(admin1_path: str, admin2_path: str, admin3_path: str) -> d
             "Successfully merged Chernobyl Exclusion Zone (UA3200) into Vyshhorodskyi district (UA3210)"
         )
 
-    # 2. Carve out cities (Nikopol, Kharkiv, Zaporizhzhia) from their districts
     carve_cities = [
         {
             "city_id": "nikopol",
@@ -234,7 +231,6 @@ def prepare_districts(admin1_path: str, admin2_path: str, admin3_path: str) -> d
             city_geom = shape(a3_feat["geometry"])
             raion_geom = district_geom.difference(city_geom)
 
-            # City feature
             out_features.append(
                 {
                     "type": "Feature",
@@ -249,7 +245,7 @@ def prepare_districts(admin1_path: str, admin2_path: str, admin3_path: str) -> d
                     "geometry": mapping(city_geom),
                 }
             )
-            # Surrounding district feature
+
             out_features.append(
                 {
                     "type": "Feature",
@@ -269,7 +265,6 @@ def prepare_districts(admin1_path: str, admin2_path: str, admin3_path: str) -> d
             del a2_by_pcode[item["adm2_pcode"]]
             print(f"Successfully carved out city {item['city_id']} from {item['raion_id']}")
 
-    # 3. Add Crimea as a single whole (merging UA01 and UA85 into crimea)
     if "UA01" in a1_by_pcode and "UA85" in a1_by_pcode:
         c_geom = shape(a1_by_pcode["UA01"]["geometry"])
         s_geom = shape(a1_by_pcode["UA85"]["geometry"])
@@ -291,7 +286,6 @@ def prepare_districts(admin1_path: str, admin2_path: str, admin3_path: str) -> d
         matched_keys.add("crimea")
         print("Successfully merged Crimea and Sevastopol into unified Crimea feature")
 
-    # 4. Match remaining districts from admin2
     for feat in a2_by_pcode.values():
         props = feat.get("properties", {})
         district_key = match_district_key(props, matched_keys)
@@ -372,7 +366,6 @@ def main():
         f"Wrote districts GeoJSON to {districts_path} ({os.path.getsize(districts_path) / 1024 / 1024:.2f} MB)"
     )
 
-    # Dissolve districts to create oblasts_outline.geojson (100% coordinate match!)
     oblasts_path = os.path.join(geo_out_dir, "oblasts_outline.geojson")
     raw_dissolve_cmd = [
         "npx",
@@ -389,7 +382,6 @@ def main():
     print("Dissolving districts to generate seamless oblast boundaries...")
     subprocess.run(raw_dissolve_cmd, check=True, shell=True)
 
-    # Post-process dissolved oblasts to guarantee id and name fields
     with open(oblasts_path, encoding="utf-8") as f:
         dissolved_data = json.load(f)
 
@@ -400,7 +392,6 @@ def main():
         feat["properties"]["name"] = OBLAST_NAMES.get(obl_id, obl_id)
         existing_obl_ids.add(obl_id)
 
-    # Append missing oblasts (e.g. Luhansk, Crimea, Sevastopol) from admin1 if not in dissolved set
     with open(admin1_file, encoding="utf-8") as f:
         admin1_data = json.load(f)
 
@@ -409,7 +400,6 @@ def main():
         oid = map_admin1_to_oblast_id(p.get("adm1_pcode"), p.get("adm1_name"))
         if oid and oid in OBLAST_NAMES and oid not in existing_obl_ids:
             if oid == "sevastopol" and "crimea" in existing_obl_ids:
-                # Crimea is represented as a single unified whole; do not add Sevastopol as a separate overlay
                 continue
             dissolved_data["features"].append(
                 {

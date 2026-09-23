@@ -557,10 +557,6 @@ async def _record_alert_state(
             log.error("Failed to insert alert history into PG: %s", e)
 
 
-# SET ... GET claims the key and hands back what it displaced in one round
-# trip. A plain GET followed by a SET only after the message was away let two
-# events for the same district - the same alert reaching us from both sources
-# at once - both read the stale state and both go out.
 _RESTORE_STATE_LUA = """
 if redis.call('GET', KEYS[1]) == ARGV[1] then
     if ARGV[2] == '' then
@@ -802,7 +798,7 @@ RED_ALERT_CANCEL_TRIGGERS = (
 
 
 def _alert_type_for(district_key: str, message_text: str) -> AlertEvent | None:
-    # "Відбій червоної тривоги" transitions down to yellow level alert
+
     if any(keyword in message_text for keyword in RED_ALERT_CANCEL_TRIGGERS):
         return AlertEvent("air_raid_alert", "yellow")
 
@@ -814,7 +810,6 @@ def _alert_type_for(district_key: str, message_text: str) -> AlertEvent | None:
 
     conf = DISTRICT_CONFIG.get(district_key, {})
 
-    # Per-district cancellations first
     for alert_type, keywords in sorted(
         conf.get("alert_triggers", {}).items(),
         key=lambda item: 0 if item[0].endswith("_cancelled") else 1,
@@ -822,27 +817,22 @@ def _alert_type_for(district_key: str, message_text: str) -> AlertEvent | None:
         if any(keyword in message_text for keyword in keywords):
             return AlertEvent(alert_type, level if alert_type == "air_raid_alert" else None)
 
-    # Shelling cancellation (Nikopol only)
     if (not district_key or district_key == "nikopol") and any(
         keyword in message_text for keyword in SHELLING_CANCEL_TRIGGERS
     ):
         return AlertEvent("threat_of_shelling_cancelled", None)
 
-    # Air raid alert cancellation
     if "Відбій тривоги" in message_text:
         return AlertEvent("air_raid_alert_cancelled", None)
 
-    # Shelling alert (Nikopol only)
     if (not district_key or district_key == "nikopol") and any(
         keyword in message_text for keyword in SHELLING_TRIGGERS
     ):
         return AlertEvent("threat_of_shelling", None)
 
-    # Two-level alert triggers
     if level:
         return AlertEvent("air_raid_alert", level)
 
-    # Legacy air raid alert
     if "Повітряна тривога" in message_text:
         return AlertEvent("air_raid_alert", None)
 
@@ -980,13 +970,13 @@ def is_nikopol_district_all_clear(message_text: str) -> bool:
     """
     if "Відбій тривоги" not in message_text:
         return False
-    # Check for the Nikopol district trigger directly
+
     district_hit = any(
         pattern.search(message_text) for pattern in DISTRICT_PATTERNS.get("nikopol", ())
     )
     if district_hit:
         return True
-    # Check for the Dnipropetrovsk oblast trigger (oblast-wide all-clear)
+
     cleaned = OBLAST_PARENTHESIS_RE.sub("", message_text)
     oblast_hit = any(
         pattern.search(cleaned) for pattern in OBLAST_PATTERNS.get("dnipropetrovsk_oblast", ())
@@ -1370,7 +1360,6 @@ def build_message_handler(
             return
 
         if source_type == "primary" and "primary" not in active_broadcast_sources:
-            # Primary channel only broadcasts Nikopol shelling when fallback is active
             matched = {
                 d: ev
                 for d, ev in matched.items()

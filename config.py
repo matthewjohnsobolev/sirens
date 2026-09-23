@@ -11,9 +11,7 @@ VERSION = "1.7.0"
 
 load_dotenv()
 
-# APP_ENV is both the 12-factor environment name and the run mode the workers
-# take on the command line (docker-compose passes it straight to `-m`), so the
-# long spellings have to collapse onto the two the CLI accepts.
+
 APP_ENV_ALIASES = {
     "dev": "dev",
     "development": "dev",
@@ -105,16 +103,6 @@ UPTIMEROBOT_API_MONITOR_KEY = os.getenv("UPTIMEROBOT_API_MONITOR_KEY", "")
 UPTIMEROBOT_WEB_MONITOR_KEY = os.getenv("UPTIMEROBOT_WEB_MONITOR_KEY", "")
 
 
-# Підкладка мапи — безлейбловий растр: усі підписи на мапі малює вона
-# сама, тож від землі потрібна тільки земля.
-#
-# CARTO віддає ці тайли за ключем, і без нього кожна плитка приїжджає з
-# написом «API KEY REQUIRED» упоперек. Ключ кладуть у MAP_TILES_API_KEY —
-# він допишеться до адреси сам. Якщо провайдер інший і параметр у нього
-# зветься не key, простіше задати всю адресу через MAP_TILES_URL.
-#
-# Кредит іде поруч і теж налаштовується: змінити джерело тайлів, не
-# змінивши підпису під ними, означає порушити чужу ліцензію.
 def _with_api_key(url: str, key: str) -> str:
     """Adds the key to the tile URL, unless the URL already carries one."""
     if not key or "key=" in url or "api_key=" in url:
@@ -139,12 +127,10 @@ MAP_TILES_ATTRIBUTION = os.getenv(
 
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 
-# The GA4 property the public pages report to. Kept configurable so a staging
-# deployment can blank it out instead of polluting the production stream.
+
 GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "G-JC48ZJGBHM").strip()
 
-# Absolute URLs live in canonical tags and the sitemap, where a relative path
-# is meaningless, so the public origin has to be known server-side.
+
 SITE_URL = os.getenv("SITE_URL", "https://sirens.live").strip().rstrip("/")
 STATUS_URL = os.getenv("STATUS_URL", "https://status.sirens.live").strip().rstrip("/")
 GEO_DISTRICTS_URL = os.getenv(

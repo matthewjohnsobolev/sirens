@@ -2,84 +2,94 @@ import { statusWord } from "./helpers";
 import { analyticsHead } from "./analytics";
 
 function getBadgeClass(state: string): string {
-    if (state === 'ok') return 'ok';
-    if (state === 'minor' || state === 'down' || state === 'major') return 'down';
-    if (state === 'mnt') return 'mnt';
-    return 'nodata';
+  if (state === "ok") return "ok";
+  if (state === "minor" || state === "down" || state === "major") return "down";
+  if (state === "mnt") return "mnt";
+  return "nodata";
 }
 
 function getStateInfo(headline: string) {
-    if (
-        headline === 'Сповіщення не надходять' ||
-        headline === 'Система не працює' ||
-        headline === 'Критичний збій системи' ||
-        headline === 'Телеграм-канали не працюють' ||
-        headline === 'Збій Telegram-каналів' ||
-        headline === 'Мапа тривог не працює' ||
-        headline === 'Збій мапи тривог'
-    ) {
-        return {
-            cls: 'error',
-            icon: '/img/icons/air-raid-alert-icon.svg'
-        };
-    }
-    if (headline.includes('— ні') || headline.includes('перебо')) {
-        return {
-            cls: 'warning',
-            icon: '/img/icons/air-raid-alert-icon.svg'
-        };
-    }
-    if (headline === 'Планові роботи' || headline === 'Технічні роботи') {
-        return {
-            cls: 'mnt',
-            icon: '/img/icons/mnt-icon.svg'
-        };
-    }
-    if (headline === 'Немає даних') {
-        return {
-            cls: 'nodata',
-            icon: '/img/icons/no-data-icon.svg'
-        };
-    }
+  if (
+    headline === "Сповіщення не надходять" ||
+    headline === "Система не працює" ||
+    headline === "Критичний збій системи" ||
+    headline === "Телеграм-канали не працюють" ||
+    headline === "Збій Telegram-каналів" ||
+    headline === "Мапа тривог не працює" ||
+    headline === "Збій мапи тривог"
+  ) {
     return {
-        cls: 'ok',
-        icon: '/img/icons/air-raid-alert-cancelled-icon.svg'
+      cls: "error",
+      icon: "/img/icons/air-raid-alert-icon.svg",
     };
+  }
+  if (headline.includes("— ні") || headline.includes("перебо")) {
+    return {
+      cls: "warning",
+      icon: "/img/icons/air-raid-alert-icon.svg",
+    };
+  }
+  if (headline === "Планові роботи" || headline === "Технічні роботи") {
+    return {
+      cls: "mnt",
+      icon: "/img/icons/mnt-icon.svg",
+    };
+  }
+  if (headline === "Немає даних") {
+    return {
+      cls: "nodata",
+      icon: "/img/icons/no-data-icon.svg",
+    };
+  }
+  return {
+    cls: "ok",
+    icon: "/img/icons/air-raid-alert-cancelled-icon.svg",
+  };
 }
 
 export function renderHtml(data: any, measurementId = ""): string {
-    const stateInfo = getStateInfo(data.headline);
-    const getSummary = data.hours_summary || (() => 'немає даних');
-    const getTitle = data.hour_title || ((date: string, state: string) => state);
+  const stateInfo = getStateInfo(data.headline);
+  const getSummary = data.hours_summary || (() => "немає даних");
+  const getTitle = data.hour_title || ((date: string, state: string) => state);
 
-    const componentsHtml = data.components.map((comp: any) => {
-        const hoursList = comp.hours || [];
-        const summaryText = getSummary(hoursList);
-        const badgeCls = getBadgeClass(comp.state);
-        const badgeLabel = statusWord(comp.state, comp.key);
+  const componentsHtml = data.components
+    .map((comp: any) => {
+      const hoursList = comp.hours || [];
+      const summaryText = getSummary(hoursList);
+      const badgeCls = getBadgeClass(comp.state);
+      const badgeLabel = statusWord(comp.state, comp.key);
 
-        return `
-      <section class="comp" data-key="${comp.key}" data-monitored="${comp.monitored ? 'true' : 'false'}">
+      return `
+      <section class="comp" data-key="${comp.key}" data-monitored="${comp.monitored ? "true" : "false"}">
         <div class="comp-head">
           <h2 class="comp-name">${comp.name}</h2>
           <span class="comp-val">
-            ${!comp.monitored
+            ${
+              !comp.monitored
                 ? '<span class="val-full">моніторинг не налаштовано</span><span class="val-short">не налаштовано</span>'
-                : `<span class="comp-badge comp-badge--${badgeCls}">${badgeLabel}</span>`}
+                : `<span class="comp-badge comp-badge--${badgeCls}">${badgeLabel}</span>`
+            }
           </span>
         </div>
-        ${comp.desc ? `<p class="comp-desc">${comp.desc}</p>` : ''}
+        ${comp.desc ? `<p class="comp-desc">${comp.desc}</p>` : ""}
         <div class="bars" role="group" aria-label="${comp.name}: ${summaryText}">
-          ${hoursList.map((hour: any, index: number) => {
-            const title = hour.title || getTitle(hour.date, hour.state, comp.key);
-            const timeAttr = hour.timeText ? ` data-time="${hour.timeText}"` : '';
-            const statusAttr = hour.statusText ? ` data-status-text="${hour.statusText}"` : '';
-            // Остання смужка — година, яка ще триває: вона пульсує. Пульс
-            // з'являється лише там, де є що показувати, — у ненастроєного
-            // компонента й у години без даних він удавав би моніторинг.
-            const isLive = comp.monitored && index === hoursList.length - 1 && hour.state !== 'nodata';
-            return `<div class="bar${isLive ? ' bar--live' : ''}" role="button" tabindex="0" data-state="${hour.state}"${timeAttr}${statusAttr} data-title="${title}" aria-label="${title}"></div>`;
-          }).join('')}
+          ${hoursList
+            .map((hour: any, index: number) => {
+              const title =
+                hour.title || getTitle(hour.date, hour.state, comp.key);
+              const timeAttr = hour.timeText
+                ? ` data-time="${hour.timeText}"`
+                : "";
+              const statusAttr = hour.statusText
+                ? ` data-status-text="${hour.statusText}"`
+                : "";
+              const isLive =
+                comp.monitored &&
+                index === hoursList.length - 1 &&
+                hour.state !== "nodata";
+              return `<div class="bar${isLive ? " bar--live" : ""}" role="button" tabindex="0" data-state="${hour.state}"${timeAttr}${statusAttr} data-title="${title}" aria-label="${title}"></div>`;
+            })
+            .join("")}
         </div>
         <div class="scale">
           <span class="scale-from">24 години тому</span>
@@ -87,27 +97,35 @@ export function renderHtml(data: any, measurementId = ""): string {
         </div>
       </section>
     `;
-    }).join('');
+    })
+    .join("");
 
-    const hasSpecificFailure = data.headline.includes('— ні') ||
-        data.headline === 'Сповіщення не надходять' ||
-        data.headline === 'Система не працює' ||
-        data.headline === 'Критичний збій системи' ||
-        data.headline === 'Телеграм-канали не працюють' ||
-        data.headline === 'Збій Telegram-каналів' ||
-        data.headline === 'Мапа тривог не працює' ||
-        data.headline === 'Збій мапи тривог' ||
-        data.headline.includes('перебо') ||
-        data.headline.includes('Збій');
-    let formattedSubtitle = data.subtitle || '';
-    if (formattedSubtitle) {
-        formattedSubtitle = formattedSubtitle
-            .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-            .replace(/(?<!["/])\b(map\.ukrainealarm\.com)\b/g, '<a href="https://map.ukrainealarm.com/" target="_blank" rel="noopener noreferrer">$1</a>')
-            .replace(/(\b\d{1,2}:\d{2}\b)/g, '<time class="mono-time">$1</time>');
-    }
+  const hasSpecificFailure =
+    data.headline.includes("— ні") ||
+    data.headline === "Сповіщення не надходять" ||
+    data.headline === "Система не працює" ||
+    data.headline === "Критичний збій системи" ||
+    data.headline === "Телеграм-канали не працюють" ||
+    data.headline === "Збій Telegram-каналів" ||
+    data.headline === "Мапа тривог не працює" ||
+    data.headline === "Збій мапи тривог" ||
+    data.headline.includes("перебо") ||
+    data.headline.includes("Збій");
+  let formattedSubtitle = data.subtitle || "";
+  if (formattedSubtitle) {
+    formattedSubtitle = formattedSubtitle
+      .replace(
+        /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+      )
+      .replace(
+        /(?<!["/])\b(map\.ukrainealarm\.com)\b/g,
+        '<a href="https://map.ukrainealarm.com/" target="_blank" rel="noopener noreferrer">$1</a>',
+      )
+      .replace(/(\b\d{1,2}:\d{2}\b)/g, '<time class="mono-time">$1</time>');
+  }
 
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="uk">
 <head>
 <meta charset="utf-8">
@@ -176,7 +194,7 @@ ${analyticsHead(measurementId, stateInfo.cls)}
         </div>
         <span class="notice-headline">${data.headline}</span>
       </div>
-      ${formattedSubtitle ? `<p class="notice-desc">${formattedSubtitle}</p>` : ''}
+      ${formattedSubtitle ? `<p class="notice-desc">${formattedSubtitle}</p>` : ""}
     </div>
 
     <div class="list" id="list">
@@ -184,9 +202,9 @@ ${analyticsHead(measurementId, stateInfo.cls)}
     </div>
 
     <div class="card-action">
-      <p class="card-action-text">${hasSpecificFailure ? 'Помітили інший збій або проблему в роботі?' : 'Не отримали сповіщення або помітили збій?'}</p>
+      <p class="card-action-text">${hasSpecificFailure ? "Помітили інший збій або проблему в роботі?" : "Не отримали сповіщення або помітили збій?"}</p>
       <a href="https://sirens.live/issue" class="btn-report">
-        ${hasSpecificFailure ? 'Повідомити про інший збій' : 'Повідомити про збій'}
+        ${hasSpecificFailure ? "Повідомити про інший збій" : "Повідомити про збій"}
       </a>
     </div>
   </div>

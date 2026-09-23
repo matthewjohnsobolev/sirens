@@ -33,12 +33,10 @@ def test_cli_help(runner):
     assert "maintenance" in result.output
     assert "mnt" in result.output
 
-    # Check metrics help
     metrics_help = runner.invoke(cli, ["metrics", "--help"])
     assert metrics_help.exit_code == 0
     assert "USAGE" in metrics_help.output
 
-    # Check mnt help has status
     mnt_help = runner.invoke(cli, ["mnt", "--help"])
     assert mnt_help.exit_code == 0
     assert "status" in mnt_help.output
@@ -48,22 +46,22 @@ def test_cli_help(runner):
 
 def test_format_elapsed():
     now = time.time()
-    # Just now
+
     assert format_elapsed(now - 10) == "just now"
-    # Minutes
+
     assert format_elapsed(now - 120) == "2m ago"
-    # Hours exact
+
     assert format_elapsed(now - 7200) == "2h ago"
-    # Hours and minutes
+
     assert format_elapsed(now - 7260) == "2h 1m ago"
-    # Time string format
+
     res_time = format_elapsed(0, "12:00")
     assert isinstance(res_time, str)
-    # Invalid string with colon
+
     assert format_elapsed(None, "invalid:time") == "invalid:time"
-    # String without colon
+
     assert format_elapsed(None, "invalid") == ""
-    # Empty
+
     assert format_elapsed(None, None) == ""
 
 
@@ -93,16 +91,14 @@ def test_render_ls_table_and_detail():
     table = render_ls_table(districts)
     assert table is not None
 
-    # Print show detail
     print_show_detail(districts[0])
     print_show_detail(districts[1])
 
 
 def test_print_history_list():
-    # Empty history
+
     print_history_list([])
 
-    # Populated history with clear, shelling and alert events
     history = [
         {
             "date": "2026-09-04",
@@ -313,7 +309,7 @@ def test_alert_broadcast_prod_group_yes_flag(mock_apply, mock_broadcast, runner)
 @patch("ops.broadcast.run_broadcast_sync")
 @patch("ops.state.apply_threat_change")
 def test_shelling_broadcast_prod_aborted_and_yes(mock_apply, mock_broadcast, runner):
-    # Aborted
+
     res_aborted = runner.invoke(
         cli,
         ["-m", "prod", "shelling", "nikopol", "on", "-b"],
@@ -324,7 +320,6 @@ def test_shelling_broadcast_prod_aborted_and_yes(mock_apply, mock_broadcast, run
     assert "Broadcast to nikopol Telegram channel?" in res_aborted.output
     mock_apply.assert_not_called()
 
-    # Confirmed with --yes
     mock_apply.return_value = {
         "district_key": "nikopol",
         "time": "19:40",
@@ -375,7 +370,7 @@ def test_shelling_on_off_commands(mock_apply, runner):
 
 @patch("ops.state.get_all_districts_statuses")
 def test_status_active_and_all(mock_get_all, runner):
-    # With active items
+
     mock_get_all.return_value = [
         {
             "key": "bucha",
@@ -392,13 +387,11 @@ def test_status_active_and_all(mock_get_all, runner):
     assert res.exit_code == 0
     assert "bucha" in res.output
 
-    # Empty active
     mock_get_all.return_value = []
     res_empty = runner.invoke(cli, ["status"])
     assert res_empty.exit_code == 0
     assert "No active alerts" in res_empty.output
 
-    # Empty all
     res_empty_all = runner.invoke(cli, ["status", "-a"])
     assert res_empty_all.exit_code == 0
     assert "No districts found" in res_empty_all.output
@@ -455,15 +448,12 @@ def test_history_command(mock_get_hist, runner):
     assert res.exit_code == 0
     assert "bucha" in res.output
 
-    # Without district
     res_all = runner.invoke(cli, ["history"])
     assert res_all.exit_code == 0
 
-    # Unknown district
     res_unknown = runner.invoke(cli, ["history", "unknown_xyz"])
     assert res_unknown.exit_code == 1
 
-    # Exception in history
     mock_get_hist.side_effect = Exception("DB error")
     res_err = runner.invoke(cli, ["history"])
     assert res_err.exit_code == 1
@@ -545,34 +535,29 @@ def test_print_metrics_with_errors():
 
 
 def test_entrypoints_importable():
-    import ops.__main__  # noqa: F401
-    import run_alerts  # noqa: F401
-    import run_bi  # noqa: F401
-    import run_ops  # noqa: F401
-    import status.mnt  # noqa: F401
+    import importlib
+
+    for mod in ("ops.__main__", "run_alerts", "run_bi", "run_ops", "status.mnt"):
+        assert importlib.import_module(mod) is not None
 
 
 @patch("ops.state.list_maintenance_windows")
 def test_mnt_ls_empty_and_populated(mock_list_mnt, runner):
     from ops.cli import mnt_group
 
-    # Empty
     mock_list_mnt.return_value = []
     res_empty = runner.invoke(cli, ["mnt"])
     assert res_empty.exit_code == 0
     assert "No scheduled maintenance windows" in res_empty.output
 
-    # Invoked via maintenance alias
     res_empty_alias = runner.invoke(cli, ["maintenance", "status"])
     assert res_empty_alias.exit_code == 0
     assert "No scheduled maintenance windows" in res_empty_alias.output
 
-    # Direct mnt_group invocation
     res_direct = runner.invoke(mnt_group, [])
     assert res_direct.exit_code == 0
     assert "No scheduled maintenance windows" in res_direct.output
 
-    # Populated via mnt status
     mock_list_mnt.return_value = [
         {
             "id": "mnt_1",
@@ -602,12 +587,10 @@ def test_mnt_ls_empty_and_populated(mock_list_mnt, runner):
     assert "47m remaining" in res_pop.output
     assert "06.09" in res_pop.output
 
-    # Backward compatibility via mnt ls
     res_pop_ls = runner.invoke(cli, ["mnt", "ls"])
     assert res_pop_ls.exit_code == 0
     assert "now" in res_pop_ls.output
 
-    # Error handling
     mock_list_mnt.side_effect = Exception("Redis error")
     res_err = runner.invoke(cli, ["mnt", "status"])
     assert res_err.exit_code == 1
@@ -644,7 +627,6 @@ def test_mnt_add_command(mock_add_win, runner):
     assert "map, API" in res.output
     assert "«Оновлюємо базу»" in res.output
 
-    # Error handling
     mock_add_win.side_effect = ValueError("Invalid time")
     res_err = runner.invoke(cli, ["mnt", "add", "map", "--from", "invalid"])
     assert res_err.exit_code == 1
@@ -653,13 +635,12 @@ def test_mnt_add_command(mock_add_win, runner):
 
 @patch("ops.state.complete_maintenance_window")
 def test_mnt_done_command(mock_complete, runner):
-    # None active
+
     mock_complete.return_value = None
     res_none = runner.invoke(cli, ["mnt", "done"])
     assert res_none.exit_code == 0
     assert "No active maintenance window to complete" in res_none.output
 
-    # Completed active window
     mock_complete.return_value = {
         "id": "mnt_123",
         "components": ["map", "api"],
@@ -671,12 +652,10 @@ def test_mnt_done_command(mock_complete, runner):
     assert "Оновлюємо базу" in res_done.output
     assert "map, API" in res_done.output
 
-    # With window id
     res_id = runner.invoke(cli, ["mnt", "done", "mnt_123"])
     assert res_id.exit_code == 0
     assert "completed" in res_id.output.lower()
 
-    # Error handling
     mock_complete.side_effect = Exception("DB error")
     res_err = runner.invoke(cli, ["mnt", "done"])
     assert res_err.exit_code == 1
@@ -684,7 +663,7 @@ def test_mnt_done_command(mock_complete, runner):
 
 
 def test_alert_and_shelling_help(runner):
-    # Alert help in unified style
+
     res_alert = runner.invoke(cli, ["alert", "--help"])
     assert res_alert.exit_code == 0
     assert "USAGE" in res_alert.output
@@ -695,7 +674,6 @@ def test_alert_and_shelling_help(runner):
     assert "EXAMPLES" in res_alert.output
     assert "sirens-ops alert kyiv on" in res_alert.output
 
-    # Shelling help in unified style
     res_shelling = runner.invoke(cli, ["shelling", "--help"])
     assert res_shelling.exit_code == 0
     assert "USAGE" in res_shelling.output
@@ -705,7 +683,6 @@ def test_alert_and_shelling_help(runner):
     assert "EXAMPLES" in res_shelling.output
     assert "sirens-ops shelling nikopol on" in res_shelling.output
 
-    # Status, Show, History help
     res_status = runner.invoke(cli, ["status", "--help"])
     assert res_status.exit_code == 0
     assert "sirens-ops status [options]" in res_status.output
@@ -811,14 +788,13 @@ def test_alert_positional_levels(mock_apply, runner):
         "channel_id": -1001754447620,
     }
 
-    # Positional yellow
     res_y = runner.invoke(cli, ["alert", "bucha", "yellow"])
     assert res_y.exit_code == 0
     assert "air raid alert (yellow) on" in res_y.output
     assert mock_apply.call_args.kwargs["alert_level"] == "yellow"
 
     mock_apply.reset_mock()
-    # Positional red
+
     res_r = runner.invoke(cli, ["alert", "bucha", "red"])
     assert res_r.exit_code == 0
     assert "air raid alert (red) on" in res_r.output
@@ -826,12 +802,11 @@ def test_alert_positional_levels(mock_apply, runner):
 
 
 def test_alert_level_validations(runner):
-    # Off with level should be rejected
+
     res_off = runner.invoke(cli, ["alert", "bucha", "off", "-l", "yellow"])
     assert res_off.exit_code != 0
     assert "Cannot specify alert level when turning alert off" in res_off.output
 
-    # Conflicting level argument and option
     res_conflict = runner.invoke(cli, ["alert", "bucha", "yellow", "-l", "red"])
     assert res_conflict.exit_code != 0
     assert "Conflicting alert levels" in res_conflict.output

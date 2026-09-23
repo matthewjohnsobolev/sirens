@@ -26,8 +26,6 @@ def test_get_message_metrics_success():
     mock_cur = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
-    # row: broadcast_24h, alert_24h, alert_cancel_24h, shelling_24h, shelling_cancel_24h,
-    # auto_24h, manual_24h, map_only_24h, total_events_24h, broadcast_today, map_only_today, total_events_today
     mock_cur.fetchone.return_value = (48, 22, 22, 4, 0, 42, 6, 10, 58, 30, 5, 35)
 
     res = get_message_metrics(pg_conn=mock_conn)
@@ -48,19 +46,16 @@ def test_get_message_metrics_empty_and_errors():
     mock_cur = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
-    # Empty fetchone
     mock_cur.fetchone.return_value = None
     res_empty = get_message_metrics(pg_conn=mock_conn)
     assert "error" in res_empty
     assert "No data" in res_empty["error"]
 
-    # Query exception
     mock_cur.execute.side_effect = Exception("DB query failed")
     res_err = get_message_metrics(pg_conn=mock_conn)
     assert "error" in res_err
     assert "DB query failed" in res_err["error"]
 
-    # pg_error passed
     res_pg_err = get_message_metrics(pg_error="connection refused")
     assert "connection refused" in res_pg_err["error"]
 
@@ -116,11 +111,10 @@ def test_fallback_system_metrics():
 
 
 def test_get_container_metrics():
-    # Docker not found
+
     with patch("shutil.which", return_value=None):
         assert get_container_metrics() == []
 
-    # Docker stats success
     with patch("shutil.which", return_value="/usr/bin/docker"), patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -132,7 +126,6 @@ def test_get_container_metrics():
         assert res[0]["cpu"] == "1.5%"
         assert res[1]["name"] == "sirens-web"
 
-    # Docker stats failure
     with patch("shutil.which", return_value="/usr/bin/docker"), patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=1, stdout="")
         assert get_container_metrics() == []
@@ -157,7 +150,6 @@ def test_get_service_metrics():
     assert res["postgres"]["size"] == "84 MB"
     assert res["postgres"]["connections"] == 5
 
-    # With passed errors
     res_err = get_service_metrics(redis_error="redis down", pg_error="pg down")
     assert "redis down" in res_err["redis"]["error"]
     assert "pg down" in res_err["postgres"]["error"]

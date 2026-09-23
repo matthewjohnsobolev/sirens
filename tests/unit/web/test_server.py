@@ -185,7 +185,7 @@ def test_sitemap_lists_the_public_pages_of_this_origin_only(client):
     body = response.get_data(as_text=True)
     assert "<loc>https://sirens.live/</loc>" in body
     assert "<loc>https://sirens.live/issue</loc>" in body
-    # The status page is a separate host: a sitemap may only list its own.
+
     assert "status.sirens.live" not in body
 
 
@@ -211,9 +211,7 @@ def test_index_does_not_ship_libraries_it_never_calls(client):
     assert "jquery" not in html.lower()
     assert "papaparse" not in html.lower()
     assert html.count("leaflet.js") == 1
-    # MapLibre left with the vector basemap: ~250 KB of JS for labels the
-    # basemap no longer draws. The bundles are what must not ship -- the
-    # comment explaining why they went is meant to stay.
+
     assert "maplibre-gl" not in html.lower()
     assert "demo.js" not in html.lower()
 
@@ -1500,13 +1498,12 @@ def test_oblast_popup_districts_sorted_chronologically_with_latest_event_on_top(
     )
     names = json.loads(res.stdout.strip())
     assert names == [
-        "Фастівський район",  # active alert, updated_at: 300
-        "Бучанський район",  # active alert, updated_at: 100
-        "Бориспільський район",  # cancelled alert, updated_at: 200
-        "Білоцерківський район",  # cancelled alert, updated_at: null
+        "Фастівський район",
+        "Бучанський район",
+        "Бориспільський район",
+        "Білоцерківський район",
     ]
 
-    # Test that active alerts precede all-clears even if the all-clear is more recent
     precedence_script = """
     const { getOblastPopupContent } = require('./web/static/js/oblasts.js');
     const data = {
@@ -1534,11 +1531,10 @@ def test_oblast_popup_districts_sorted_chronologically_with_latest_event_on_top(
     )
     names_precedence = json.loads(res_precedence.stdout.strip())
     assert names_precedence == [
-        "Бучанський район",  # active alert at 200 comes before cancellation at 500
+        "Бучанський район",
         "Фастівський район",
     ]
 
-    # Test tie-breaking by alphabetical order when timestamps match
     tie_script = """
     const { getOblastPopupContent } = require('./web/static/js/oblasts.js');
     const data = {

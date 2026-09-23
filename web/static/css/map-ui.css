@@ -1,10 +1,6 @@
-/* UI мапи: навігаційні кнопки й стан сервісу.
-   Усе збирається з токенів дизайн-системи (tokens.css) і живе в кутових
-   контейнерах Leaflet, тож жодна кнопка не позиціонується вручну. Єдиний
-   виняток — чіп аварії: він тримається центру, а такого кута в Leaflet
-   немає. */
 
-/* ── Кутові стопки ──────────────────────────────────────────────────── */
+
+
 
 .leaflet-top,
 .leaflet-bottom {
@@ -15,9 +11,7 @@
     padding-bottom: env(safe-area-inset-bottom, 16px);
 }
 
-/* Відступ від краю задає контейнер кута, а не кожен контрол: нова кнопка
-   просто стає в стопку й нічого не зсуває. Внизу лишається сама атрибуція
-   Leaflet — їй власні відступи не потрібні. */
+
 .leaflet-top.leaflet-left {
     padding: max(var(--map-inset), env(safe-area-inset-top)) 0 0
              max(var(--map-inset), env(safe-area-inset-left));
@@ -39,10 +33,7 @@
     margin-right: 0;
 }
 
-/* Плитка стану та свіжості даних і кнопка збою стоять у нижньому лівому куті,
-   і на телефоні теж: стан і час останніх даних та кнопка зворотного зв'язку
-   в єдиній горизонтальній лінії. Відступ від краю знову задає контейнер кута,
-   тож самі плитки про свій кут не знають. */
+
 .leaflet-bottom.leaflet-left {
     display: flex;
     flex-direction: row;
@@ -58,9 +49,7 @@
     margin: 0;
 }
 
-/* Правий нижній кут тримає атрибуцію карти й ліцензії. Відступ від краю
-   такий самий, як у лівої плитки оновлення: обидва кути стоять на одній
-   висоті й шанують безпечну зону (safe area). */
+
 .leaflet-bottom.leaflet-right {
     box-sizing: border-box;
     display: flex;
@@ -76,16 +65,13 @@
     margin: 0;
 }
 
-/* Кожна кнопка — окремий контрол Leaflet, тож стопку тримає той самий
-   --gap, що й решта системи. Розмір кнопки приходить токеном. */
+
 .leaflet-container {
     --control-h: var(--control-h-map);
     font-family: var(--font);
 }
 
-/* Leaflet фарбує будь-яке посилання всередині мапи у свій синій
-   (.leaflet-container a), тож контроли-посилання повертають собі колір
-   селектором не легшої ваги. */
+
 .leaflet-container .map-ctl {
     color: var(--ink);
 }
@@ -94,19 +80,14 @@
     color: var(--surface);
 }
 
-/* Тим самим селектором Leaflet вмикає посиланням блакитний спалах на тап
-   (сам контейнер він уже погасив). Решта сайту тапу не підсвічує — форма
-   натиснутого стану тут одна на всі сторінки. */
+
 .leaflet-container a {
     -webkit-tap-highlight-color: transparent;
 }
 
-/* ── Плитка ─────────────────────────────────────────────────────────── */
 
-/* Спільна основа всього UI мапи: біле поле, волосінь, радіус контрола й
-   тінь картки. Одне правило на всіх — інакше кнопки розійдуться, щойно в
-   системі зміниться радіус чи тінь. Селектор із .leaflet-touch повторює
-   вагу власних правил Leaflet, інакше вони перемагають. */
+
+
 .map-ctl,
 .leaflet-bar,
 .leaflet-touch .leaflet-bar {
@@ -117,7 +98,7 @@
     box-shadow: var(--shadow-card);
 }
 
-/* ── Кнопка ─────────────────────────────────────────────────────────── */
+
 
 .map-ctl {
     -webkit-appearance: none;
@@ -153,11 +134,7 @@
     outline-offset: 2px;
 }
 
-/* Кнопка з відкритою панеллю інвертується: поки панель на екрані, вона
-   не «одна з кнопок», а те, звідки панель узялася. Поле — те саме темне,
-   що в чіпа, а іконка перевертається сама, бо малюється currentColor.
-   Селектор із .leaflet-container не для краси: Leaflet фарбує будь-яке
-   посилання в мапі своїм кольором тією ж вагою. */
+
 .leaflet-container .map-ctl[aria-expanded="true"],
 .leaflet-container .map-ctl[aria-expanded="true"]:hover {
     background: var(--ink-solid);
@@ -165,10 +142,9 @@
     color: var(--surface);
 }
 
-/* ── Іконки ─────────────────────────────────────────────────────────── */
 
-/* Всі іконки побудовані в єдиній дизайн-системі з уніфікованою товщиною
-   штриха (2px), оптичною вагою та геометрією. Малюються маскою по currentColor. */
+
+
 .map-ctl-icon {
     width: var(--icon-size, 18px);
     height: var(--icon-size, 18px);
@@ -183,10 +159,7 @@
     flex: none;
 }
 
-/* Прапорець сповіщення про збій — Google Material Symbols Rounded (flag).
-   Налаштування варіативного шрифту, оптичного розміру й кеглю підібрані так,
-   щоб товщина штриха (1.5px) і пропорції іконки ідеально відповідали
-   сусіднім кнопкам мапи (зум та оновлення часу). */
+
 .map-ctl-icon--flag,
 .map-ctl .material-symbols-rounded {
     --icon-size: 20px;
@@ -219,21 +192,21 @@
     -webkit-user-select: none;
 }
 
-/* Хмарка сповіщення зі знаком оклику — збережено для зворотної сумісності */
+
 .map-ctl-icon--issue {
     --icon-size: 18px;
     -webkit-mask-image: url("../img/icons/issue-report-button-icon.svg");
     mask-image: url("../img/icons/issue-report-button-icon.svg");
 }
 
-/* Стрілка оновлення даних */
+
 .map-ctl-icon--refresh {
     --icon-size: 18px;
     -webkit-mask-image: url("../img/icons/refresh-button-icon.svg");
     mask-image: url("../img/icons/refresh-button-icon.svg");
 }
 
-/* Плюс і мінус масштабування */
+
 .map-ctl-icon--zoom-in,
 .map-ctl-icon--zoom-out {
     --icon-size: 18px;
@@ -249,11 +222,9 @@
     mask-image: url("../img/icons/zoom-out-button-icon.svg");
 }
 
-/* ── Зум ────────────────────────────────────────────────────────────── */
 
-/* «+» і «−» — одна функція, тож вони склеєні в одну групу, а інструменти
-   стоять окремими плитками. Селектори повторюють специфічність Leaflet
-   (.leaflet-touch .leaflet-bar), інакше його власні правила перемагають. */
+
+
 .leaflet-bar,
 .leaflet-touch .leaflet-bar {
     display: flex;
@@ -262,9 +233,7 @@
     overflow: hidden;
 }
 
-/* Клітинка квадратна, і бік їй дає ширина групи, а не --control-h: та
-   рахується з рамкою, тож кнопка зуму вийшла б на два пікселі вищою за
-   сусідні плитки. */
+
 .leaflet-bar a,
 .leaflet-touch .leaflet-bar a {
     box-sizing: border-box;
@@ -293,8 +262,7 @@
     background: var(--hairline-hover);
 }
 
-/* Leaflet підсвічує кнопку зуму ще й на :focus, тож після кліку мишею
-   вона лишалася б «наведеною». Фокус показує тільки :focus-visible. */
+
 .leaflet-bar a:focus,
 .leaflet-touch .leaflet-bar a:focus {
     background: transparent;
@@ -314,8 +282,7 @@
     outline-offset: -2px;
 }
 
-/* Далі нікуди. Приглушувати саму іконку не треба: вона малюється тим
-   самим currentColor і гасне разом із кнопкою. */
+
 .leaflet-bar a.leaflet-disabled,
 .leaflet-bar a.leaflet-disabled:hover,
 .leaflet-touch .leaflet-bar a.leaflet-disabled,
@@ -325,19 +292,14 @@
     cursor: default;
 }
 
-/* Плавна анімація масштабування для всіх шарів мапи: полотна MapLibre,
-   областей і маркерів, щоб підкладка й геометрія рухалися синхронно,
-   без різкого стартового ривка на великих екранах. */
+
 .leaflet-zoom-anim .leaflet-zoom-animated {
     -webkit-transition: -webkit-transform var(--motion-zoom);
     -moz-transition: -moz-transform var(--motion-zoom);
     transition: transform var(--motion-zoom);
 }
 
-/* Натиск відгукується одним поштовхом іконки — тим самим часом і тією ж
-   кривою, що їде мапа: кнопка й мапа роблять один жест. Клас знімає сам
-   кінець анімації, тож іконка не лишається роздутою після того, як зум
-   уже стався, а другий натиск поспіль починає рух з нуля. */
+
 .leaflet-bar a.is-pressed .map-ctl-icon,
 .map-ctl.is-pressed .map-ctl-icon {
     transform-origin: center;
@@ -345,10 +307,7 @@
     animation: map-zoom-press var(--motion-zoom);
 }
 
-/* Порожні 0% і 100% браузер бере з самого елемента: іконка виростає з
-   власного розміру й у нього ж повертається. Назад вона йде довше, ніж
-   росла, і власною кривою: різкий виїзд читається як відповідь на натиск,
-   різке повернення — як смикання. */
+
 @keyframes map-zoom-press {
     40% {
         transform: scale(1.28);
@@ -356,11 +315,9 @@
     }
 }
 
-/* ── Плитка часу та оновлення даних ──────────────────────────────────── */
 
-/* Єдина плитка з текстом у полі: кругла іконка оновлення ліворуч та час
-   моно-шрифтом JetBrains Mono праворуч. Вся плитка клікабельна для
-   перезавантаження даних мапи без переходів на зовнішні сторінки. */
+
+
 .map-ctl--time,
 .map-ctl--status {
     position: relative;
@@ -402,10 +359,7 @@
     to { transform: rotate(360deg); }
 }
 
-/* Час набрано моноширинним шрифтом JetBrains Mono.
-   Розмір (12.5px), насиченість (600) та інтерліньяж тонко налаштовані
-   для ідеального оптичного вирівнювання по вертикалі з іконкою оновлення (18px)
-   та сусідніми кнопками (18px). */
+
 .map-sync-time {
     display: inline-flex;
     align-items: center;
@@ -422,10 +376,7 @@
     -webkit-user-select: none;
 }
 
-/* Новий час не підмінює старий беззвучно: коротке проявлення знизу — те
-   саме, яким приходить чіп. Анімується лише справжня зміна: відповіді
-   приходять щокілька секунд, а хвилина на плитці міняється рідше, і
-   блимати щотакту їй нема з чого. */
+
 .map-sync-time.is-fresh {
     will-change: transform, opacity;
     animation: map-sync-stamp var(--motion);
@@ -438,18 +389,9 @@
     }
 }
 
-/* ── Чіп аварії ─────────────────────────────────────────────────────── */
 
-/* Крапка 8px показує стан, але кричати не вміє. Коли сервіс ліг або дані
-   застигли, говорить чіп — той самий, що показує стан години на статус-
-   сторінці: темне поле, моно-капітель, крапка стану. Поле нейтральне, а
-   не червоне: чіп не має сперечатися з тривогами під ним.
 
-   Чіп не контрол Leaflet — він не стоїть у кутовій стопці, а тримається
-   центру всієї ширини екрана незалежно від розташування кнопок мапи,
-   тож живе прямо в контейнері мапи. Обгортка лишається в DOM
-   завжди: порожній aria-live має існувати заздалегідь, інакше поява
-   тексту не озвучиться. */
+
 .map-chip-live {
     position: absolute;
     top: max(var(--map-inset), env(safe-area-inset-top));
@@ -471,9 +413,7 @@
     padding: 0 10px;
     border-radius: var(--radius-control-sm, 8px);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    /* Флекс-елемент за замовчуванням не вужчий за свій nowrap-текст, а
-       min-width сильніший за max-width — без нуля чіп не стискався б і
-       їхав за край. */
+    
     min-width: 0;
     max-width: 100%;
     background: var(--ink-solid);
@@ -500,13 +440,13 @@
     will-change: transform, opacity;
 }
 
-/* Плавна поява зверху вниз: опускається з translateY(-20px) до translateY(0) */
+
 .map-chip.is-visible {
     opacity: 1;
     transform: translateY(0);
 }
 
-/* Плавний ухід знизу вверх: піднімається з translateY(0) до translateY(-20px) */
+
 .map-chip.is-leaving {
     opacity: 0;
     transform: translateY(-20px);
@@ -514,16 +454,14 @@
                 transform 0.22s cubic-bezier(0.4, 0, 1, 1);
 }
 
-/* Текст чіпа приходить зі статус-сторінки, тож його довжина не в нашій
-   владі: на вузькому екрані він радше вкоротиться, ніж поїде за край. */
+
 .map-chip-text {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-/* display у чіпа свій, тож браузерне [hidden] { display: none } він
-   перебиває: ховати доводиться явно. */
+
 .map-chip[hidden] {
     display: none;
 }
@@ -544,7 +482,7 @@
     outline-offset: 2px;
 }
 
-/* Крапка узгоджена з тултипом статус-сторінки (6px). Тут вона не дихає: чіпу є що сказати словами. */
+
 .map-chip-dot {
     flex: none;
     width: 6px;
@@ -561,13 +499,9 @@
 .map-chip[data-state="offline"] .map-chip-dot { background: var(--status-gray-bar); }
 .map-chip[data-state="beta"] .map-chip-dot    { background: var(--status-blue-bar); }
 
-/* ── Атрибуція мапи ─────────────────────────────────────────────────── */
 
-/* Плашка атрибуції зібрана з токенів системи: біле поле, тонка волосінь,
-   радіус вкладеного елемента (--radius-nested, пропорційне заокруглення кутів
-   без перетворення плашки на овал) та тінь картки (--shadow-card) —
-   ті самі кольори, волосінь і тіні, що й для решти кнопок на головній мапі.
-   Розмір компактний, щоб не перевантажувати кут мапи. */
+
+
 .leaflet-container .leaflet-control-attribution {
     box-sizing: border-box;
     display: inline-block;
@@ -587,8 +521,7 @@
     user-select: none;
 }
 
-/* Посилання в атрибуції: спокійний сірий тон замість синього Leaflet,
-   із проявом до чорного на наведенні */
+
 .leaflet-container .leaflet-control-attribution a {
     color: var(--ink-muted);
     text-decoration: none;
@@ -600,21 +533,21 @@
     text-decoration: underline;
 }
 
-/* Розділювач між провайдерами */
+
 .map-attribution-divider {
     display: inline-block;
     margin: 0 5px;
     color: var(--ink-muted);
 }
 
-/* Вертикальний розділювач Leaflet (|) */
+
 .leaflet-container .leaflet-control-attribution span[aria-hidden="true"]:not(.map-attribution-divider) {
     margin: 0 4px;
     color: var(--hairline-hover);
     font-weight: 300;
 }
 
-/* Прапорець України в префіксі Leaflet */
+
 .leaflet-control-attribution .leaflet-attribution-flag {
     display: inline-block;
     vertical-align: -1px;
@@ -624,12 +557,9 @@
     border-radius: 1px;
 }
 
-/* ── Поява ──────────────────────────────────────────────────────────── */
 
-/* Контроли додає скрипт, а не розмітка, тож на оновленій сторінці вони
-   вискакують поверх уже намальованої підкладки. Проявлення без руху:
-   стопка стоїть у кутку, з якого їй нема звідки приїхати. Воно довше за
-   решту переходів — це перший кадр сторінки, а не відповідь на натиск. */
+
+
 .leaflet-control {
     animation: map-ctl-in 0.3s ease-out;
 }
@@ -638,11 +568,9 @@
     from { opacity: 0; }
 }
 
-/* ── Дотик ──────────────────────────────────────────────────────────── */
 
-/* Пальцем не «наводять»: без цього скидання кнопка лишалася б підсвіченою
-   після тапу, доки не тапнеш деінде. Натиснутий стан лишається — він
-   триває рівно поки триває дотик. Те саме роблять /issue і статус. */
+
+
 @media (hover: none) {
     .map-ctl:hover {
         background: var(--surface);
@@ -694,16 +622,14 @@
         transform: none;
     }
 
-    /* Зум лишається, зникає лише поїздка: саме великий рух під усім
-       екраном і заважає тим, хто просив його прибрати. */
+    
     .leaflet-zoom-anim .leaflet-zoom-animated {
         -webkit-transition: none;
         -moz-transition: none;
         transition: none;
     }
 
-    /* Замість оберту — притлумлена іконка: запит усе одно має бути видно,
-       просто не рухом. */
+    
     .map-ctl--time[aria-busy="true"] .map-ctl-icon--refresh,
     .map-ctl--status[aria-busy="true"] .map-ctl-icon--refresh,
     .map-ctl--refresh[aria-busy="true"] .map-ctl-icon--refresh {

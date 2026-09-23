@@ -1,17 +1,4 @@
-/* Експериментальна мапа тривог за районами (District-level alert map).
-   Реалізує дворівневу геометрію:
-   1. Нижній шар: контури областей на pane 'oblastPane' (z-index 350)
-      для пізнаваного каркаса країни.
-   2. Верхній шар: інтерактивні полігони окремих районів України із плавною
-      підсвіткою при наведенні та персистентним виділенням без мерехтіння.
-   3. Попапи районів за усталеною дизайн-системою головної версії:
-      - Головний заголовок: Inter, назва району.
-      - Підзаголовок: JetBrains Mono, назва області.
-      - Фіксований розмір кожного попапа (310px).
-      - Вивірені типографічні відступи (2px між назвою району та області, 10px до першої плашки).
-      - Верстка з Telegram-каналом (відступ 8px) та без нього (без зайвого простору внизу).
-      - Без скролбарів.
-*/
+
 
 (function () {
     'use strict';
@@ -23,8 +10,8 @@
     let selectedDistrictLayer = null;
     const districtLayersById = {};
 
-    // Суворо фіксовані розміри попапа з точним позиціонуванням:
-    // offset: [0, 8] — вістря попапа влучає строго в точку кліку на мапі/районі
+    
+    
     const districtPopupOptions = {
         maxWidth: 310,
         minWidth: 310,
@@ -33,7 +20,7 @@
         offset: [0, 8]
     };
 
-    // offset: [0, -2] — невеликий охайний простір (~3px) між маркером та вістрям попапа
+    
     const markerPopupOptions = {
         maxWidth: 310,
         minWidth: 310,
@@ -46,7 +33,7 @@
 
     const SCENARIOS = {};
 
-    /* ── Смуги зума ─────────────────────────────────────────────────── */
+    
     const ZOOM_BANDS = [
         { upTo: 5, name: 'wide' },
         { upTo: 6, name: 'far' },
@@ -63,7 +50,7 @@
         }
     }
 
-    /* ── Визначення стану окремого району ───────────────────────────── */
+    
     function getDistrictState(apiData, oblastId, districtId) {
         if (!apiData || !oblastId || !districtId) return 'idle';
 
@@ -99,7 +86,7 @@
         return 'idle';
     }
 
-    /* ── Кнопка підписки на сповіщення в Telegram ────────────────────── */
+    
     function subscribeButtonHtml(channel) {
         if (!channel) return '';
         return `
@@ -115,12 +102,12 @@
             </div>`;
     }
 
-    /* ── Визначення стану контуру всієї області ─────────────────────── */
+    
     function getOblastOutlineState(apiData, oblastId) {
         return 'idle';
     }
 
-    /* ── Попап для району за усталеною дизайн-системою ─────────────────── */
+    
     function getDistrictPopupContent(feature, apiData) {
         if (!feature || !feature.properties) return '';
         const districtId = feature.properties.id;
@@ -154,7 +141,7 @@
 
         const pillState = districtPillStateFn(districtData);
 
-        // Пошук каналу у переліку маркерів (тільки для районів із налаштованим оповіщенням)
+        
         const markersList = typeof DISTRICT_MARKERS !== 'undefined'
             ? DISTRICT_MARKERS
             : (typeof require !== 'undefined' ? require('./districts.js').DISTRICT_MARKERS : []);
@@ -172,7 +159,7 @@
         `.trim();
     }
 
-    /* ── Плавне персистентне виділення району без мерехтіння ─────────── */
+    
     function setSelectedDistrict(layer) {
         if (!layer || selectedDistrictLayer === layer) return;
 
@@ -200,7 +187,7 @@
         }
     }
 
-    /* ── Точки міст мовлення ────────────────────────────────────────── */
+    
     const PIN_SIZE = 12;
 
     const PIN_STATES = {
@@ -272,7 +259,7 @@
         });
     }
 
-    /* Уніфікований попап для міст/районів без окремого дублюючого попапа */
+    
     function getMarkerPopupContent(marker, threats) {
         const feat = (geoDistrictsData && geoDistrictsData.features)
             ? geoDistrictsData.features.find(f => f.properties.id === marker.district)
@@ -287,11 +274,7 @@
             || (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches);
     }
 
-    /* Знаходження маркера поблизу точки кліку:
-       - На мобільному: більший радіус (28px) під дотик пальця
-       - На десктопі: невеликий радіус (14px) для точного кліку поруч із маркером
-       - Якщо передано districtId: шукаємо тільки маркер цього конкретного району,
-         щоб клік по сусідньому району не чіпляв чужий якорний маркер */
+    
     function findNearbyMarker(latlng, targetMap, districtId) {
         if (!latlng || !targetMap || !targetMap.latLngToContainerPoint) return null;
         const markersList = typeof DISTRICT_MARKERS !== 'undefined'
@@ -316,7 +299,7 @@
         return nearest;
     }
 
-    /* Відкриття єдиного попапа району безпосередньо над точкою міста */
+    
     function openDistrictPopupForMarker(marker, targetMap) {
         const m = targetMap || (typeof map !== 'undefined' ? map : (typeof window !== 'undefined' ? window.sirensMap : null));
         if (!m || !marker) return;
@@ -395,7 +378,7 @@
                 zIndexOffset: (PIN_STATES[state] || PIN_STATES.idle).lift
             });
 
-            // Окремий поп-ап маркера прибрано: клік по маркеру відкриває попап над маркером
+            
             layer.on('click', function (e) {
                 if (e && e.originalEvent && typeof L !== 'undefined' && L.DomEvent) {
                     L.DomEvent.stopPropagation(e.originalEvent);
@@ -430,7 +413,7 @@
         }
     }
 
-    /* ── Побудова шарів ──────────────────────────────────────────────── */
+    
     function initDistrictMap(map, districtsGeo, oblastsGeo) {
         if (!map) return;
 
@@ -471,8 +454,8 @@
                     return getDistrictPopupContent(feature, apiData);
                 }, districtPopupOptions);
 
-                // Якщо клік поруч із маркером (14px десктоп, 28px мобільний) — відкриваємо над маркером,
-                // інакше — відкриваємо точно за координатами кліку на районі.
+                
+                
                 layer.off('click', layer._openPopup, layer);
                 layer.on('click', function (e) {
                     if (e && e.originalEvent && typeof L !== 'undefined' && L.DomEvent) {
@@ -516,7 +499,7 @@
         }
     }
 
-    /* ── Картографічна ієрархія штрихів ──────────────────────────────── */
+    
     const STROKE_ORDER = {
         idle: 0,
         yellow: 1,
@@ -562,7 +545,7 @@
         }
     }
 
-    /* ── Оновлення кольорів при зміні даних ───────────────────────────── */
+    
     function paintDistricts(apiData) {
         if (!apiData) return;
 
@@ -604,7 +587,7 @@
         paintCities(apiData);
     }
 
-    /* ── Завантаження геометрії та старт ──────────────────────────────── */
+    
     function loadAndInit() {
         const map = window.sirensMap;
         if (!map) {

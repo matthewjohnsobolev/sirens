@@ -382,8 +382,8 @@ function trackForm(name, params) {
   }, params || {}));
 }
 
-// Початок заповнення рахуємо один раз на спробу: далі кожен символ у
-// коментарі слав би ту саму подію.
+
+
 function trackFormStart() {
   if (formStarted) return;
   formStarted = true;

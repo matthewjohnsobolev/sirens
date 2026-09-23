@@ -311,15 +311,15 @@ order by 1
 ```
 
 <LineChart
-    data={daily_total}
-    x=date
-    y=total
-    lineColor="#2f9e44"
-    yAxisTitle="subscribers"
-    yScale=true
-    markers=true
-    chartAreaHeight=280
-    echartsOptions={{
+data={daily_total}
+x=date
+y=total
+lineColor="#2f9e44"
+yAxisTitle="subscribers"
+yScale=true
+markers=true
+chartAreaHeight=280
+echartsOptions={{
         useUTC: true,
         series: [
             {
@@ -488,13 +488,13 @@ order by 1
 ```
 
 <Chart
-    data={alert_impact}
-    x=date
-    y="net_change"
-    chartAreaHeight=280
-    yAxisTitle="net change"
-    y2AxisTitle="alerts"
-    echartsOptions={{
+data={alert_impact}
+x=date
+y="net_change"
+chartAreaHeight=280
+yAxisTitle="net change"
+y2AxisTitle="alerts"
+echartsOptions={{
         useUTC: true,
         grid: {
             top: 48,
@@ -641,8 +641,11 @@ order by 1
             }
         }
     }}
+
 >
+
     <Bar
+
         y="Yellow Alerts"
         name="Yellow Alerts"
         stackName="alerts"
@@ -662,6 +665,7 @@ order by 1
         lineColor="#22c55e"
         lineWidth=2
     />
+
 </Chart>
 
 ## Daily Channel Movement
@@ -761,15 +765,15 @@ order by change desc, later.display_name
 ```
 
 <BarChart
-    data={movement}
-    x=display_name
-    y=change
-    series=direction
-    seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
-    swapXY=true
-    sort=false
-    yAxisTitle="change in subscribers"
-    echartsOptions={{xAxis: {minInterval: 1}}}
+data={movement}
+x=display_name
+y=change
+series=direction
+seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
+swapXY=true
+sort=false
+yAxisTitle="change in subscribers"
+echartsOptions={{xAxis: {minInterval: 1}}}
 />
 
 ## Subscribers by Channel
@@ -825,12 +829,12 @@ order by later.subscribers desc
 ```
 
 <BarChart
-    data={by_channel}
-    x=display_name
-    y=subscribers
-    swapXY=true
-    yAxisTitle="subscribers"
-    echartsOptions={{
+data={by_channel}
+x=display_name
+y=subscribers
+swapXY=true
+yAxisTitle="subscribers"
+echartsOptions={{
         tooltip: {
             formatter: (params) => {
                 const point = Array.isArray(params) ? params[0] : params;
@@ -872,18 +876,18 @@ order by change_7d_pct desc
 ```
 
 <BarChart
-    data={channel_growth}
-    x=display_name
-    y=change_7d_pct
-    yFmt=pct1
-    series=direction
-    seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
-    swapXY=true
-    sort=false
-    yAxisTitle="7-day growth"
-    emptySet=pass
-    emptyMessage="No channel has a full week of history yet"
-    echartsOptions={{
+data={channel_growth}
+x=display_name
+y=change_7d_pct
+yFmt=pct1
+series=direction
+seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
+swapXY=true
+sort=false
+yAxisTitle="7-day growth"
+emptySet=pass
+emptyMessage="No channel has a full week of history yet"
+echartsOptions={{
         tooltip: {
             formatter: (params) => {
                 const point = Array.isArray(params) ? params[0] : params;

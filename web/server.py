@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import os
+import re
 import threading
 import time
 from functools import cache
@@ -134,8 +135,6 @@ def status() -> Any:
     return redirect("https://status.sirens.live", code=301)
 
 
-# The pages this origin serves. The status page is a separate host and ships its
-# own pair of files: a sitemap may only list URLs under the origin serving it.
 SITEMAP_PATHS = ("/", "/issue")
 
 
@@ -228,17 +227,14 @@ def _clean_report_form(form: Any) -> tuple[dict[str, str], str]:
         else:
             return {}, "Вкажіть, будь ласка, дату і час."
     elif time_val and time_val not in TIME_NAMES:
-        import re
-
         if not re.match(
             r"^(?:(?:\d{4}-\d{2}-\d{2}|\d{1,2}\s+[^\d\s]+)\s+)?(?:[01]?\d|2[0-3]):[0-5]\d$",
             time_val,
         ):
             return {}, "Оберіть, будь ласка, коли це сталося."
 
-    if category in ("Сповіщення", "Мапа тривог"):
-        if not time_val:
-            return {}, "Оберіть, будь ласка, коли це сталося."
+    if category in ("Сповіщення", "Мапа тривог") and not time_val:
+        return {}, "Оберіть, будь ласка, коли це сталося."
 
     if category == "Сповіщення" and not city:
         return {}, "Будь ласка, вкажіть місто."

@@ -1,10 +1,10 @@
 (function () {
     'use strict';
 
-    // В iOS Safari у режимі standalone перехід за звичайним посиланням <a>
-    // на інший піддомен (status.sirens.live) за замовчуванням відкриває Mobile Safari.
-    // Програмний перехід через window.location.href утримує навігацію
-    // всередині того самого standalone-вікна PWA.
+    
+    
+    
+    
     var isStandalone = ('standalone' in window.navigator && window.navigator.standalone) ||
                        (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
 

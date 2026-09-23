@@ -264,7 +264,6 @@ def ensure_pg_tables() -> None:
                     END $$;
                 """)
 
-                # Check if channel_stats or subscribers table exists for legacy migration
                 cur.execute("""
                     SELECT 1 FROM information_schema.tables
                     WHERE table_name = 'channel_stats' AND table_type = 'BASE TABLE'
@@ -590,20 +589,19 @@ async def update_alert_status(
 
 def rehydrate_state_from_db() -> None:
     try:
-        with get_pg_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT DISTINCT ON (district)
-                        COALESCE(district, '') as district,
-                        event_type,
-                        level,
-                        recorded_at,
-                        source
-                    FROM alert_history
-                    WHERE district IS NOT NULL
-                    ORDER BY district, recorded_at DESC
-                """)
-                rows = cur.fetchall()
+        with get_pg_conn() as conn, conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT ON (district)
+                    COALESCE(district, '') as district,
+                    event_type,
+                    level,
+                    recorded_at,
+                    source
+                FROM alert_history
+                WHERE district IS NOT NULL
+                ORDER BY district, recorded_at DESC
+            """)
+            rows = cur.fetchall()
     except Exception:
         log.exception("Failed to query alert_history for rehydration")
         raise
@@ -726,30 +724,30 @@ def get_all_threats_data() -> dict[str, Any]:
     for district, alert_raw, shelling_raw in zip(
         districts, alerts_results, shellings_results, strict=False
     ):
-        alert_raw = alert_raw or {}
-        shelling_raw = shelling_raw or {}
+        alert_data = alert_raw or {}
+        shelling_data = shelling_raw or {}
 
-        alert_type = alert_raw.get("type", "")
+        alert_type = alert_data.get("type", "")
         if alert_type.endswith("_cancelled") or alert_type in (
             "threat_of_shelling",
             "threat_of_shelling_cancelled",
         ):
             alert_active = False
         else:
-            alert_active = _normalize_status(alert_raw.get("status", False))
+            alert_active = _normalize_status(alert_data.get("status", False))
 
         alert_dict = {
             "status": alert_active,
-            "level": _resolve_alert_level(alert_raw) if alert_active else None,
-            "updated_at": _clean_updated_at(alert_raw.get("updated_at")),
-            "source": _clean_source(alert_raw.get("source")),
+            "level": _resolve_alert_level(alert_data) if alert_active else None,
+            "updated_at": _clean_updated_at(alert_data.get("updated_at")),
+            "source": _clean_source(alert_data.get("source")),
         }
 
-        shelling_active = _normalize_status(shelling_raw.get("status", False))
+        shelling_active = _normalize_status(shelling_data.get("status", False))
         shelling_dict = {
             "status": shelling_active,
-            "updated_at": _clean_updated_at(shelling_raw.get("updated_at")),
-            "source": _clean_source(shelling_raw.get("source")),
+            "updated_at": _clean_updated_at(shelling_data.get("updated_at")),
+            "source": _clean_source(shelling_data.get("source")),
         }
 
         district_map[district] = {

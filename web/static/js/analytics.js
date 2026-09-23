@@ -1,23 +1,23 @@
 (function () {
     'use strict';
 
-    // Хелпер приходить з _analytics.html і мовчить, коли gtag.js вирізав
-    // блокувальник. Перевірка лишається на випадок, коли сторінку віддали
-    // без партіала: аналітика не повинна ламати мапу.
+    
+    
+    
     function send(name, params) {
         if (window.track) window.track(name, params);
     }
 
-    // Стан плашка називає атрибутом, а не класом: класи — це про колір, а
-    // кольори станів на мапі вже мінялися місцями. Подія має рахувати
-    // «червоний рівень тривоги», а не «червону кнопку».
+    
+    
+    
     function pillState(link) {
         var button = link.querySelector('button');
         return (button && button.getAttribute('data-state')) || 'unknown';
     }
 
-    // Район усередині обласного попапа має власну назву, місто — свою,
-    // область — свою. Беремо найточнішу з наявних.
+    
+    
     function regionName(node) {
         var city = node.closest('.popup-city');
         var name = city && city.querySelector('.popup-city-name');

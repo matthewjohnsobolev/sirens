@@ -792,7 +792,6 @@ def _apply_and_print(
         console.print(f"[red]error updating status:[/] {e}")
         sys.exit(1)
 
-    # Optional Telegram broadcast
     broadcast_msg = ""
     if broadcast:
         target_cid = res.get("channel_id")
@@ -819,7 +818,6 @@ def _apply_and_print(
                 console.print(f"[red]error broadcasting to Telegram:[/] {e}")
                 sys.exit(1)
 
-    # Clean Key-Value card format
     conf = resolved[1] if resolved else None
     target_type = format_target_type(district_key, conf)
     target_val = f"{district_key} ({target_type})"
@@ -848,9 +846,6 @@ def _apply_and_print(
     console.print(f"{'BY':<12}{by_val}")
     if broadcast:
         console.print(f"{'BROADCAST':<12}{broadcast_msg}")
-
-
-# --- Threat commands: alert on/off, shelling on/off ---
 
 
 @cli.command(name="alert", cls=AlertCommand, context_settings=CONTEXT_SETTINGS)
@@ -922,7 +917,7 @@ def alert_cmd(
             )
         active = True
         alert_level = val_lower
-    else:  # "on"
+    else:
         active = True
         alert_level = level.lower() if level else None
 
@@ -998,9 +993,6 @@ def shelling_cmd(
         broadcast=broadcast,
         yes=yes,
     )
-
-
-# --- Inspection and query commands ---
 
 
 @cli.command(name="status", cls=StatusCommand, context_settings=CONTEXT_SETTINGS)
@@ -1121,9 +1113,6 @@ def metrics_cmd(ctx: click.Context):
 
     data = metrics.collect_all_metrics()
     print_metrics(data)
-
-
-# --- Maintenance (planned works) commands ---
 
 
 def print_mnt_schedule(windows: list[dict[str, Any]]) -> None:
@@ -1268,7 +1257,6 @@ def mnt_status_cmd(ctx: click.Context, show_all: bool):
     print_mnt_schedule(windows)
 
 
-# Backward compatibility alias: mnt ls -> mnt status
 mnt_group.add_command(
     click.Command(
         name="ls",
@@ -1324,5 +1312,4 @@ def mnt_off_cmd(ctx: click.Context, window_id: str | None):
     ctx.invoke(mnt_done_cmd, window_id=window_id)
 
 
-# Register maintenance alias for mnt
 cli.add_command(mnt_group, name="maintenance")

@@ -3,10 +3,7 @@
                  Consolas, 'Liberation Mono', monospace;
     --pill-time-color: var(--ink-muted, #757575);
 
-    /* Вибухи мапа поки не малює (RENDER_EXPLOSIONS у districts.js), але
-       стан нікуди не подівся — і колір йому потрібен свій. Червоний уже
-       забрав червоний рівень тривоги, тож вибухи говорять глибшим
-       відтінком: якщо стан повернуть, два червоних мають розрізнятися. */
+    
     --status-crimson: #FF9E9E;
     --status-crimson-hover: #FFACAC;
 }
@@ -34,10 +31,7 @@
     margin-bottom: 10px;
 }
 
-/* Плашка одна на всі стани, а стан міняє тільки колір поля. Раніше кожен
-   стан мав власне правило з повним набором метрик — і коли кольори
-   переїхали між станами, шість однакових копій довелося б правити шість
-   разів. */
+
 .oblast-pill {
     font-family: 'Inter', sans-serif;
     font-size: var(--text-helper);
@@ -167,7 +161,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     margin-right: -10px;
-    /* Prevent scroll chaining to the underlying map */
+    
     touch-action: pan-y;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -204,11 +198,7 @@
     margin-bottom: 0;
 }
 
-/* Скролбар під хрестиком попапа: винесений у правий відступ (margin-right: -10px)
-   прямо під кнопку закриття попапа, щоб плашки й текст лишалися окремим блоком.
-   На великих екранах борозна скролбара тонка (2px) і проходить по центру під
-   акуратним бігунком (4px). На мобільних екранах (<=600px) діє класична акуратна
-   борозенка шириною 4px, усередині якої рухається бігунок 4px. */
+
 .scrollable-content::-webkit-scrollbar {
     width: 4px;
 }
@@ -231,7 +221,7 @@
     background: #737373;
 }
 
-/* Firefox fallback for custom scrollbar (isolated to avoid overriding ::-webkit-scrollbar in Chrome 121+) */
+
 @supports not selector(::-webkit-scrollbar) {
     .scrollable-content {
         scrollbar-width: thin;
@@ -239,9 +229,7 @@
     }
 }
 
-/* Коли активний кастомний скролбар (на iOS Safari та в браузерах із JS),
-   приховуємо нативний і додаємо правий відступ для компенсації ширини скролбара,
-   щоб плашки мали ширину рівно 310px */
+
 .container.is-live .scrollable-content {
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -326,7 +314,7 @@
     }
 }
 
-/* Мобільні екрани: класична акуратна борозенка 4px, усередині якої їздить бігунок 4px */
+
 @media only screen and (max-width: 600px) {
     .scrollable-content::-webkit-scrollbar {
         width: 4px;

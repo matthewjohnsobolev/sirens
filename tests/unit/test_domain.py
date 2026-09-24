@@ -64,7 +64,7 @@ def test_domain_broadcast_triggers_keep_the_oblast_name():
 
 
 def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
-    """Kharkiv and Zaporizhzhia must only trigger on city names, not district names."""
+    """Kharkiv and Zaporizhzhia must only trigger on city names and community forms, not district names."""
     expected_kharkiv = [
         "м. Харків",
         "Харків",
@@ -75,6 +75,10 @@ def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
         "місті Харкові",
         "м.Харків",
         "м Харків",
+        "Харківська територіальна громада",
+        "Харківська міська територіальна громада",
+        "Харківська громада",
+        "Харківська ТГ",
     ]
     assert domain.DISTRICT_CONFIG["kharkiv"]["triggers"] == expected_kharkiv
     assert "Харківський район" not in domain.DISTRICT_CONFIG["kharkiv"]["triggers"]
@@ -88,6 +92,10 @@ def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
         "місті Запоріжжі",
         "м.Запоріжжя",
         "м Запоріжжя",
+        "Запорізька територіальна громада",
+        "Запорізька міська територіальна громада",
+        "Запорізька громада",
+        "Запорізька ТГ",
     ]
     assert domain.DISTRICT_CONFIG["zaporizhzhia"]["triggers"] == expected_zaporizhzhia
     assert "Запорізький район" not in domain.DISTRICT_CONFIG["zaporizhzhia"]["triggers"]
@@ -102,6 +110,20 @@ def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
     assert "Запорізький район" not in domain.REGION_CONFIG["zaporizhzhia"]["triggers"]
     assert "Харківська область" in domain.REGION_CONFIG["kharkiv"]["triggers"]
     assert "Запорізька область" in domain.REGION_CONFIG["zaporizhzhia"]["triggers"]
+
+
+def test_domain_khmilnyk_triggers_include_community_forms():
+    """Khmilnyk district triggers must include city and community forms used by the official channel."""
+    triggers = domain.DISTRICT_CONFIG["khmilnyk"]["triggers"]
+    assert "Хмільницький район" in triggers
+    assert "м. Хмільник" in triggers
+    assert "Хмільник" in triggers
+    assert "Хмільнику" in triggers
+    assert "місто Хмільник" in triggers
+    assert "Хмільницька територіальна громада" in triggers
+    assert "Хмільницька міська територіальна громада" in triggers
+    assert "Хмільницька громада" in triggers
+    assert "Хмільницька ТГ" in triggers
 
 
 def test_domain_donetsk_oblast_districts():

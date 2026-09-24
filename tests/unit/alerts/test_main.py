@@ -704,11 +704,55 @@ def _expected_records(districts, alert_type):
         ),
         pytest.param("Some random text", [], id="no-region-match"),
         pytest.param("м. Київ погода сьогодні гарна", [], id="region-without-alert-keyword"),
+        pytest.param(
+            "🔴 Харківська територіальна громада (Харківська обл.)\nПовітряна тривога. Прямуйте в укриття!",
+            [(3333, "kharkiv", "air_raid_alert")],
+            id="kharkiv-community-alert",
+        ),
+        pytest.param(
+            "🟢 Харківська територіальна громада (Харківська обл.)\nВідбій тривоги.",
+            [(3333, "kharkiv", "air_raid_alert_cancelled")],
+            id="kharkiv-community-cancellation",
+        ),
+        pytest.param(
+            "🔴 Запорізька територіальна громада (Запорізька обл.)\nПовітряна тривога. Прямуйте в укриття!",
+            [(4444, "zaporizhzhia", "air_raid_alert")],
+            id="zaporizhzhia-community-alert",
+        ),
+        pytest.param(
+            "🟢 Запорізька територіальна громада (Запорізька обл.)\nВідбій тривоги.",
+            [(4444, "zaporizhzhia", "air_raid_alert_cancelled")],
+            id="zaporizhzhia-community-cancellation",
+        ),
+        pytest.param(
+            "🔴 Хмільницька територіальна громада (Вінницька обл.)\nПовітряна тривога. Прямуйте в укриття!",
+            [(5555, "khmilnyk", "air_raid_alert")],
+            id="khmilnyk-community-alert",
+        ),
+        pytest.param(
+            "🟢 Хмільницька територіальна громада (Вінницька обл.)\nВідбій тривоги.",
+            [(5555, "khmilnyk", "air_raid_alert_cancelled")],
+            id="khmilnyk-community-cancellation",
+        ),
+        pytest.param(
+            "🔴 м. Хмільник (Вінницька обл.)\nПовітряна тривога. Прямуйте в укриття!",
+            [(5555, "khmilnyk", "air_raid_alert")],
+            id="khmilnyk-city-alert",
+        ),
     ],
 )
 async def test_build_message_handler_dispatches_correct_alert(message_text, expected_calls):
     assert (
-        await _dispatch(message_text, {"kyiv": 1111, "nikopol": 2222})
+        await _dispatch(
+            message_text,
+            {
+                "kyiv": 1111,
+                "nikopol": 2222,
+                "kharkiv": 3333,
+                "zaporizhzhia": 4444,
+                "khmilnyk": 5555,
+            },
+        )
     ).broadcast == expected_calls
 
 

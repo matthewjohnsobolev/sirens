@@ -25,16 +25,43 @@ def test_normalize_geo_name():
 def test_geo_resolver_static_mappings():
     resolver = UkraineAlarmGeoResolver()
     assert resolver.state_id_to_oblast.get("31") == "kyiv"
-    assert resolver.state_id_to_oblast.get("10") == "kyiv_oblast"
-    assert resolver.state_id_to_oblast.get("11") == "dnipropetrovsk_oblast"
+    assert resolver.state_id_to_oblast.get("14") == "kyiv_oblast"
+    assert resolver.state_id_to_oblast.get("9") == "dnipropetrovsk_oblast"
+    assert resolver.state_id_to_oblast.get("4") == "vinnytsia_oblast"
+    assert resolver.state_id_to_oblast.get("22") == "kharkiv_oblast"
+    assert resolver.state_id_to_oblast.get("12") == "zaporizhzhia_oblast"
 
     districts = resolver.resolve_districts_for_region("id_bucha", "District", "Бучанський район")
     assert districts == ["bucha"]
 
-    districts_nikopol = resolver.resolve_districts_for_region(
-        "id_nikopol", "District", "Нікопольський район"
+    districts_khmilnyk = resolver.resolve_districts_for_region(
+        "34", "District", "Хмільницький район"
     )
-    assert districts_nikopol == ["nikopol"]
+    assert districts_khmilnyk == ["khmilnyk"]
+
+    # Cities: city matches, but district does not trigger city
+    assert resolver.resolve_districts_for_region("id_nikopol_city", "Community", "м. Нікополь") == [
+        "nikopol"
+    ]
+    assert (
+        resolver.resolve_districts_for_region("id_nikopol_dist", "District", "Нікопольський район")
+        == []
+    )
+
+    assert resolver.resolve_districts_for_region("id_kharkiv_city", "State", "м. Харків") == [
+        "kharkiv"
+    ]
+    assert (
+        resolver.resolve_districts_for_region("id_kharkiv_dist", "District", "Харківський район")
+        == []
+    )
+
+    assert resolver.resolve_districts_for_region("id_zp_city", "State", "м. Запоріжжя") == [
+        "zaporizhzhia"
+    ]
+    assert (
+        resolver.resolve_districts_for_region("id_zp_dist", "District", "Запорізький район") == []
+    )
 
 
 def test_geo_resolver_load_regions_tree():
@@ -42,7 +69,7 @@ def test_geo_resolver_load_regions_tree():
     payload = {
         "states": [
             {
-                "regionId": "10",
+                "regionId": "14",
                 "regionName": "Київська область",
                 "regionType": "State",
                 "regionChildIds": [
@@ -76,7 +103,7 @@ def test_geo_resolver_load_regions_tree():
 
     resolver.load_regions_tree(payload)
 
-    assert resolver.resolve_districts_for_region("10", "State") == [
+    assert resolver.resolve_districts_for_region("14", "State") == [
         "bilatserkva",
         "boryspil",
         "brovary",
@@ -92,7 +119,7 @@ def test_geo_resolver_load_regions_tree():
     assert resolver.resolve_districts_for_region("1001", "Community") == ["bucha"]
     assert resolver.resolve_districts_for_region("1002", "Community") == ["bucha"]
 
-    assert resolver.resolve_districts_for_region("9999", "Unknown") == []
+    assert resolver.resolve_districts_for_region("88888", "Unknown") == []
 
 
 def test_parse_alert_kind_and_level():
@@ -314,12 +341,12 @@ def test_extract_active_threats_real_world_payload():
                     ],
                 },
                 {
-                    "regionId": "11",
+                    "regionId": "9",
                     "regionName": "Дніпропетровська область",
                     "regionType": "State",
                     "regionChildIds": [
                         {
-                            "regionId": "105",
+                            "regionId": "47",
                             "regionName": "Нікопольський район",
                             "regionType": "District",
                             "regionChildIds": [
@@ -327,10 +354,46 @@ def test_extract_active_threats_real_world_payload():
                                     "regionId": "349",
                                     "regionName": "Марганецька міська територіальна громада",
                                     "regionType": "Community",
+                                },
+                                {
+                                    "regionId": "351",
+                                    "regionName": "м. Нікополь та Нікопольська територіальна громада",
+                                    "regionType": "Community",
+                                },
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "regionId": "4",
+                    "regionName": "Вінницька область",
+                    "regionType": "State",
+                    "regionChildIds": [
+                        {
+                            "regionId": "34",
+                            "regionName": "Хмільницький район",
+                            "regionType": "District",
+                            "regionChildIds": [
+                                {
+                                    "regionId": "216",
+                                    "regionName": "м. Хмільник та Хмільницька територіальна громада",
+                                    "regionType": "Community",
                                 }
                             ],
                         }
                     ],
+                },
+                {
+                    "regionId": "1293",
+                    "regionName": "м. Харків та Харківська територіальна громада",
+                    "regionType": "State",
+                    "regionChildIds": [],
+                },
+                {
+                    "regionId": "564",
+                    "regionName": "м. Запоріжжя та Запорізька територіальна громада",
+                    "regionType": "State",
+                    "regionChildIds": [],
                 },
             ]
         }
@@ -402,6 +465,45 @@ def test_extract_active_threats_real_world_payload():
                 }
             ],
         },
+        {
+            "regionId": "351",
+            "regionType": "Community",
+            "regionName": "м. Нікополь та Нікопольська територіальна громада",
+            "activeAlerts": [
+                {
+                    "regionId": "351",
+                    "regionType": "Community",
+                    "type": "ARTILLERY",
+                    "activeAlertLevels": [{"alertLevel": "Red"}],
+                }
+            ],
+        },
+        {
+            "regionId": "1293",
+            "regionType": "State",
+            "regionName": "м. Харків та Харківська територіальна громада",
+            "activeAlerts": [
+                {
+                    "regionId": "1293",
+                    "regionType": "State",
+                    "type": "AIR",
+                    "activeAlertLevels": [{"alertLevel": "Red"}],
+                }
+            ],
+        },
+        {
+            "regionId": "34",
+            "regionType": "District",
+            "regionName": "Хмільницький район",
+            "activeAlerts": [
+                {
+                    "regionId": "34",
+                    "regionType": "District",
+                    "type": "AIR",
+                    "activeAlertLevels": [{"alertLevel": "Yellow"}],
+                }
+            ],
+        },
     ]
 
     threats = extract_active_threats_by_district(payload, resolver)
@@ -420,3 +522,9 @@ def test_extract_active_threats_real_world_payload():
 
     assert "nikopol" in threats
     assert threats["nikopol"]["threat_of_shelling"] == TargetAlert("threat_of_shelling", None)
+
+    assert "kharkiv" in threats
+    assert threats["kharkiv"]["air_raid_alert"] == TargetAlert("air_raid_alert", "red")
+
+    assert "khmilnyk" in threats
+    assert threats["khmilnyk"]["air_raid_alert"] == TargetAlert("air_raid_alert", "yellow")

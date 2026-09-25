@@ -507,7 +507,7 @@ async def _record_alert_state(
                 )
                 if not is_alert_active:
                     await redis_client.hdel(f"threat:alerts:city:{district_key}", "level")
-                    if district_key == "nikopol":
+                    if district_key in ("nikopol", "nikopol_district"):
                         await maybe_reset_nikopol_shelling_on_all_clear(
                             "Відбій тривоги в Нікопольський район",
                             source=source,
@@ -840,7 +840,7 @@ def _alert_type_for(district_key: str, message_text: str) -> AlertEvent | None:
         if any(keyword in message_text for keyword in keywords):
             return AlertEvent(alert_type, level if alert_type == "air_raid_alert" else None)
 
-    if (not district_key or district_key == "nikopol") and any(
+    if (not district_key or district_key in ("nikopol", "nikopol_district")) and any(
         keyword in message_text for keyword in SHELLING_CANCEL_TRIGGERS
     ):
         return AlertEvent("threat_of_shelling_cancelled", None)
@@ -848,7 +848,7 @@ def _alert_type_for(district_key: str, message_text: str) -> AlertEvent | None:
     if "Відбій тривоги" in message_text:
         return AlertEvent("air_raid_alert_cancelled", None)
 
-    if (not district_key or district_key == "nikopol") and any(
+    if (not district_key or district_key in ("nikopol", "nikopol_district")) and any(
         keyword in message_text for keyword in SHELLING_TRIGGERS
     ):
         return AlertEvent("threat_of_shelling", None)
@@ -955,10 +955,10 @@ def _match_districts_in_section(
 
         event = _alert_type_for(district_key, message_text) or current_event
         if event:
-            if (
-                event.type in ("threat_of_shelling", "threat_of_shelling_cancelled")
-                and district_key != "nikopol"
-            ):
+            if event.type in ("threat_of_shelling", "threat_of_shelling_cancelled"):
+                if district_key in ("nikopol", "nikopol_district"):
+                    matched["nikopol"] = event
+                    current_event = event
                 continue
             if not is_district_match and is_city_match:
                 if event.type not in (
@@ -995,7 +995,7 @@ def is_nikopol_district_all_clear(message_text: str) -> bool:
         return False
 
     district_hit = any(
-        pattern.search(message_text) for pattern in DISTRICT_PATTERNS.get("nikopol", ())
+        pattern.search(message_text) for pattern in DISTRICT_PATTERNS.get("nikopol_district", ())
     )
     if district_hit:
         return True
@@ -1371,37 +1371,67 @@ async def _prime_api_state(
                     "Could not query active alerts from PostgreSQL for offline clearance: %s", e
                 )
 
-        if prev_threats:
-            _, to_cancel = compute_alerts_diff(prev_threats, active_threats_by_district)
-            for district_key, cancel_event_type, prev_level in to_cancel:
-                ch_id = region_channels.get(district_key) if region_channels else None
-                log.info(
-                    "Resolving offline-ended stuck alert %s for %s on startup",
-                    cancel_event_type,
-                    district_key,
+        to_trigger, to_cancel = compute_alerts_diff(prev_threats, active_threats_by_district)
+        for district_key, target_alert in to_trigger:
+            ch_id = region_channels.get(district_key) if region_channels else None
+            log.info(
+                "Triggering active alert %s (level=%s) for %s on startup",
+                target_alert.alert_type,
+                target_alert.level,
+                district_key,
+            )
+            if ch_id:
+                spawn_tracked_task(
+                    send_alert(
+                        ch_id,
+                        district_key,
+                        target_alert.alert_type,
+                        source_type="api",
+                        level=target_alert.level,
+                    ),
+                    f"Startup trigger of {target_alert.alert_type} to {district_key} via api",
                 )
-                if ch_id:
-                    spawn_tracked_task(
-                        send_alert(
-                            ch_id,
-                            district_key,
-                            cancel_event_type,
-                            source_type="api",
-                            level=prev_level,
-                        ),
-                        f"Startup clearance of {cancel_event_type} to {district_key} via api",
-                    )
-                else:
-                    spawn_tracked_task(
-                        record_map_only_alert(
-                            district_key,
-                            cancel_event_type,
-                            message_link=UKRAINE_ALARM_MAP_SOURCE_URL,
-                            source_type="api",
-                            level=prev_level,
-                        ),
-                        f"Startup map clearance of {cancel_event_type} for {district_key} via api",
-                    )
+            else:
+                spawn_tracked_task(
+                    record_map_only_alert(
+                        district_key,
+                        target_alert.alert_type,
+                        message_link=UKRAINE_ALARM_MAP_SOURCE_URL,
+                        source_type="api",
+                        level=target_alert.level,
+                    ),
+                    f"Startup map record of {target_alert.alert_type} for {district_key} via api",
+                )
+
+        for district_key, cancel_event_type, prev_level in to_cancel:
+            ch_id = region_channels.get(district_key) if region_channels else None
+            log.info(
+                "Resolving offline-ended stuck alert %s for %s on startup",
+                cancel_event_type,
+                district_key,
+            )
+            if ch_id:
+                spawn_tracked_task(
+                    send_alert(
+                        ch_id,
+                        district_key,
+                        cancel_event_type,
+                        source_type="api",
+                        level=prev_level,
+                    ),
+                    f"Startup clearance of {cancel_event_type} to {district_key} via api",
+                )
+            else:
+                spawn_tracked_task(
+                    record_map_only_alert(
+                        district_key,
+                        cancel_event_type,
+                        message_link=UKRAINE_ALARM_MAP_SOURCE_URL,
+                        source_type="api",
+                        level=prev_level,
+                    ),
+                    f"Startup map clearance of {cancel_event_type} for {district_key} via api",
+                )
     except Exception as e:
         log.warning("Could not fetch initial active alerts from API: %s", e)
 
@@ -1648,6 +1678,14 @@ def build_message_handler(
             level = event_info.level
             log_alert_received(district_key, alert_type, level=level)
             channel_id = region_channels.get(district_key)
+            if (
+                not channel_id
+                and district_key == "nikopol_district"
+                and "nikopol" in region_channels
+                and "nikopol" not in matched
+            ):
+                channel_id = region_channels["nikopol"]
+                district_key = "nikopol"
 
             if channel_id:
                 alert_coro = (

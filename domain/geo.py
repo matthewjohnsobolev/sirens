@@ -115,12 +115,11 @@ DISTRICT_CONFIG = {
         "display_name": "Kryvyi Rih",
     },
     "nikopol": {
-        "name": "Нікопольський район",
-        "aliases": ["м. Нікополь", "Нікополь"],
+        "name": "м. Нікополь",
+        "aliases": ["Нікополь"],
         "oblast": "dnipropetrovsk_oblast",
         "display_name": "Nikopol",
-        "triggers": ["Нікопольський район"],
-        "city_triggers": [
+        "triggers": [
             "м. Нікополь",
             "Нікополь",
             "Нікополі",
@@ -129,6 +128,10 @@ DISTRICT_CONFIG = {
             "місті Нікополі",
             "м.Нікополь",
             "м Нікополь",
+            "Нікопольська територіальна громада",
+            "Нікопольська міська територіальна громада",
+            "Нікопольська громада",
+            "Нікопольська ТГ",
         ],
         "alert_triggers": {
             "threat_of_shelling": [
@@ -140,6 +143,16 @@ DISTRICT_CONFIG = {
             "air_raid_alert": ["Повітряна тривога"],
             "air_raid_alert_cancelled": ["Відбій тривоги"],
         },
+    },
+    "nikopol_district": {
+        "name": "Нікопольський район",
+        "oblast": "dnipropetrovsk_oblast",
+        "display_name": "Nikopol Raion",
+        "triggers": [
+            "Нікопольський район",
+            "Нікопольському районі",
+            "Нікопольського району",
+        ],
     },
     "pavlohrad": {
         "name": "Павлоградський район",
@@ -209,9 +222,9 @@ DISTRICT_CONFIG = {
         "display_name": "Khust",
     },
     "zaporizhzhia": {
-        "name": "Запорізький район",
+        "name": "м. Запоріжжя",
         "oblast": "zaporizhzhia_oblast",
-        "aliases": ["м. Запоріжжя", "Запоріжжя"],
+        "aliases": ["Запоріжжя"],
         "display_name": "Zaporizhzhia",
         "triggers": [
             "м. Запоріжжя",
@@ -226,6 +239,16 @@ DISTRICT_CONFIG = {
             "Запорізька міська територіальна громада",
             "Запорізька громада",
             "Запорізька ТГ",
+        ],
+    },
+    "zaporizhzhia_district": {
+        "name": "Запорізький район",
+        "oblast": "zaporizhzhia_oblast",
+        "display_name": "Zaporizhzhia Raion",
+        "triggers": [
+            "Запорізький район",
+            "Запорізькому районі",
+            "Запорізького району",
         ],
     },
     "berdiansk": {
@@ -315,10 +338,17 @@ DISTRICT_CONFIG = {
         "display_name": "Sambir",
     },
     "stryi": {"name": "Стрийський район", "oblast": "lviv_oblast", "display_name": "Stryi"},
-    "chervonohrad": {
-        "name": "Червоноградський район",
+    "sheptytskyi": {
+        "name": "Шептицький район",
         "oblast": "lviv_oblast",
-        "display_name": "Chervonohrad",
+        "aliases": [
+            "Червоноградський район",
+            "м. Червоноград",
+            "Червоноград",
+            "Шептицький",
+            "м. Шептицький",
+        ],
+        "display_name": "Sheptytskyi",
     },
     "yavoriv": {
         "name": "Яворівський район",
@@ -441,9 +471,9 @@ DISTRICT_CONFIG = {
         "display_name": "Chortkiv",
     },
     "kharkiv": {
-        "name": "Харківський район",
+        "name": "м. Харків",
         "oblast": "kharkiv_oblast",
-        "aliases": ["м. Харків", "Харків"],
+        "aliases": ["Харків"],
         "display_name": "Kharkiv",
         "triggers": [
             "м. Харків",
@@ -459,6 +489,16 @@ DISTRICT_CONFIG = {
             "Харківська міська територіальна громада",
             "Харківська громада",
             "Харківська ТГ",
+        ],
+    },
+    "kharkiv_district": {
+        "name": "Харківський район",
+        "oblast": "kharkiv_oblast",
+        "display_name": "Kharkiv Raion",
+        "triggers": [
+            "Харківський район",
+            "Харківському районі",
+            "Харківського району",
         ],
     },
     "berestyn": {
@@ -798,6 +838,9 @@ LOCATION_LOCATIVE = {
     "starobilsk": "у Старобільському районі",
     "shchastia": "у Щастинському районі",
     "crimea": "у Криму",
+    "kharkiv_district": "у Харківському районі",
+    "nikopol_district": "у Нікопольському районі",
+    "zaporizhzhia_district": "у Запорізькому районі",
 }
 
 DISTRICTS_BY_OBLAST = {}

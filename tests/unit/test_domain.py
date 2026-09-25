@@ -23,7 +23,7 @@ def test_domain_districts_by_oblast_covers_every_district():
         "zolochiv",
         "sambir",
         "stryi",
-        "chervonohrad",
+        "sheptytskyi",
         "yavoriv",
     }
     assert domain.DISTRICTS_BY_OBLAST["kyiv"] == ["kyiv"]
@@ -63,8 +63,8 @@ def test_domain_broadcast_triggers_keep_the_oblast_name():
     assert domain.DISTRICT_CONFIG["bucha"]["triggers"] == ["Бучанський район"]
 
 
-def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
-    """Kharkiv and Zaporizhzhia must only trigger on city names and community forms, not district names."""
+def test_domain_separated_cities_triggers_are_city_only():
+    """Kharkiv, Zaporizhzhia, and Nikopol must only trigger on city names and community forms, not district names."""
     expected_kharkiv = [
         "м. Харків",
         "Харків",
@@ -82,6 +82,7 @@ def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
     ]
     assert domain.DISTRICT_CONFIG["kharkiv"]["triggers"] == expected_kharkiv
     assert "Харківський район" not in domain.DISTRICT_CONFIG["kharkiv"]["triggers"]
+    assert "Харківський район" in domain.DISTRICT_CONFIG["kharkiv_district"]["triggers"]
 
     expected_zaporizhzhia = [
         "м. Запоріжжя",
@@ -99,17 +100,32 @@ def test_domain_kharkiv_and_zaporizhzhia_triggers_are_city_only():
     ]
     assert domain.DISTRICT_CONFIG["zaporizhzhia"]["triggers"] == expected_zaporizhzhia
     assert "Запорізький район" not in domain.DISTRICT_CONFIG["zaporizhzhia"]["triggers"]
+    assert "Запорізький район" in domain.DISTRICT_CONFIG["zaporizhzhia_district"]["triggers"]
 
-    assert domain.DISTRICT_CONFIG["nikopol"]["triggers"] == ["Нікопольський район"]
-    assert "Нікопольський район" in domain.REGION_CONFIG["nikopol"]["triggers"]
-    assert "Дніпропетровська область" in domain.REGION_CONFIG["nikopol"]["triggers"]
-    assert "м. Нікополь" in domain.DISTRICT_CONFIG["nikopol"]["city_triggers"]
-    assert "Нікополь" in domain.DISTRICT_CONFIG["nikopol"]["city_triggers"]
+    expected_nikopol = [
+        "м. Нікополь",
+        "Нікополь",
+        "Нікополі",
+        "місто Нікополь",
+        "місті Нікополь",
+        "місті Нікополі",
+        "м.Нікополь",
+        "м Нікополь",
+        "Нікопольська територіальна громада",
+        "Нікопольська міська територіальна громада",
+        "Нікопольська громада",
+        "Нікопольська ТГ",
+    ]
+    assert domain.DISTRICT_CONFIG["nikopol"]["triggers"] == expected_nikopol
+    assert "Нікопольський район" not in domain.DISTRICT_CONFIG["nikopol"]["triggers"]
+    assert "Нікопольський район" in domain.DISTRICT_CONFIG["nikopol_district"]["triggers"]
 
     assert "Харківський район" not in domain.REGION_CONFIG["kharkiv"]["triggers"]
     assert "Запорізький район" not in domain.REGION_CONFIG["zaporizhzhia"]["triggers"]
+    assert "Нікопольський район" not in domain.REGION_CONFIG["nikopol"]["triggers"]
     assert "Харківська область" in domain.REGION_CONFIG["kharkiv"]["triggers"]
     assert "Запорізька область" in domain.REGION_CONFIG["zaporizhzhia"]["triggers"]
+    assert "Дніпропетровська область" in domain.REGION_CONFIG["nikopol"]["triggers"]
 
 
 def test_domain_khmilnyk_triggers_include_community_forms():
@@ -185,6 +201,7 @@ def test_domain_renamed_districts_keep_their_former_name():
         ("volodymyr", "Володимир-Волинський район"),
         ("samar", "Новомосковський район"),
         ("berestyn", "Красноградський район"),
+        ("sheptytskyi", "Червоноградський район"),
     ]:
         assert former in domain.DISTRICT_CONFIG[key]["triggers"]
 

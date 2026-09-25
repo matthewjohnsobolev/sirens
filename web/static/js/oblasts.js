@@ -231,7 +231,8 @@ function getOblastPopupContent(oblastData) {
 
     const items = districtKeys.map(key => {
         const district = districts[key] || {};
-        const districtName = district.title || district.name || key;
+        const rawName = district.title || district.name || key;
+        const districtName = rawName.replace(/^м\.\s+/, '');
         const pill = districtPillStateFn(district);
         const rawTime = pill && pill.updatedAt;
         const time = (typeof rawTime === 'number' && Number.isFinite(rawTime))
@@ -323,7 +324,8 @@ function buildOblasts(geoData) {
             layer.bindPopup(
                 () => {
                     const data = oblastData(regionId) || {};
-                    const title = (data && data.title) || regionId;
+                    const rawTitle = (data && data.title) || regionId;
+                    const title = rawTitle.replace(/^м\.\s+/, '');
                     return cityMarker
                         ? getMarkerPopupContent(cityMarker, getMarkerThreats(SirensThreats.get(), cityMarker))
                         : '<div class="oblast-name">' + title + '</div>' + getOblastPopupContent(data);

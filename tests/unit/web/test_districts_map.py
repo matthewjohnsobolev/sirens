@@ -28,20 +28,17 @@ def test_districts_geojson_validity():
 
     assert data["type"] == "FeatureCollection"
 
-    assert len(data["features"]) == len(DISTRICT_CONFIG) + 3
+    assert len(data["features"]) == len(DISTRICT_CONFIG)
 
-    carved_raions = {"nikopol_raion", "kharkiv_raion", "zaporizhzhia_raion"}
-    expected_ids = set(DISTRICT_CONFIG.keys()) | carved_raions
+    expected_ids = set(DISTRICT_CONFIG.keys())
     feature_ids = {feat["properties"]["id"] for feat in data["features"]}
     assert feature_ids == expected_ids
 
     for feat in data["features"]:
         props = feat["properties"]
-        base_id = (
-            props["id"].replace("_raion", "") if props["id"].endswith("_raion") else props["id"]
-        )
-        assert base_id in DISTRICT_CONFIG
-        assert props["oblast"] == DISTRICT_CONFIG[base_id]["oblast"]
+        d_id = props["id"]
+        assert d_id in DISTRICT_CONFIG
+        assert props["oblast"] == DISTRICT_CONFIG[d_id]["oblast"]
         assert feat["geometry"]["type"] in ("Polygon", "MultiPolygon")
         assert len(feat["geometry"]["coordinates"]) > 0
 

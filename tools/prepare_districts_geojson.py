@@ -142,8 +142,8 @@ def match_district_key(props: dict, matched_keys: set) -> str | None:
     name_en = props.get("adm2_name", "").strip()
 
     if "Шептицький" in name_uk or "Sheptytskyi" in name_en:
-        if "chervonohrad" not in matched_keys and "chervonohrad" in DISTRICT_CONFIG:
-            return "chervonohrad"
+        if "sheptytskyi" not in matched_keys and "sheptytskyi" in DISTRICT_CONFIG:
+            return "sheptytskyi"
 
     clean_uk = re.sub(r"\s*(район|міськрада|місто)\s*", "", name_uk, flags=re.I).strip()
 
@@ -189,7 +189,7 @@ def prepare_districts(admin1_path: str, admin2_path: str, admin3_path: str) -> d
             "city_id": "nikopol",
             "city_name": "Нікополь",
             "city_display": "Nikopol",
-            "raion_id": "nikopol_raion",
+            "raion_id": "nikopol_district",
             "raion_name": "Нікопольський район",
             "raion_display": "Nikopol Raion",
             "oblast": "dnipropetrovsk_oblast",
@@ -200,7 +200,7 @@ def prepare_districts(admin1_path: str, admin2_path: str, admin3_path: str) -> d
             "city_id": "kharkiv",
             "city_name": "Харків",
             "city_display": "Kharkiv",
-            "raion_id": "kharkiv_raion",
+            "raion_id": "kharkiv_district",
             "raion_name": "Харківський район",
             "raion_display": "Kharkiv Raion",
             "oblast": "kharkiv_oblast",
@@ -211,7 +211,7 @@ def prepare_districts(admin1_path: str, admin2_path: str, admin3_path: str) -> d
             "city_id": "zaporizhzhia",
             "city_name": "Запоріжжя",
             "city_display": "Zaporizhzhia",
-            "raion_id": "zaporizhzhia_raion",
+            "raion_id": "zaporizhzhia_district",
             "raion_name": "Запорізький район",
             "raion_display": "Zaporizhzhia Raion",
             "oblast": "zaporizhzhia_oblast",
@@ -262,6 +262,7 @@ def prepare_districts(admin1_path: str, admin2_path: str, admin3_path: str) -> d
             )
 
             matched_keys.add(item["city_id"])
+            matched_keys.add(item["raion_id"])
             del a2_by_pcode[item["adm2_pcode"]]
             print(f"Successfully carved out city {item['city_id']} from {item['raion_id']}")
 

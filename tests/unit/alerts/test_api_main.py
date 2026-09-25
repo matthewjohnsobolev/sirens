@@ -104,7 +104,10 @@ async def test_prime_api_state_success():
             assert alerts_main.last_action_index == 100
             assert "kyiv" in alerts_main.active_threats_by_district
             assert alerts_main.last_api_poll_at is not None
-            mock_spawn.assert_called_once()
+            assert mock_spawn.call_count == 2
+            descriptions = [call.args[1] for call in mock_spawn.call_args_list]
+            assert any("kyiv" in d for d in descriptions)
+            assert any("telemetry" in d.lower() for d in descriptions)
 
 
 @pytest.mark.asyncio

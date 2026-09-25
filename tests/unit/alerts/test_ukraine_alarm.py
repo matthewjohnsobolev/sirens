@@ -39,29 +39,27 @@ def test_geo_resolver_static_mappings():
     )
     assert districts_khmilnyk == ["khmilnyk"]
 
-    # Cities: city matches, but district does not trigger city
+    # Cities and their districts resolve separately
     assert resolver.resolve_districts_for_region("id_nikopol_city", "Community", "м. Нікополь") == [
         "nikopol"
     ]
-    assert (
-        resolver.resolve_districts_for_region("id_nikopol_dist", "District", "Нікопольський район")
-        == []
-    )
+    assert resolver.resolve_districts_for_region(
+        "id_nikopol_dist", "District", "Нікопольський район"
+    ) == ["nikopol_district"]
 
     assert resolver.resolve_districts_for_region("id_kharkiv_city", "State", "м. Харків") == [
         "kharkiv"
     ]
-    assert (
-        resolver.resolve_districts_for_region("id_kharkiv_dist", "District", "Харківський район")
-        == []
-    )
+    assert resolver.resolve_districts_for_region(
+        "id_kharkiv_dist", "District", "Харківський район"
+    ) == ["kharkiv_district"]
 
     assert resolver.resolve_districts_for_region("id_zp_city", "State", "м. Запоріжжя") == [
         "zaporizhzhia"
     ]
-    assert (
-        resolver.resolve_districts_for_region("id_zp_dist", "District", "Запорізький район") == []
-    )
+    assert resolver.resolve_districts_for_region("id_zp_dist", "District", "Запорізький район") == [
+        "zaporizhzhia_district"
+    ]
 
 
 def test_geo_resolver_load_regions_tree():
@@ -150,7 +148,7 @@ def test_parse_alert_kind_and_level():
     assert res5 == TargetAlert("air_raid_alert", None)
 
     res6 = parse_alert_kind_and_level({"type": "URBAN_FIGHTS"})
-    assert res6 == TargetAlert("air_raid_alert", None)
+    assert res6 is None
 
     res7 = parse_alert_kind_and_level({"type": "SOMETHING_ELSE"})
     assert res7 is None

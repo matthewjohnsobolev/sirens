@@ -626,7 +626,7 @@ def test_get_all_threats_data_schema_and_types(threats_store):
 
     assert result["dnipropetrovsk_oblast"]["title"] == "Дніпропетровська область"
     nikopol = result["dnipropetrovsk_oblast"]["districts"]["nikopol"]
-    assert nikopol["title"] == "Нікопольський район"
+    assert nikopol["title"] == "м. Нікополь"
     assert nikopol["alert"]["status"] is False
     assert nikopol["alert"]["level"] is None
     assert nikopol["alert"]["updated_at"] is None
@@ -634,6 +634,9 @@ def test_get_all_threats_data_schema_and_types(threats_store):
     assert nikopol["shelling"]["status"] is True
     assert nikopol["shelling"]["updated_at"] == 1741709000
     assert nikopol["shelling"]["source"] == "https://t.me/nikopol_alert/512"
+
+    nikopol_district = result["dnipropetrovsk_oblast"]["districts"]["nikopol_district"]
+    assert nikopol_district["title"] == "Нікопольський район"
 
     fastiv = result["kyiv_oblast"]["districts"]["fastiv"]
     assert fastiv["title"] == "Фастівський район"

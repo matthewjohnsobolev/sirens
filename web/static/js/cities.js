@@ -90,7 +90,8 @@ function getMarkerPopupContent(marker, threats) {
     const winner = threats[dominant] || threats.alert || {};
     const channelHtml = subscribeButtonHtml(marker.channel);
 
-    return `<div class='channel-popup-name'>${marker.name}</div>`
+    const cityName = (marker.name || '').replace(/^м\.\s+/, '');
+    return `<div class='channel-popup-name'>${cityName}</div>`
          + renderPill({
                variant: threatVariant(dominant, winner),
                updatedAt: winner.updated_at,

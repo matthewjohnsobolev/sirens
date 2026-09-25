@@ -60,8 +60,8 @@
         const districts = oblastData.districts || oblastData;
         let d = districts[districtId];
 
-        if (!d && districtId.endsWith('_raion')) {
-            const parentId = districtId.replace('_raion', '');
+        if (!d && (districtId.endsWith('_district') || districtId.endsWith('_raion'))) {
+            const parentId = districtId.replace(/(_district|_raion)$/, '');
             const parentD = districts[parentId];
             if (parentD) {
                 if (parentD.alert && parentD.alert.status) {
@@ -120,8 +120,8 @@
         const oblastData = (apiData && apiData[oblastId]) || {};
         const districts = oblastData.districts || oblastData;
         let districtData = (districts && districts[districtId]) || {};
-        if (!districtData.title && districtId.endsWith('_raion')) {
-            const parentId = districtId.replace('_raion', '');
+        if (!districtData.title && (districtId.endsWith('_district') || districtId.endsWith('_raion'))) {
+            const parentId = districtId.replace(/(_district|_raion)$/, '');
             const parentD = districts[parentId];
             if (parentD) {
                 districtData = {
@@ -145,7 +145,7 @@
         const markersList = typeof DISTRICT_MARKERS !== 'undefined'
             ? DISTRICT_MARKERS
             : (typeof require !== 'undefined' ? require('./districts.js').DISTRICT_MARKERS : []);
-        const marker = markersList.find(m => m.district === districtId || (districtId && districtId.endsWith('_raion') && m.district === districtId.replace('_raion', '')));
+        const marker = markersList.find(m => m.district === districtId || (districtId && (districtId.endsWith('_district') || districtId.endsWith('_raion')) && m.district === districtId.replace(/(_district|_raion)$/, '')));
         const channel = (marker && marker.channel) ? marker.channel : null;
         const channelHtml = subscribeButtonHtml(channel);
 
@@ -261,9 +261,13 @@
 
     
     function getMarkerPopupContent(marker, threats) {
-        const feat = (geoDistrictsData && geoDistrictsData.features)
-            ? geoDistrictsData.features.find(f => f.properties.id === marker.district)
-            : { properties: { id: marker.district, oblast: marker.oblast, name: marker.name } };
+        const feat = {
+            properties: {
+                id: marker.district,
+                oblast: marker.oblast,
+                name: (marker.name || '').replace(/^м\.\s+/, '')
+            }
+        };
         const apiData = currentThreatsData || (typeof SirensThreats !== 'undefined' ? SirensThreats.get() : null);
         return getDistrictPopupContent(feat, apiData);
     }
@@ -307,9 +311,13 @@
         const dId = marker.district;
         const dLayer = districtLayersById[dId];
 
-        const feat = (geoDistrictsData && geoDistrictsData.features)
-            ? geoDistrictsData.features.find(f => f.properties.id === dId)
-            : { properties: { id: marker.district, oblast: marker.oblast, name: marker.name } };
+        const feat = {
+            properties: {
+                id: marker.district,
+                oblast: marker.oblast,
+                name: (marker.name || '').replace(/^м\.\s+/, '')
+            }
+        };
         const apiData = currentThreatsData || (typeof SirensThreats !== 'undefined' ? SirensThreats.get() : null);
         const html = getDistrictPopupContent(feat, apiData);
 

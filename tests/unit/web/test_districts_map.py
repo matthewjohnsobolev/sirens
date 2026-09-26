@@ -704,4 +704,3 @@ def test_district_id_aliases_handling():
     assert "oblast-description-time" in results["htmlZaporizhzhiaRaion"]
 
     assert results["markerNikopol"] == "nikopol"
-

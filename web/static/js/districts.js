@@ -99,7 +99,7 @@ function formatDuration(updatedAt) {
     return hours ? `${days} дн ${hours} год` : `${days} дн`;
 }
 
-const MESSAGE_LINK_RE = /^https:\/\/t\.me\/[\w/+-]+$/;
+const MESSAGE_LINK_RE = /^https:\/\/(?:t\.me\/[\w/+-]+|(?:[a-zA-Z0-9-]+\.)*ukrainealarm\.com(?:\/[^\s"']*)?)$/i;
 
 function messageLink(source) {
     if (typeof source !== 'string') return null;

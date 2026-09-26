@@ -177,8 +177,9 @@ class UkraineAlarmGeoResolver:
                 self.community_id_to_district.get(child_id)
                 or self.district_id_to_district.get(child_id)
                 or self._name_to_district.get(child_norm)
-                or matched_key
             )
+            if not child_key and matched_key != "nikopol_district":
+                child_key = matched_key
             self._map_branch(child, parent_key=child_key)
 
     def load_regions_tree(self, regions_payload: dict[str, Any] | list[dict[str, Any]]) -> None:

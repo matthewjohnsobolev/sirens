@@ -206,7 +206,17 @@
         const markersList = typeof DISTRICT_MARKERS !== 'undefined'
             ? DISTRICT_MARKERS
             : (typeof require !== 'undefined' ? require('./districts.js').DISTRICT_MARKERS : []);
-        const marker = markersList.find(m => m.district === districtId || (districtId && (districtId.endsWith('_district') || districtId.endsWith('_raion')) && m.district === districtId.replace(/(_district|_raion)$/, '')));
+        const isSplitRaion = (
+            districtId === 'nikopol_district' ||
+            districtId === 'nikopol_raion' ||
+            districtId === 'kharkiv_district' ||
+            districtId === 'kharkiv_raion' ||
+            districtId === 'zaporizhzhia_district' ||
+            districtId === 'zaporizhzhia_raion'
+        );
+        const marker = isSplitRaion
+            ? markersList.find(m => m.district === districtId)
+            : markersList.find(m => m.district === districtId || (districtId && (districtId.endsWith('_district') || districtId.endsWith('_raion')) && m.district === districtId.replace(/(_district|_raion)$/, '')));
         const channel = (marker && marker.channel) ? marker.channel : null;
         const channelHtml = subscribeButtonHtml(channel);
 

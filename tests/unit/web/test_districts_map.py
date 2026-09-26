@@ -698,9 +698,70 @@ def test_district_id_aliases_handling():
     assert "pill--yellow" in results["htmlNikopolRaion"]
     assert "Жовтий рівень тривоги" in results["htmlNikopolRaion"]
     assert "oblast-description-time" in results["htmlNikopolRaion"]
+    assert "channel-popup-button" not in results["htmlNikopolRaion"]
 
     assert "pill--red" in results["htmlZaporizhzhiaRaion"]
     assert "Червоний рівень тривоги" in results["htmlZaporizhzhiaRaion"]
     assert "oblast-description-time" in results["htmlZaporizhzhiaRaion"]
+    assert "channel-popup-button" not in results["htmlZaporizhzhiaRaion"]
 
     assert results["markerNikopol"] == "nikopol"
+
+
+def test_message_link_ukraine_alarm_and_render_pill():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+
+    test_script = """
+    const { messageLink, renderPill } = require('./web/static/js/districts.js');
+
+    const linkMap = messageLink('https://map.ukrainealarm.com');
+    const linkMapSlash = messageLink('https://map.ukrainealarm.com/');
+    const linkTg = messageLink('https://t.me/nikopol_alert/123');
+    const linkEvil = messageLink('https://evil.com');
+    const linkNull = messageLink(null);
+
+    const pillWithMap = renderPill({
+        variant: 'yellow',
+        text: 'Жовтий рівень',
+        updatedAt: 1740000000,
+        source: 'https://map.ukrainealarm.com'
+    });
+
+    const pillWithoutSource = renderPill({
+        variant: 'idle',
+        text: 'Відбій',
+        updatedAt: 1740000000,
+        source: null
+    });
+
+    console.log(JSON.stringify({
+        linkMap,
+        linkMapSlash,
+        linkTg,
+        linkEvil,
+        linkNull,
+        pillWithMap,
+        pillWithoutSource
+    }));
+    """
+
+    res = subprocess.run(
+        [node, "-e", test_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    results = json.loads(res.stdout.strip())
+
+    assert results["linkMap"] == "https://map.ukrainealarm.com"
+    assert results["linkMapSlash"] == "https://map.ukrainealarm.com/"
+    assert results["linkTg"] == "https://t.me/nikopol_alert/123"
+    assert results["linkEvil"] is None
+    assert results["linkNull"] is None
+
+    assert '<a href="https://map.ukrainealarm.com"' in results["pillWithMap"]
+    assert 'class="oblast-button-link"' in results["pillWithMap"]
+    assert "<a href=" not in results["pillWithoutSource"]

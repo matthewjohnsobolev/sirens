@@ -3263,3 +3263,38 @@ def test_luhansk_oblast_combined_and_individual_districts():
 
         cancel_text = f"🟢 {d_name} (Луганська обл.)\nВідбій тривоги. Будьте обережні!"
         assert match_districts(cancel_text) == {d_key: AlertEvent("air_raid_alert_cancelled", None)}
+
+
+@pytest.mark.asyncio
+async def test_nikopol_district_routes_to_city_channel_and_records_map_only():
+    region_channels = {"nikopol": 8001}
+    handler = build_message_handler(
+        region_channels,
+        primary_source=888,
+    )
+
+    event = MagicMock()
+    event.chat_id = 888
+    event.message = MagicMock()
+    event.message.message = "🟡 Нікопольський район\nЖовтий рівень тривоги."
+    event.message.date = None
+    event.message.id = 123
+    event.id = 123
+    event.chat = MagicMock()
+    event.chat.username = "test_src"
+
+    with (
+        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send,
+        patch("alerts.main.record_map_only_alert", new_callable=AsyncMock) as mock_record_map,
+        patch("alerts.main.redis_client", AsyncMock()),
+    ):
+        await handler(event)
+        await _drain_background_tasks()
+
+        mock_send.assert_awaited_once_with(
+            8001, "nikopol", "air_raid_alert", source_type="primary", level="yellow"
+        )
+        mock_record_map.assert_awaited_once()
+        assert mock_record_map.call_args[0][0] == "nikopol_district"
+        assert mock_record_map.call_args[0][1] == "air_raid_alert"
+        assert mock_record_map.call_args[1].get("level") == "yellow"

@@ -187,6 +187,9 @@ async def resolve_channel_username(channel_id: int) -> str | None:
     if cached:
         return cached
 
+    if not client:
+        return None
+
     try:
         entity = await client.get_entity(channel_id)
     except Exception:
@@ -1684,8 +1687,27 @@ def build_message_handler(
                 and "nikopol" in region_channels
                 and "nikopol" not in matched
             ):
-                channel_id = region_channels["nikopol"]
-                district_key = "nikopol"
+                nikopol_ch_id = region_channels["nikopol"]
+                alert_coro = (
+                    send_alert(
+                        nikopol_ch_id,
+                        "nikopol",
+                        alert_type,
+                        source_type=source_type,
+                        level=level,
+                    )
+                    if level is not None
+                    else send_alert(
+                        nikopol_ch_id,
+                        "nikopol",
+                        alert_type,
+                        source_type=source_type,
+                    )
+                )
+                spawn_tracked_task(
+                    alert_coro,
+                    f"Alert broadcast of {alert_type} to nikopol via {source_type}",
+                )
 
             if channel_id:
                 alert_coro = (

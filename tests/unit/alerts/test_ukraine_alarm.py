@@ -193,7 +193,13 @@ def test_city_vs_raion_independent_resolution():
                                 "regionName": "Нікопольська міська громада",
                                 "regionType": "Community",
                                 "regionChildIds": [],
-                            }
+                            },
+                            {
+                                "regionId": "353",
+                                "regionName": "Покровська територіальна громада",
+                                "regionType": "Community",
+                                "regionChildIds": [],
+                            },
                         ],
                     }
                 ],
@@ -212,6 +218,7 @@ def test_city_vs_raion_independent_resolution():
 
     assert resolver.resolve_districts_for_region("351", "Community") == ["nikopol"]
     assert resolver.resolve_districts_for_region("47", "District") == ["nikopol_district"]
+    assert resolver.resolve_districts_for_region("353", "Community") == []
 
 
 def test_parse_alert_kind_and_level():

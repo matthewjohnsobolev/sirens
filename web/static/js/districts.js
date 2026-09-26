@@ -127,10 +127,30 @@ function renderPill({ variant, text, updatedAt, source, showTime = true }) {
     return `<div class="info-block">${wrapped}</div>`;
 }
 
+function getDistrictData(districts, id) {
+    if (!districts || !id) return null;
+    if (districts[id]) return districts[id];
+    if (typeof id === 'string') {
+        if (id.endsWith('_raion')) {
+            const alt = id.replace(/_raion$/, '_district');
+            if (districts[alt]) return districts[alt];
+        } else if (id.endsWith('_district')) {
+            const alt = id.replace(/_district$/, '_raion');
+            if (districts[alt]) return districts[alt];
+        } else if (id === 'chervonohrad') {
+            if (districts['sheptytskyi']) return districts['sheptytskyi'];
+        } else if (id === 'sheptytskyi') {
+            if (districts['chervonohrad']) return districts['chervonohrad'];
+        }
+    }
+    return null;
+}
+
 function districtPillState(arg1, arg2) {
     let threats;
     if (arg2 && typeof arg1 === 'object') {
-        const district = (arg1.districts && arg1.districts[arg2]) || arg1[arg2] || {};
+        const districts = arg1.districts || arg1;
+        const district = getDistrictData(districts, arg2) || {};
         threats = {
             alert: district.alert,
             shelling: district.shelling
@@ -196,10 +216,9 @@ function getMarkerThreats(apiData, marker) {
     let districtData = null;
 
     if (oblastData) {
-        if (marker.district && oblastData.districts && oblastData.districts[marker.district]) {
-            districtData = oblastData.districts[marker.district];
-        } else if (marker.district && oblastData[marker.district]) {
-            districtData = oblastData[marker.district];
+        const districts = oblastData.districts || oblastData;
+        if (marker.district && districts) {
+            districtData = getDistrictData(districts, marker.district);
         } else if (oblastData.alert) {
             districtData = oblastData;
         }
@@ -234,6 +253,7 @@ if (typeof module !== 'undefined' && module.exports) {
         renderPill,
         districtPillState,
         DISTRICT_MARKERS,
-        getMarkerThreats
+        getMarkerThreats,
+        getDistrictData
     };
 }

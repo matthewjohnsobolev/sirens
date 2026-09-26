@@ -587,3 +587,121 @@ def test_marker_popup_opens_raion_except_cities():
 
     assert results["featKyiv"]["properties"]["name"] == "Київ"
     assert '<div class="district-popup-name">Київ</div>' in results["popupKyiv"]
+
+
+def test_district_id_aliases_handling():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+
+    test_script = """
+    const { getDistrictData, getMarkerThreats, districtPillState } = require('./web/static/js/districts.js');
+    const { getDistrictState, getDistrictPopupContent, getFeatureForMarker, findNearbyMarker } = require('./web/static/js/districts-map.js');
+
+    const apiData = {
+        dnipropetrovsk_oblast: {
+            districts: {
+                nikopol: {
+                    title: 'Нікополь',
+                    alert: { status: true, level: 'red', updated_at: 1740000000 },
+                    shelling: { status: true, updated_at: 1740000500 }
+                },
+                nikopol_district: {
+                    title: 'Нікопольський район',
+                    alert: { status: true, level: 'yellow', updated_at: 1740001000 }
+                }
+            }
+        },
+        zaporizhzhia_oblast: {
+            districts: {
+                zaporizhzhia: {
+                    title: 'Запоріжжя',
+                    alert: { status: true, level: 'red', updated_at: 1740000000 }
+                },
+                zaporizhzhia_district: {
+                    title: 'Запорізький район',
+                    alert: { status: true, level: 'red', updated_at: 1740002000 }
+                }
+            }
+        },
+        lviv_oblast: {
+            districts: {
+                sheptytskyi: {
+                    title: 'Шептицький район',
+                    alert: { status: true, level: 'red', updated_at: 1740003000 }
+                }
+            }
+        }
+    };
+
+    const d1 = getDistrictData(apiData.dnipropetrovsk_oblast.districts, 'nikopol_raion');
+    const d2 = getDistrictData(apiData.dnipropetrovsk_oblast.districts, 'nikopol_district');
+    const d3 = getDistrictData(apiData.lviv_oblast.districts, 'chervonohrad');
+    const d4 = getDistrictData(apiData.lviv_oblast.districts, 'sheptytskyi');
+
+    const sNikopolRaion = getDistrictState(apiData, 'dnipropetrovsk_oblast', 'nikopol_raion');
+    const sZaporizhzhiaRaion = getDistrictState(apiData, 'zaporizhzhia_oblast', 'zaporizhzhia_raion');
+    const sSheptytskyiChervonohrad = getDistrictState(apiData, 'lviv_oblast', 'chervonohrad');
+
+    const featNikopolRaion = {
+        properties: { id: 'nikopol_raion', name: 'Нікопольський район', oblast: 'dnipropetrovsk_oblast' }
+    };
+    const htmlNikopolRaion = getDistrictPopupContent(featNikopolRaion, apiData);
+
+    const featZaporizhzhiaRaion = {
+        properties: { id: 'zaporizhzhia_raion', name: 'Запорізький район', oblast: 'zaporizhzhia_oblast' }
+    };
+    const htmlZaporizhzhiaRaion = getDistrictPopupContent(featZaporizhzhiaRaion, apiData);
+
+    const mockMap = {
+        latLngToContainerPoint: (coords) => {
+            const lat = Array.isArray(coords) ? coords[0] : coords.lat;
+            const lng = Array.isArray(coords) ? coords[1] : coords.lng;
+            return { x: lng * 100, y: lat * 100 };
+        }
+    };
+    const nearNikopol = { lat: 47.5675, lng: 34.3948 };
+    const markerNikopol = findNearbyMarker(nearNikopol, mockMap, 'nikopol_raion');
+
+    console.log(JSON.stringify({
+        d1Title: d1 ? d1.title : null,
+        d2Title: d2 ? d2.title : null,
+        d3Title: d3 ? d3.title : null,
+        d4Title: d4 ? d4.title : null,
+        sNikopolRaion,
+        sZaporizhzhiaRaion,
+        sSheptytskyiChervonohrad,
+        htmlNikopolRaion,
+        htmlZaporizhzhiaRaion,
+        markerNikopol: markerNikopol ? markerNikopol.district : null
+    }));
+    """
+
+    res = subprocess.run(
+        [node, "-e", test_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    results = json.loads(res.stdout.strip())
+
+    assert results["d1Title"] == "Нікопольський район"
+    assert results["d2Title"] == "Нікопольський район"
+    assert results["d3Title"] == "Шептицький район"
+    assert results["d4Title"] == "Шептицький район"
+
+    assert results["sNikopolRaion"] == "yellow"
+    assert results["sZaporizhzhiaRaion"] == "red"
+    assert results["sSheptytskyiChervonohrad"] == "red"
+
+    assert "pill--yellow" in results["htmlNikopolRaion"]
+    assert "Жовтий рівень тривоги" in results["htmlNikopolRaion"]
+    assert "oblast-description-time" in results["htmlNikopolRaion"]
+
+    assert "pill--red" in results["htmlZaporizhzhiaRaion"]
+    assert "Червоний рівень тривоги" in results["htmlZaporizhzhiaRaion"]
+    assert "oblast-description-time" in results["htmlZaporizhzhiaRaion"]
+
+    assert results["markerNikopol"] == "nikopol"
+

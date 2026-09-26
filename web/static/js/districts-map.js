@@ -58,7 +58,10 @@
         if (!oblastData) return 'idle';
 
         const districts = oblastData.districts || oblastData;
-        const d = districts[districtId];
+        const getDistrictDataFn = typeof getDistrictData === 'function'
+            ? getDistrictData
+            : (typeof require !== 'undefined' ? require('./districts.js').getDistrictData : (dist, id) => dist ? dist[id] : null);
+        const d = getDistrictDataFn(districts, districtId);
         if (!d) return 'idle';
 
         const isAlert = Boolean(d.alert && d.alert.status);
@@ -185,7 +188,10 @@
 
         const oblastData = (apiData && apiData[oblastId]) || {};
         const districts = oblastData.districts || oblastData;
-        const districtData = (districts && districts[districtId]) || {};
+        const getDistrictDataFn = typeof getDistrictData === 'function'
+            ? getDistrictData
+            : (typeof require !== 'undefined' ? require('./districts.js').getDistrictData : (dist, id) => dist ? dist[id] : null);
+        const districtData = getDistrictDataFn(districts, districtId) || {};
 
         const districtPillStateFn = typeof districtPillState === 'function'
             ? districtPillState
@@ -433,7 +439,14 @@
         if (districtLayersById[marker.district] && districtLayersById[marker.district].feature) {
             layerFeat = districtLayersById[marker.district].feature;
         } else if (geoDistrictsData && Array.isArray(geoDistrictsData.features)) {
-            layerFeat = geoDistrictsData.features.find(f => f.properties && f.properties.id === marker.district);
+            layerFeat = geoDistrictsData.features.find(f => {
+                if (!f.properties) return false;
+                const id = f.properties.id;
+                if (id === marker.district) return true;
+                if (id.endsWith('_raion') && id.replace(/_raion$/, '') === marker.district) return true;
+                if (id.endsWith('_district') && id.replace(/_district$/, '') === marker.district) return true;
+                return false;
+            });
         }
 
         if (CITY_POPUPS.has(marker.district)) {
@@ -489,7 +502,10 @@
         let nearest = null;
         let minDist = Infinity;
         for (const m of markersList) {
-            if (districtId && m.district !== districtId) continue;
+            if (districtId) {
+                const cleanDistrictId = districtId.replace(/(_district|_raion)$/, '');
+                if (m.district !== districtId && m.district !== cleanDistrictId) continue;
+            }
             const mPt = targetMap.latLngToContainerPoint([m.lat, m.lng]);
             const d = Math.hypot(clickPt.x - mPt.x, clickPt.y - mPt.y);
             if (d <= maxDistPx && d < minDist) {
@@ -659,7 +675,17 @@
             },
             onEachFeature: function (feature, layer) {
                 if (feature.properties && feature.properties.id) {
-                    districtLayersById[feature.properties.id] = layer;
+                    const id = feature.properties.id;
+                    districtLayersById[id] = layer;
+                    if (id.endsWith('_raion')) {
+                        districtLayersById[id.replace(/_raion$/, '_district')] = layer;
+                    } else if (id.endsWith('_district')) {
+                        districtLayersById[id.replace(/_district$/, '_raion')] = layer;
+                    } else if (id === 'chervonohrad') {
+                        districtLayersById['sheptytskyi'] = layer;
+                    } else if (id === 'sheptytskyi') {
+                        districtLayersById['chervonohrad'] = layer;
+                    }
                 }
                 layer.bindPopup(function () {
                     const apiData = currentThreatsData || (typeof SirensThreats !== 'undefined' ? SirensThreats.get() : null);

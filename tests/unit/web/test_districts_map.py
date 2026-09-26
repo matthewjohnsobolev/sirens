@@ -322,3 +322,268 @@ def test_format_duration_days_threshold():
     assert results["res14d5h"] == "14 дн"
     assert results["res15d"] == "15 дн"
     assert results["res30d"] == "30 дн"
+
+
+def test_threat_priority_and_stroke_order():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+
+    test_script = """
+    const { getDistrictState, pinState, STROKE_ORDER, PIN_STATES } = require('./web/static/js/districts-map.js');
+
+    const redAndShelling = {
+        alert: { status: true, level: 'red' },
+        shelling: { status: true }
+    };
+    const s1 = getDistrictState({ d1: { districts: { sub1: redAndShelling } } }, 'd1', 'sub1');
+    const p1 = pinState(redAndShelling);
+
+    const yellowAndShelling = {
+        alert: { status: true, level: 'yellow' },
+        shelling: { status: true }
+    };
+    const s2 = getDistrictState({ d1: { districts: { sub1: yellowAndShelling } } }, 'd1', 'sub1');
+    const p2 = pinState(yellowAndShelling);
+
+    const yellowOnly = {
+        alert: { status: true, level: 'yellow' },
+        shelling: { status: false }
+    };
+    const s3 = getDistrictState({ d1: { districts: { sub1: yellowOnly } } }, 'd1', 'sub1');
+    const p3 = pinState(yellowOnly);
+
+    const shellingOnly = {
+        alert: { status: false },
+        shelling: { status: true }
+    };
+    const s4 = getDistrictState({ d1: { districts: { sub1: shellingOnly } } }, 'd1', 'sub1');
+    const p4 = pinState(shellingOnly);
+
+    const idleThreat = {
+        alert: { status: false },
+        shelling: { status: false }
+    };
+    const s5 = getDistrictState({ d1: { districts: { sub1: idleThreat } } }, 'd1', 'sub1');
+    const p5 = pinState(idleThreat);
+
+    console.log(JSON.stringify({
+        s1, p1, s2, p2, s3, p3, s4, p4, s5, p5,
+        strokeOrder: STROKE_ORDER,
+        pinLifts: {
+            idle: PIN_STATES.idle.lift,
+            yellow: PIN_STATES.yellow.lift,
+            shelling: PIN_STATES.shelling.lift,
+            red: PIN_STATES.red.lift
+        }
+    }));
+    """
+
+    res = subprocess.run(
+        [node, "-e", test_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    results = json.loads(res.stdout.strip())
+    assert results["s1"] == "red"
+    assert results["p1"] == "red"
+    assert results["s2"] == "shelling"
+    assert results["p2"] == "shelling"
+    assert results["s3"] == "yellow"
+    assert results["p3"] == "yellow"
+    assert results["s4"] == "shelling"
+    assert results["p4"] == "shelling"
+    assert results["s5"] == "idle"
+    assert results["p5"] == "idle"
+
+    so = results["strokeOrder"]
+    assert so["idle"] < so["yellow"] < so["shelling"] < so["red"]
+
+    pl = results["pinLifts"]
+    assert pl["idle"] < pl["yellow"] < pl["shelling"] < pl["red"]
+
+
+def test_nikopol_popup_rendering_priority_and_scroller():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+
+    test_script = """
+    const { getDistrictPopupContent } = require('./web/static/js/districts-map.js');
+
+    const featNikopol = {
+        properties: { id: 'nikopol', name: 'Нікополь', oblast: 'dnipropetrovsk_oblast' }
+    };
+
+    const apiDataShellingOnly = {
+        dnipropetrovsk_oblast: {
+            districts: {
+                nikopol: {
+                    title: 'Нікополь',
+                    alert: { status: false, updated_at: 1740000000 },
+                    shelling: { status: true, updated_at: 1740001000 }
+                }
+            }
+        }
+    };
+    const htmlShelling = getDistrictPopupContent(featNikopol, apiDataShellingOnly);
+
+    const apiDataRedAndShelling = {
+        dnipropetrovsk_oblast: {
+            districts: {
+                nikopol: {
+                    title: 'Нікополь',
+                    alert: { status: true, level: 'red', updated_at: 1740002000 },
+                    shelling: { status: true, updated_at: 1740001000 }
+                }
+            }
+        }
+    };
+    const htmlRedAndShelling = getDistrictPopupContent(featNikopol, apiDataRedAndShelling);
+
+    const apiDataYellowAndShelling = {
+        dnipropetrovsk_oblast: {
+            districts: {
+                nikopol: {
+                    title: 'Нікополь',
+                    alert: { status: true, level: 'yellow', updated_at: 1740002000 },
+                    shelling: { status: true, updated_at: 1740001000 }
+                }
+            }
+        }
+    };
+    const htmlYellowAndShelling = getDistrictPopupContent(featNikopol, apiDataYellowAndShelling);
+
+    const apiDataRedOnly = {
+        dnipropetrovsk_oblast: {
+            districts: {
+                nikopol: {
+                    title: 'Нікополь',
+                    alert: { status: true, level: 'red', updated_at: 1740002000 },
+                    shelling: { status: false }
+                }
+            }
+        }
+    };
+    const htmlRedOnly = getDistrictPopupContent(featNikopol, apiDataRedOnly);
+
+    console.log(JSON.stringify({
+        htmlShelling,
+        htmlRedAndShelling,
+        htmlYellowAndShelling,
+        htmlRedOnly
+    }));
+    """
+
+    res = subprocess.run(
+        [node, "-e", test_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    results = json.loads(res.stdout.strip())
+
+    h1 = results["htmlShelling"]
+    assert "container scroller" in h1
+    assert "scrollable-content scroller-view" in h1
+    assert 'data-state="shelling"' in h1
+    assert 'data-state="idle"' in h1
+    assert h1.index('data-state="shelling"') < h1.index('data-state="idle"')
+    assert h1.index("channel-popup-button") > h1.index('data-state="idle"')
+
+    h2 = results["htmlRedAndShelling"]
+    assert "container scroller" in h2
+    assert 'data-state="red"' in h2
+    assert 'data-state="shelling"' in h2
+    assert h2.index('data-state="red"') < h2.index('data-state="shelling"')
+    assert h2.index("channel-popup-button") > h2.index('data-state="shelling"')
+
+    h3 = results["htmlYellowAndShelling"]
+    assert "container scroller" in h3
+    assert 'data-state="shelling"' in h3
+    assert 'data-state="yellow"' in h3
+    assert h3.index('data-state="shelling"') < h3.index('data-state="yellow"')
+    assert h3.index("channel-popup-button") > h3.index('data-state="yellow"')
+
+    h4 = results["htmlRedOnly"]
+    assert "container scroller" not in h4
+    assert 'data-state="red"' in h4
+    assert "channel-popup-button" in h4
+
+
+def test_marker_popup_opens_raion_except_cities():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed")
+
+    test_script = """
+    const { getFeatureForMarker, getMarkerPopupContent, CITY_POPUPS } = require('./web/static/js/districts-map.js');
+    const { DISTRICT_MARKERS } = require('./web/static/js/districts.js');
+
+    const mBilatserkva = DISTRICT_MARKERS.find(m => m.district === 'bilatserkva');
+    const mLviv = DISTRICT_MARKERS.find(m => m.district === 'lviv');
+    const mKharkiv = DISTRICT_MARKERS.find(m => m.district === 'kharkiv');
+    const mZaporizhzhia = DISTRICT_MARKERS.find(m => m.district === 'zaporizhzhia');
+    const mNikopol = DISTRICT_MARKERS.find(m => m.district === 'nikopol');
+    const mKyiv = DISTRICT_MARKERS.find(m => m.district === 'kyiv');
+
+    const featBila = getFeatureForMarker(mBilatserkva);
+    const featLviv = getFeatureForMarker(mLviv);
+    const featKharkiv = getFeatureForMarker(mKharkiv);
+    const featZaporizhzhia = getFeatureForMarker(mZaporizhzhia);
+    const featNikopol = getFeatureForMarker(mNikopol);
+    const featKyiv = getFeatureForMarker(mKyiv);
+
+    const popupBila = getMarkerPopupContent(mBilatserkva);
+    const popupLviv = getMarkerPopupContent(mLviv);
+    const popupKharkiv = getMarkerPopupContent(mKharkiv);
+    const popupZaporizhzhia = getMarkerPopupContent(mZaporizhzhia);
+    const popupNikopol = getMarkerPopupContent(mNikopol);
+    const popupKyiv = getMarkerPopupContent(mKyiv);
+
+    console.log(JSON.stringify({
+        featBila,
+        featLviv,
+        featKharkiv,
+        featZaporizhzhia,
+        featNikopol,
+        featKyiv,
+        popupBila,
+        popupLviv,
+        popupKharkiv,
+        popupZaporizhzhia,
+        popupNikopol,
+        popupKyiv
+    }));
+    """
+
+    res = subprocess.run(
+        [node, "-e", test_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    results = json.loads(res.stdout.strip())
+
+    assert results["featBila"]["properties"]["name"] == "Білоцерківський район"
+    assert '<div class="district-popup-name">Білоцерківський район</div>' in results["popupBila"]
+    assert "Біла Церква</div>" not in results["popupBila"]
+
+    assert results["featLviv"]["properties"]["name"] == "Львівський район"
+    assert '<div class="district-popup-name">Львівський район</div>' in results["popupLviv"]
+
+    assert results["featKharkiv"]["properties"]["name"] == "Харків"
+    assert '<div class="district-popup-name">Харків</div>' in results["popupKharkiv"]
+
+    assert results["featZaporizhzhia"]["properties"]["name"] == "Запоріжжя"
+    assert '<div class="district-popup-name">Запоріжжя</div>' in results["popupZaporizhzhia"]
+
+    assert results["featNikopol"]["properties"]["name"] == "Нікополь"
+    assert '<div class="district-popup-name">Нікополь</div>' in results["popupNikopol"]
+
+    assert results["featKyiv"]["properties"]["name"] == "Київ"
+    assert '<div class="district-popup-name">Київ</div>' in results["popupKyiv"]

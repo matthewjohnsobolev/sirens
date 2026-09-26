@@ -36,15 +36,19 @@ const FALLBACK_ORDER = THREAT_ORDER.filter(
 
 function pickDominant(threats) {
     if (!threats) return null;
-    let best = null;
+    const isAlert = Boolean(threats.alert && threats.alert.status);
+    const isShelling = Boolean(threats.shelling && threats.shelling.status);
+    const aLevel = isAlert ? alertLevel(threats.alert) : null;
+
+    if (aLevel === 'red') return 'alert';
+    if (isShelling) return 'shelling';
+    if (aLevel === 'yellow') return 'alert';
+
     for (const kind of FALLBACK_ORDER) {
         const t = threats[kind];
-        if (!t || !t.status) continue;
-        if (!best || (t.updated_at || 0) > (threats[best].updated_at || 0)) {
-            best = kind;
-        }
+        if (t && t.status) return kind;
     }
-    return best;
+    return null;
 }
 
 

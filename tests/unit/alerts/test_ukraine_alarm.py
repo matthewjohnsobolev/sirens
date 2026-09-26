@@ -120,6 +120,100 @@ def test_geo_resolver_load_regions_tree():
     assert resolver.resolve_districts_for_region("88888", "Unknown") == []
 
 
+def test_city_vs_raion_independent_resolution():
+    resolver = UkraineAlarmGeoResolver()
+
+    assert resolver.resolve_districts_for_region("1293", "Community") == ["kharkiv"]
+    assert resolver.resolve_districts_for_region("124", "District") == ["kharkiv_district"]
+    assert resolver.resolve_districts_for_region("564", "Community") == ["zaporizhzhia"]
+    assert resolver.resolve_districts_for_region("149", "District") == ["zaporizhzhia_district"]
+    assert resolver.resolve_districts_for_region("351", "Community") == ["nikopol"]
+    assert resolver.resolve_districts_for_region("47", "District") == ["nikopol_district"]
+
+    tree_payload = {
+        "states": [
+            {
+                "regionId": "22",
+                "regionName": "Харківська область",
+                "regionType": "State",
+                "regionChildIds": [
+                    {
+                        "regionId": "124",
+                        "regionName": "Харківський район",
+                        "regionType": "District",
+                        "regionChildIds": [
+                            {
+                                "regionId": "1293",
+                                "regionName": "Харківська міська громада",
+                                "regionType": "Community",
+                                "regionChildIds": [],
+                            },
+                            {
+                                "regionId": "9999",
+                                "regionName": "Пісочинська громада",
+                                "regionType": "Community",
+                                "regionChildIds": [],
+                            },
+                        ],
+                    }
+                ],
+            },
+            {
+                "regionId": "12",
+                "regionName": "Запорізька область",
+                "regionType": "State",
+                "regionChildIds": [
+                    {
+                        "regionId": "149",
+                        "regionName": "Запорізький район",
+                        "regionType": "District",
+                        "regionChildIds": [
+                            {
+                                "regionId": "564",
+                                "regionName": "Запорізька міська громада",
+                                "regionType": "Community",
+                                "regionChildIds": [],
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "regionId": "9",
+                "regionName": "Дніпропетровська область",
+                "regionType": "State",
+                "regionChildIds": [
+                    {
+                        "regionId": "47",
+                        "regionName": "Нікопольський район",
+                        "regionType": "District",
+                        "regionChildIds": [
+                            {
+                                "regionId": "351",
+                                "regionName": "Нікопольська міська громада",
+                                "regionType": "Community",
+                                "regionChildIds": [],
+                            }
+                        ],
+                    }
+                ],
+            },
+        ]
+    }
+
+    resolver.load_regions_tree(tree_payload)
+
+    assert resolver.resolve_districts_for_region("1293", "Community") == ["kharkiv"]
+    assert resolver.resolve_districts_for_region("124", "District") == ["kharkiv_district"]
+    assert resolver.resolve_districts_for_region("9999", "Community") == ["kharkiv_district"]
+
+    assert resolver.resolve_districts_for_region("564", "Community") == ["zaporizhzhia"]
+    assert resolver.resolve_districts_for_region("149", "District") == ["zaporizhzhia_district"]
+
+    assert resolver.resolve_districts_for_region("351", "Community") == ["nikopol"]
+    assert resolver.resolve_districts_for_region("47", "District") == ["nikopol_district"]
+
+
 def test_parse_alert_kind_and_level():
 
     res1 = parse_alert_kind_and_level({"type": "AIR"})

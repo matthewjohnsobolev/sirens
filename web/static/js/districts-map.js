@@ -58,29 +58,24 @@
         if (!oblastData) return 'idle';
 
         const districts = oblastData.districts || oblastData;
-        let d = districts[districtId];
-
-        if (!d && (districtId.endsWith('_district') || districtId.endsWith('_raion'))) {
-            const parentId = districtId.replace(/(_district|_raion)$/, '');
-            const parentD = districts[parentId];
-            if (parentD) {
-                if (parentD.alert && parentD.alert.status) {
-                    const levelFn = typeof alertLevel === 'function' ? alertLevel : () => 'red';
-                    return levelFn(parentD.alert);
-                }
-            }
-            return 'idle';
-        }
-
+        const d = districts[districtId];
         if (!d) return 'idle';
 
-        if (d.shelling && d.shelling.status) {
+        const isAlert = Boolean(d.alert && d.alert.status);
+        const isShelling = Boolean(d.shelling && d.shelling.status);
+        const levelFn = typeof alertLevel === 'function'
+            ? alertLevel
+            : (typeof require !== 'undefined' ? require('./districts.js').alertLevel : () => 'red');
+        const aLevel = isAlert ? levelFn(d.alert) : null;
+
+        if (aLevel === 'red') {
+            return 'red';
+        }
+        if (isShelling) {
             return 'shelling';
         }
-
-        if (d.alert && d.alert.status) {
-            const levelFn = typeof alertLevel === 'function' ? alertLevel : () => 'red';
-            return levelFn(d.alert);
+        if (aLevel === 'yellow') {
+            return 'yellow';
         }
 
         return 'idle';
@@ -107,6 +102,77 @@
         return 'idle';
     }
 
+    function attachScrollbar(view) {
+        if (!view) return null;
+        const host = view.parentElement;
+        if (!host || host.querySelector('.scroller-bar')) return null;
+
+        const bar = document.createElement('div');
+        bar.className = 'scroller-bar';
+        bar.setAttribute('aria-hidden', 'true');
+        const thumb = document.createElement('div');
+        thumb.className = 'scroller-thumb';
+        bar.appendChild(thumb);
+        host.appendChild(bar);
+        host.classList.add('is-live');
+
+        const range = () => view.scrollHeight - view.clientHeight;
+
+        function update() {
+            const max = range();
+            host.classList.toggle('is-scrollable', max > 1);
+            if (max <= 1) return;
+            const track = bar.clientHeight || view.clientHeight || (host.clientHeight ? host.clientHeight : 0);
+            if (track <= 0) return;
+            const height = Math.max(24, Math.round(track * view.clientHeight / view.scrollHeight));
+            const free = Math.max(0, track - height);
+            const clampedTop = Math.max(0, Math.min(view.scrollTop, max));
+            const y = max > 0 ? Math.round(free * clampedTop / max) : 0;
+            thumb.style.height = height + 'px';
+            thumb.style.webkitTransform = `translate3d(0, ${y}px, 0)`;
+            thumb.style.transform = `translate3d(0, ${y}px, 0)`;
+        }
+
+        let fromY = 0, fromTop = 0;
+
+        thumb.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            thumb.setPointerCapture(e.pointerId);
+            host.classList.add('is-dragging');
+            fromY = e.clientY;
+            fromTop = view.scrollTop;
+        });
+
+        thumb.addEventListener('pointermove', (e) => {
+            if (!host.classList.contains('is-dragging')) return;
+            const free = bar.clientHeight - thumb.offsetHeight;
+            if (free > 0) view.scrollTop = fromTop + (e.clientY - fromY) * range() / free;
+        });
+
+        const drop = () => host.classList.remove('is-dragging');
+        thumb.addEventListener('pointerup', drop);
+        thumb.addEventListener('pointercancel', drop);
+
+        bar.addEventListener('pointerdown', (e) => {
+            if (e.target === thumb) return;
+            e.stopPropagation();
+            const free = bar.clientHeight - thumb.offsetHeight;
+            if (free <= 0) return;
+            const at = e.clientY - bar.getBoundingClientRect().top - thumb.offsetHeight / 2;
+            view.scrollTop = Math.min(Math.max(at, 0), free) * range() / free;
+        });
+
+        view.addEventListener('scroll', update, { passive: true });
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(update);
+            ro.observe(view);
+            if (host) ro.observe(host);
+        }
+        update();
+        return update;
+    }
+
     
     function getDistrictPopupContent(feature, apiData) {
         if (!feature || !feature.properties) return '';
@@ -119,18 +185,7 @@
 
         const oblastData = (apiData && apiData[oblastId]) || {};
         const districts = oblastData.districts || oblastData;
-        let districtData = (districts && districts[districtId]) || {};
-        if (!districtData.title && (districtId.endsWith('_district') || districtId.endsWith('_raion'))) {
-            const parentId = districtId.replace(/(_district|_raion)$/, '');
-            const parentD = districts[parentId];
-            if (parentD) {
-                districtData = {
-                    title: districtName,
-                    alert: parentD.alert || { status: false },
-                    shelling: { status: false }
-                };
-            }
-        }
+        const districtData = (districts && districts[districtId]) || {};
 
         const districtPillStateFn = typeof districtPillState === 'function'
             ? districtPillState
@@ -138,16 +193,88 @@
         const renderPillFn = typeof renderPill === 'function'
             ? renderPill
             : (typeof require !== 'undefined' ? require('./districts.js').renderPill : () => '');
+        const alertLevelFn = typeof alertLevel === 'function'
+            ? alertLevel
+            : (typeof require !== 'undefined' ? require('./districts.js').alertLevel : () => 'red');
 
-        const pillState = districtPillStateFn(districtData);
-
-        
         const markersList = typeof DISTRICT_MARKERS !== 'undefined'
             ? DISTRICT_MARKERS
             : (typeof require !== 'undefined' ? require('./districts.js').DISTRICT_MARKERS : []);
         const marker = markersList.find(m => m.district === districtId || (districtId && (districtId.endsWith('_district') || districtId.endsWith('_raion')) && m.district === districtId.replace(/(_district|_raion)$/, '')));
         const channel = (marker && marker.channel) ? marker.channel : null;
         const channelHtml = subscribeButtonHtml(channel);
+
+        if (districtId === 'nikopol') {
+            const isAlertActive = Boolean(districtData.alert && districtData.alert.status);
+            const isShellingActive = Boolean(districtData.shelling && districtData.shelling.status);
+
+            const pills = [];
+
+            if (isAlertActive) {
+                const lvl = alertLevelFn(districtData.alert);
+                if (lvl === 'yellow') {
+                    pills.push({
+                        variant: 'yellow',
+                        updatedAt: districtData.alert.updated_at,
+                        source: districtData.alert.source,
+                        priority: 2
+                    });
+                } else {
+                    pills.push({
+                        variant: 'red',
+                        updatedAt: districtData.alert.updated_at,
+                        source: districtData.alert.source,
+                        priority: 4
+                    });
+                }
+            } else {
+                pills.push({
+                    variant: 'idle',
+                    updatedAt: districtData.alert ? districtData.alert.updated_at : null,
+                    source: districtData.alert ? districtData.alert.source : null,
+                    priority: 1
+                });
+            }
+
+            if (isShellingActive) {
+                pills.push({
+                    variant: 'shelling',
+                    updatedAt: districtData.shelling.updated_at,
+                    source: districtData.shelling.source,
+                    priority: 3
+                });
+            }
+
+            pills.sort((a, b) => b.priority - a.priority);
+
+            const pillsHtml = pills.map(p => renderPillFn(p)).join('\n');
+
+            if (pills.length > 1) {
+                return `
+            <div class="district-popup">
+                <div class="district-popup-header">
+                    <div class="district-popup-name">${districtName}</div>
+                </div>
+                <div class="container scroller">
+                    <div class="scrollable-content scroller-view">
+                        ${pillsHtml}${channelHtml ? '\n                        ' + channelHtml : ''}
+                    </div>
+                </div>
+            </div>
+                `.trim();
+            }
+
+            return `
+            <div class="district-popup">
+                <div class="district-popup-header">
+                    <div class="district-popup-name">${districtName}</div>
+                </div>
+                ${pillsHtml}${channelHtml ? '\n                ' + channelHtml : ''}
+            </div>
+            `.trim();
+        }
+
+        const pillState = districtPillStateFn(districtData);
 
         return `
             <div class="district-popup">
@@ -193,7 +320,7 @@
     const PIN_STATES = {
         idle:      { lift: 0 },
         yellow:    { lift: 200 },
-        shelling:  { lift: 200 },
+        shelling:  { lift: 300 },
         red:       { lift: 400 },
         explosion: { lift: 400 }
     };
@@ -259,15 +386,85 @@
         });
     }
 
-    
-    function getMarkerPopupContent(marker, threats) {
-        const feat = {
+    const CITY_POPUPS = new Set(['kharkiv', 'zaporizhzhia', 'nikopol', 'kyiv']);
+
+    const MARKER_DISTRICT_NAMES = {
+        bilatserkva: 'Білоцерківський район',
+        bucha: 'Бучанський район',
+        fastiv: 'Фастівський район',
+        cherkasy: 'Черкаський район',
+        chernihiv: 'Чернігівський район',
+        chernivtsi: 'Чернівецький район',
+        dnipro: 'Дніпровський район',
+        ivanofrankivsk: 'Івано-Франківський район',
+        kamianske: "Кам'янський район",
+        kharkiv: 'Харків',
+        khmelnytskyi: 'Хмельницький район',
+        kovel: 'Ковельський район',
+        kropyvnytskyi: 'Кропивницький район',
+        kryvyirih: 'Криворізький район',
+        kyiv: 'Київ',
+        lutsk: 'Луцький район',
+        lviv: 'Львівський район',
+        mykolaiv: 'Миколаївський район',
+        odesa: 'Одеський район',
+        pervomaisk: 'Первомайський район',
+        kremenchuk: 'Кременчуцький район',
+        sumy: 'Сумський район',
+        ternopil: 'Тернопільський район',
+        vinnytsia: 'Вінницький район',
+        uzhhorod: 'Ужгородський район',
+        zaporizhzhia: 'Запоріжжя',
+        zhytomyr: 'Житомирський район',
+        rivne: 'Рівненський район',
+        uman: 'Уманський район',
+        poltava: 'Полтавський район',
+        nikopol: 'Нікополь',
+        kherson: 'Херсонський район',
+        izmail: 'Ізмаїльський район',
+        zolotonosha: 'Золотоніський район',
+        zvenyhorodka: 'Звенигородський район'
+    };
+
+    function getFeatureForMarker(marker) {
+        if (!marker) return null;
+
+        let layerFeat = null;
+        if (districtLayersById[marker.district] && districtLayersById[marker.district].feature) {
+            layerFeat = districtLayersById[marker.district].feature;
+        } else if (geoDistrictsData && Array.isArray(geoDistrictsData.features)) {
+            layerFeat = geoDistrictsData.features.find(f => f.properties && f.properties.id === marker.district);
+        }
+
+        if (CITY_POPUPS.has(marker.district)) {
+            return {
+                properties: {
+                    id: marker.district,
+                    oblast: marker.oblast,
+                    name: (layerFeat && layerFeat.properties && layerFeat.properties.name)
+                        || MARKER_DISTRICT_NAMES[marker.district]
+                        || (marker.name || '').replace(/^м\.\s+/, '')
+                }
+            };
+        }
+
+        if (layerFeat && layerFeat.properties) {
+            return layerFeat;
+        }
+
+        return {
             properties: {
                 id: marker.district,
                 oblast: marker.oblast,
-                name: (marker.name || '').replace(/^м\.\s+/, '')
+                name: MARKER_DISTRICT_NAMES[marker.district]
+                    || ((marker.name || '').replace(/^м\.\s+/, '') + ' район')
             }
         };
+    }
+
+    
+    function getMarkerPopupContent(marker, threats) {
+        const feat = getFeatureForMarker(marker);
         const apiData = currentThreatsData || (typeof SirensThreats !== 'undefined' ? SirensThreats.get() : null);
         return getDistrictPopupContent(feat, apiData);
     }
@@ -311,21 +508,21 @@
         const dId = marker.district;
         const dLayer = districtLayersById[dId];
 
-        const feat = {
-            properties: {
-                id: marker.district,
-                oblast: marker.oblast,
-                name: (marker.name || '').replace(/^м\.\s+/, '')
-            }
-        };
+        const feat = getFeatureForMarker(marker);
         const apiData = currentThreatsData || (typeof SirensThreats !== 'undefined' ? SirensThreats.get() : null);
         const html = getDistrictPopupContent(feat, apiData);
 
         if (html && typeof L !== 'undefined' && L.popup) {
-            L.popup(markerPopupOptions)
+            const popup = L.popup(markerPopupOptions)
                 .setLatLng([marker.lat, marker.lng])
                 .setContent(html)
                 .openOn(m);
+
+            const popupEl = (popup && popup.getElement) ? popup.getElement() : null;
+            if (popupEl) {
+                const view = popupEl.querySelector('.scrollable-content');
+                if (view) attachScrollbar(view);
+            }
         }
 
         if (dLayer) {
@@ -425,6 +622,13 @@
     function initDistrictMap(map, districtsGeo, oblastsGeo) {
         if (!map) return;
 
+        if (districtsGeo) {
+            geoDistrictsData = districtsGeo;
+        }
+        if (oblastsGeo) {
+            geoOblastsData = oblastsGeo;
+        }
+
         if (!map.getPane('oblastPane')) {
             const oblastPane = map.createPane('oblastPane');
             oblastPane.style.zIndex = '350';
@@ -477,7 +681,7 @@
                     layer.openPopup(e && e.latlng);
                 });
 
-                layer.on('popupopen', function () {
+                layer.on('popupopen', function (e) {
                     setSelectedDistrict(layer);
                     if (window.track) {
                         window.track('district_popup_open', {
@@ -485,9 +689,22 @@
                             oblast_id: feature.properties.oblast
                         });
                     }
+                    const popupEl = (e && e.popup && e.popup.getElement) ? e.popup.getElement() : (layer.getPopup ? layer.getPopup().getElement() : null);
+                    if (popupEl) {
+                        const view = popupEl.querySelector('.scrollable-content');
+                        if (view) attachScrollbar(view);
+                    }
                 });
             }
         }).addTo(map);
+
+        map.on('popupopen', function (e) {
+            const popupEl = (e && e.popup && e.popup.getElement) ? e.popup.getElement() : null;
+            if (popupEl) {
+                const view = popupEl.querySelector('.scrollable-content');
+                if (view) attachScrollbar(view);
+            }
+        });
 
         map.on('popupclose', function (e) {
             clearSelectedDistrict();
@@ -511,8 +728,8 @@
     const STROKE_ORDER = {
         idle: 0,
         yellow: 1,
-        red: 2,
-        shelling: 3
+        shelling: 2,
+        red: 3
     };
 
     function orderDistrictStrokes() {
@@ -657,7 +874,12 @@
             openDistrictPopupForMarker,
             districtPopupOptions,
             markerPopupOptions,
-            customOptions
+            customOptions,
+            attachScrollbar,
+            CITY_POPUPS,
+            getFeatureForMarker,
+            MARKER_DISTRICT_NAMES,
+            STROKE_ORDER
         };
     }
 })();

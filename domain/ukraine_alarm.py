@@ -118,6 +118,10 @@ class UkraineAlarmGeoResolver:
                 norm_alias = normalize_geo_name(alias)
                 if norm_alias:
                     self._name_to_district[norm_alias] = d_key
+            for trig in conf.get("triggers", []):
+                norm_trig = normalize_geo_name(trig)
+                if norm_trig:
+                    self._name_to_district[norm_trig] = d_key
             for trig in conf.get("city_triggers", []):
                 norm_trig = normalize_geo_name(trig)
                 if norm_trig:
@@ -154,16 +158,27 @@ class UkraineAlarmGeoResolver:
         nid = str(node.get("regionId") or node.get("id") or "")
         nname = node.get("regionName") or node.get("name") or ""
         norm = normalize_geo_name(nname)
-        matched_key = self._name_to_district.get(norm) or parent_key
+        matched_key = (
+            self.community_id_to_district.get(nid)
+            or self.district_id_to_district.get(nid)
+            or self._name_to_district.get(norm)
+            or parent_key
+        )
         if matched_key and nid:
             self._region_id_to_districts[nid] = [matched_key]
             self.district_id_to_district[nid] = matched_key
             self.community_id_to_district[nid] = matched_key
 
         for child in node.get("regionChildIds") or node.get("children") or []:
+            child_id = str(child.get("regionId") or child.get("id") or "")
             child_name = child.get("regionName") or child.get("name") or ""
             child_norm = normalize_geo_name(child_name)
-            child_key = self._name_to_district.get(child_norm) or matched_key
+            child_key = (
+                self.community_id_to_district.get(child_id)
+                or self.district_id_to_district.get(child_id)
+                or self._name_to_district.get(child_norm)
+                or matched_key
+            )
             self._map_branch(child, parent_key=child_key)
 
     def load_regions_tree(self, regions_payload: dict[str, Any] | list[dict[str, Any]]) -> None:

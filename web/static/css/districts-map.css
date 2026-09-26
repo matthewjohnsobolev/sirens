@@ -161,7 +161,8 @@
     overflow: hidden;
 }
 
-.district-popup:has(.channel-popup-button) {
+.district-popup:has(.channel-popup-button),
+.district-popup:has(.container.scroller) {
     height: 116px;
     min-height: 116px;
     max-height: 116px;
@@ -245,6 +246,50 @@
     width: 310px;
     height: 40px;
     box-sizing: border-box;
+}
+
+.district-popup .container.scroller {
+    width: 310px;
+    height: 88px;
+    max-height: 88px;
+    position: relative;
+    overflow: visible;
+}
+
+.district-popup .scrollable-content {
+    max-height: 88px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.district-popup .container.is-live .scrollable-content {
+    scrollbar-width: none;
+}
+
+.district-popup .container.is-live .scrollable-content::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+.district-popup .container .scroller-bar {
+    right: 0;
+    width: 4px;
+}
+
+.district-popup .container.is-scrollable .info-block {
+    width: 302px;
+}
+
+.district-popup .container.is-scrollable .oblast-pill {
+    width: 302px;
+}
+
+.district-popup .container.is-scrollable .channel-popup-button {
+    width: 302px;
 }
 
 

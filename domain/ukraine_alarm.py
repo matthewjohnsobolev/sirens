@@ -178,7 +178,11 @@ class UkraineAlarmGeoResolver:
                 or self.district_id_to_district.get(child_id)
                 or self._name_to_district.get(child_norm)
             )
-            if not child_key and matched_key != "nikopol_district":
+            if not child_key and matched_key not in (
+                "nikopol_district",
+                "kharkiv_district",
+                "zaporizhzhia_district",
+            ):
                 child_key = matched_key
             self._map_branch(child, parent_key=child_key)
 

@@ -149,7 +149,7 @@ def test_city_vs_raion_independent_resolution():
                                 "regionChildIds": [],
                             },
                             {
-                                "regionId": "9999",
+                                "regionId": "1290",
                                 "regionName": "Пісочинська громада",
                                 "regionType": "Community",
                                 "regionChildIds": [],
@@ -173,7 +173,13 @@ def test_city_vs_raion_independent_resolution():
                                 "regionName": "Запорізька міська громада",
                                 "regionType": "Community",
                                 "regionChildIds": [],
-                            }
+                            },
+                            {
+                                "regionId": "565",
+                                "regionName": "Комишуваська територіальна громада",
+                                "regionType": "Community",
+                                "regionChildIds": [],
+                            },
                         ],
                     }
                 ],
@@ -211,10 +217,11 @@ def test_city_vs_raion_independent_resolution():
 
     assert resolver.resolve_districts_for_region("1293", "Community") == ["kharkiv"]
     assert resolver.resolve_districts_for_region("124", "District") == ["kharkiv_district"]
-    assert resolver.resolve_districts_for_region("9999", "Community") == ["kharkiv_district"]
+    assert resolver.resolve_districts_for_region("1290", "Community") == []
 
     assert resolver.resolve_districts_for_region("564", "Community") == ["zaporizhzhia"]
     assert resolver.resolve_districts_for_region("149", "District") == ["zaporizhzhia_district"]
+    assert resolver.resolve_districts_for_region("565", "Community") == []
 
     assert resolver.resolve_districts_for_region("351", "Community") == ["nikopol"]
     assert resolver.resolve_districts_for_region("47", "District") == ["nikopol_district"]

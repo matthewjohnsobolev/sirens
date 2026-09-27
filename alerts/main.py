@@ -408,7 +408,7 @@ async def maybe_reset_nikopol_shelling_on_all_clear(
                 async with pg_pool.acquire() as conn:
                     await conn.execute(
                         """INSERT INTO alert_history
-                           (recorded_at, district, event_type, level,
+                           (recorded_at, location, event_type, level,
                             channel_id, message_id, source)
                            VALUES ($1, $2, $3, $4, $5, $6, $7)""",
                         now_utc,
@@ -566,7 +566,7 @@ async def _record_alert_state(
             async with pg_pool.acquire() as conn:
                 await conn.execute(
                     """INSERT INTO alert_history
-                       (recorded_at, district, event_type, level,
+                       (recorded_at, location, event_type, level,
                         channel_id, message_id, source)
                        VALUES ($1, $2, $3, $4, $5, $6, $7)""",
                     now_utc,
@@ -1260,7 +1260,7 @@ async def _restore_stored_alert_payload() -> None:
         try:
             async with pg_pool.acquire() as conn:
                 row = await conn.fetchrow(
-                    """SELECT recorded_at, district, event_type, level, message_id, source
+                    """SELECT recorded_at, location, event_type, level, message_id, source
                        FROM alert_history
                        WHERE channel_id IS NOT NULL
                        ORDER BY recorded_at DESC LIMIT 1"""
@@ -1272,7 +1272,11 @@ async def _restore_stored_alert_payload() -> None:
                         if dt.tzinfo
                         else dt.replace(tzinfo=datetime.timezone.utc).isoformat()
                     )
-                    d_key = row["district"] or ""
+                    d_key = (
+                        (row.get("location") or row.get("district") or "")
+                        if hasattr(row, "get")
+                        else ((row["location"] if "location" in row else row["district"]) or "")
+                    )
                     o_key = DISTRICT_CONFIG.get(d_key, {}).get("oblast", d_key)
                     loc_name = city_or_district_name(d_key) if d_key else ""
                     loc_title = location_locative(d_key) if d_key else ""
@@ -1340,18 +1344,22 @@ async def _prime_api_state(
                 async with pg_pool.acquire() as conn:
                     rows = await conn.fetch(
                         """
-                        SELECT district, event_type, level
+                        SELECT location, event_type, level
                         FROM (
-                            SELECT DISTINCT ON (district) district, event_type, level, recorded_at
+                            SELECT DISTINCT ON (location) location, event_type, level, recorded_at
                             FROM alert_history
-                            WHERE district IS NOT NULL
-                            ORDER BY district, recorded_at DESC
+                            WHERE location IS NOT NULL
+                            ORDER BY location, recorded_at DESC
                         ) latest
                         WHERE event_type IN ('air_raid_alert', 'threat_of_shelling')
                         """
                     )
                     for row in rows:
-                        d_k = row["district"]
+                        d_k = (
+                            (row.get("location") or row.get("district") or "")
+                            if hasattr(row, "get")
+                            else ((row["location"] if "location" in row else row["district"]) or "")
+                        )
                         e_t = row["event_type"]
                         lvl = row["level"]
                         if d_k:

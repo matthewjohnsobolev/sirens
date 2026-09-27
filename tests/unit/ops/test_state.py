@@ -238,6 +238,7 @@ def test_get_history():
 
     history = get_history(district_key="bucha", limit=5, pg_conn=mock_pg)
     assert len(history) == 1
+    assert history[0]["location"] == "bucha"
     assert history[0]["district"] == "bucha"
     assert history[0]["district_key"] == "bucha"
     assert history[0]["event_type"] == "air_raid_alert"
@@ -780,5 +781,5 @@ def test_get_history_with_level_filter():
     mock_cur.execute.assert_called_once()
     query, params = mock_cur.execute.call_args[0]
     assert "level = %s" in query
-    assert "district = %s" in query
+    assert "location = %s" in query
     assert "yellow" in params

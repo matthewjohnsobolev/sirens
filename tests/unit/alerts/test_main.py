@@ -1468,7 +1468,7 @@ async def test_prime_ignores_map_only_district_in_redis_and_falls_back_to_pg(
     posted_dt = datetime.datetime(2026, 8, 27, 10, 0, tzinfo=datetime.timezone.utc)
     mock_conn.fetchrow.return_value = {
         "recorded_at": posted_dt,
-        "district": "bilatserkva",
+        "location": "bilatserkva",
         "event_type": "air_raid_alert",
         "level": None,
         "message_id": 555,
@@ -1493,7 +1493,7 @@ async def test_prime_pg_query_filters_only_broadcast_alerts(
     posted_dt = datetime.datetime(2026, 8, 27, 11, 0)
     mock_conn.fetchrow.return_value = {
         "recorded_at": posted_dt,
-        "district": "kharkiv",
+        "location": "kharkiv",
         "event_type": "air_raid_alert_cancelled",
         "level": None,
         "message_id": 777,

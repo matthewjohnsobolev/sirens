@@ -190,7 +190,7 @@ export_subscribers_csv = export_stats_csv
 SELECT_ALERTS_SQL = """
     SELECT
         date_bin('4 hours', recorded_at AT TIME ZONE 'Europe/Kyiv', TIMESTAMP '2000-01-01 00:00:00') AS date,
-        district,
+        location,
         COUNT(*) FILTER (WHERE level = 'red') AS red_alerts,
         COUNT(*) FILTER (WHERE level = 'yellow') AS yellow_alerts
     FROM alert_history
@@ -200,7 +200,7 @@ SELECT_ALERTS_SQL = """
     ORDER BY 1, 2
 """
 
-ALERTS_CSV_COLUMNS = ("date", "district", "red_alerts", "yellow_alerts")
+ALERTS_CSV_COLUMNS = ("date", "location", "red_alerts", "yellow_alerts")
 
 
 async def export_alerts_csv(pool) -> str:
@@ -217,7 +217,7 @@ async def export_alerts_csv(pool) -> str:
 
     for record in rows:
         date_val = record.get("date") if "date" in record else record.get("recorded_at")
-        district = record.get("district") or "unknown"
+        location = record.get("location") or record.get("district") or "unknown"
         red_alerts = int(record.get("red_alerts") or 0)
         yellow_alerts = int(record.get("yellow_alerts") or 0)
         if isinstance(date_val, datetime.datetime):
@@ -228,7 +228,7 @@ async def export_alerts_csv(pool) -> str:
             date_str = date_val.isoformat()
         else:
             date_str = str(date_val) if date_val is not None else ""
-        writer.writerow([date_str, district, red_alerts, yellow_alerts])
+        writer.writerow([date_str, location, red_alerts, yellow_alerts])
 
     return buffer.getvalue()
 

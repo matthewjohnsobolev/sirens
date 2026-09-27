@@ -75,7 +75,7 @@ def test_ensure_pg_tables_creates_alert_history(mock_web_pg):
         "recorded_at",
         "event_type",
         "level",
-        "district",
+        "location",
         "channel_id",
         "message_id",
         "source",

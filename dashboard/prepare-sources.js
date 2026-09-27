@@ -10,7 +10,7 @@ const alertsFile = path.join(
   "alerts_history.csv",
 );
 const PLACEHOLDER =
-  "date,district,red_alerts,yellow_alerts\n1970-01-01 00:00:00,unknown,0,0\n";
+  "date,location,red_alerts,yellow_alerts\n1970-01-01 00:00:00,unknown,0,0\n";
 
 if (!fs.existsSync(alertsFile)) {
   fs.mkdirSync(path.dirname(alertsFile), { recursive: true });

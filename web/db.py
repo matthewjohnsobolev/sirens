@@ -56,7 +56,7 @@ def ensure_pg_tables() -> None:
                         recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         event_type VARCHAR(32) NOT NULL,
                         level VARCHAR(10),
-                        district TEXT NOT NULL,
+                        location TEXT NOT NULL,
                         channel_id BIGINT,
                         message_id BIGINT,
                         source TEXT
@@ -119,19 +119,29 @@ def ensure_pg_tables() -> None:
                             END IF;
                         END IF;
 
-                        IF NOT EXISTS (
+                        IF EXISTS (
                             SELECT 1 FROM information_schema.columns
                             WHERE table_name = 'alert_history' AND column_name = 'district'
+                        ) AND NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'alert_history' AND column_name = 'location'
                         ) THEN
-                            ALTER TABLE alert_history ADD COLUMN district TEXT;
+                            ALTER TABLE alert_history RENAME COLUMN district TO location;
+                        END IF;
+
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'alert_history' AND column_name = 'location'
+                        ) THEN
+                            ALTER TABLE alert_history ADD COLUMN location TEXT;
                             IF EXISTS (
                                 SELECT 1 FROM information_schema.columns
                                 WHERE table_name = 'alert_history' AND column_name = 'district_key'
                             ) THEN
-                                UPDATE alert_history SET district = district_key WHERE district IS NULL AND district_key IS NOT NULL;
+                                UPDATE alert_history SET location = district_key WHERE location IS NULL AND district_key IS NOT NULL;
                             END IF;
-                            UPDATE alert_history SET district = 'unknown' WHERE district IS NULL;
-                            ALTER TABLE alert_history ALTER COLUMN district SET NOT NULL;
+                            UPDATE alert_history SET location = 'unknown' WHERE location IS NULL;
+                            ALTER TABLE alert_history ALTER COLUMN location SET NOT NULL;
                         END IF;
 
                         IF NOT EXISTS (
@@ -173,6 +183,9 @@ def ensure_pg_tables() -> None:
                         END IF;
                         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'type') THEN
                             ALTER TABLE alert_history DROP COLUMN type;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'district') THEN
+                            ALTER TABLE alert_history DROP COLUMN district;
                         END IF;
                         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alert_history' AND column_name = 'district_key') THEN
                             ALTER TABLE alert_history DROP COLUMN district_key;
@@ -225,8 +238,9 @@ def ensure_pg_tables() -> None:
                 cur.execute("DROP INDEX IF EXISTS alert_history_district_dt_idx")
                 cur.execute("DROP INDEX IF EXISTS alert_history_oblast_dt_idx")
                 cur.execute("DROP INDEX IF EXISTS alert_history_datetime_idx")
+                cur.execute("DROP INDEX IF EXISTS idx_alert_history_district_recorded")
                 cur.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_alert_history_district_recorded ON alert_history (district, recorded_at DESC)"
+                    "CREATE INDEX IF NOT EXISTS idx_alert_history_location_recorded ON alert_history (location, recorded_at DESC)"
                 )
                 cur.execute(
                     "CREATE INDEX IF NOT EXISTS idx_alert_history_recorded_at ON alert_history (recorded_at DESC)"
@@ -545,7 +559,7 @@ async def update_alert_status(
                         with conn.cursor() as cur:
                             cur.execute(
                                 """INSERT INTO alert_history
-                                   (recorded_at, district, event_type, level,
+                                   (recorded_at, location, event_type, level,
                                     channel_id, message_id, source)
                                    VALUES (%s, %s, %s, %s, %s, %s, %s)""",
                                 (
@@ -568,7 +582,7 @@ async def update_alert_status(
                 with conn.cursor() as cur:
                     cur.execute(
                         """INSERT INTO alert_history
-                           (recorded_at, district, event_type, level,
+                           (recorded_at, location, event_type, level,
                             channel_id, message_id, source)
                            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
                         (
@@ -591,15 +605,15 @@ def rehydrate_state_from_db() -> None:
     try:
         with get_pg_conn() as conn, conn.cursor() as cur:
             cur.execute("""
-                SELECT DISTINCT ON (district)
-                    COALESCE(district, '') as district,
+                SELECT DISTINCT ON (location)
+                    COALESCE(location, '') as location,
                     event_type,
                     level,
                     recorded_at,
                     source
                 FROM alert_history
-                WHERE district IS NOT NULL
-                ORDER BY district, recorded_at DESC
+                WHERE location IS NOT NULL
+                ORDER BY location, recorded_at DESC
             """)
             rows = cur.fetchall()
     except Exception:

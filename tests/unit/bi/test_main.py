@@ -264,19 +264,19 @@ async def test_export_alerts_csv(bi_pool):
     conn.fetch.return_value = [
         {
             "date": utc_dt,
-            "district": "kyiv",
+            "location": "kyiv",
             "red_alerts": 3,
             "yellow_alerts": 1,
         },
         {
             "date": naive_dt,
-            "district": "bucha",
+            "location": "bucha",
             "red_alerts": 0,
             "yellow_alerts": 2,
         },
         {
             "date": None,
-            "district": "odesa",
+            "location": "odesa",
             "red_alerts": 1,
             "yellow_alerts": 0,
         },
@@ -284,7 +284,7 @@ async def test_export_alerts_csv(bi_pool):
     from bi.main import export_alerts_csv
 
     csv_str = await export_alerts_csv(pool)
-    assert "date,district,red_alerts,yellow_alerts" in csv_str
+    assert "date,location,red_alerts,yellow_alerts" in csv_str
     assert "2026-08-19 15:00:00,kyiv,3,1" in csv_str
     assert "2026-08-19 16:00:00,bucha,0,2" in csv_str
     assert ",odesa,1,0" in csv_str
@@ -297,7 +297,7 @@ async def test_export_alerts_csv_empty(bi_pool):
     from bi.main import export_alerts_csv
 
     csv_str = await export_alerts_csv(pool)
-    assert "date,district,red_alerts,yellow_alerts" in csv_str
+    assert "date,location,red_alerts,yellow_alerts" in csv_str
     assert "1970-01-01 00:00:00,unknown,0,0" in csv_str
 
 

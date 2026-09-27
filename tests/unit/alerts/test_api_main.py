@@ -59,7 +59,7 @@ async def test_restore_stored_alert_payload_pg_fallback():
 
     fake_row = {
         "recorded_at": datetime.datetime(2026, 9, 23, 12, 0, 0, tzinfo=datetime.timezone.utc),
-        "district": "bucha",
+        "location": "bucha",
         "event_type": "air_raid_alert",
         "level": "red",
         "message_id": 123,
@@ -117,7 +117,7 @@ async def test_prime_api_state_clears_stuck_alerts():
     mock_api.get_active_alerts = AsyncMock(return_value=[])
 
     fake_row = {
-        "district": "bucha",
+        "location": "bucha",
         "event_type": "air_raid_alert",
         "level": "red",
         "recorded_at": datetime.datetime(2026, 9, 23, 12, 0, tzinfo=datetime.timezone.utc),

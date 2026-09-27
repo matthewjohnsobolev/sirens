@@ -839,7 +839,7 @@ def test_strip_ongoing_notice(message_text, expected):
 
 @pytest.mark.asyncio
 async def test_main_wires_up_clients_and_handler():
-    _, expected_source, expected_fallback = get_mode_config(argparse.Namespace(mode="dev"))
+    _, expected_source = get_mode_config(argparse.Namespace(mode="dev"))
 
     with (
         patch("alerts.main.redis.from_url") as mock_redis_from_url,
@@ -863,7 +863,7 @@ async def test_main_wires_up_clients_and_handler():
     mock_client_instance.start.assert_not_awaited()
     mock_client_instance.add_event_handler.assert_called_once()
     _, event_filter = mock_client_instance.add_event_handler.call_args.args
-    assert set(event_filter.chats) == {cid for cid in (expected_source, expected_fallback) if cid}
+    assert set(event_filter.chats) == {expected_source}
     mock_client_instance.run_until_disconnected.assert_awaited_once()
     assert alerts_main.client is mock_client_instance
 
@@ -1184,13 +1184,9 @@ async def test_healthcheck_loop_active_check_pings_ok(monkeypatch):
     mock_client.get_messages = AsyncMock(return_value=[MagicMock()])
 
     with patch("alerts.main._ping_healthcheck") as mock_ping:
-        await _run_one_cycle(
-            alerts_main._healthcheck_loop(
-                mock_client, primary_source=111111, fallback_source=222222
-            )
-        )
+        await _run_one_cycle(alerts_main._healthcheck_loop(mock_client, primary_source=111111))
 
-    mock_client.get_messages.assert_awaited_once_with(222222, limit=1)
+    mock_client.get_messages.assert_awaited_once_with(111111, limit=1)
     mock_ping.assert_called_once_with()
 
 
@@ -2139,15 +2135,12 @@ def test_location_locative_unconfigured_fallback():
 
 
 @pytest.mark.asyncio
-async def test_build_message_handler_handles_fallback_source(mock_redis, mock_telegram_client):
+async def test_build_message_handler_handles_primary_source(mock_redis, mock_telegram_client):
     primary_id = 111111
-    fallback_id = 222222
-    handler = build_message_handler(
-        {"kyiv": 9001}, primary_source=primary_id, fallback_source=fallback_id
-    )
+    handler = build_message_handler({"kyiv": 9001}, primary_source=primary_id)
 
     event = MagicMock()
-    event.chat_id = fallback_id
+    event.chat_id = primary_id
     event.message.message = "м. Київ Повітряна тривога"
     event.message.id = 55
     event.message.date = datetime.datetime(2026, 8, 29, 12, 0, tzinfo=datetime.timezone.utc)
@@ -2156,54 +2149,13 @@ async def test_build_message_handler_handles_fallback_source(mock_redis, mock_te
         patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send,
         patch("alerts.main.resolve_channel_username", new_callable=AsyncMock) as mock_uname,
     ):
-        mock_uname.return_value = "fallback_channel"
+        mock_uname.return_value = "primary_channel"
         await handler(event)
         await _drain_background_tasks()
 
-    assert alerts_main.last_fallback_message_at == event.message.date.timestamp()
-    assert alerts_main.active_source_name == "fallback"
-    mock_send.assert_awaited_once_with(9001, "kyiv", "air_raid_alert", source_type="fallback")
-
-
-@pytest.mark.asyncio
-async def test_dual_source_deduplication_between_primary_and_fallback(
-    mock_redis, mock_pg_pool, mock_telegram_client
-):
-    primary_id = 111111
-    fallback_id = 222222
-    handler = build_message_handler(
-        {"kyiv": 9001}, primary_source=primary_id, fallback_source=fallback_id
-    )
-
-    event_fb = MagicMock()
-    event_fb.chat_id = fallback_id
-    event_fb.message.message = "м. Київ Повітряна тривога"
-    event_fb.message.id = 100
-    mock_redis.set.return_value = None
-
-    with (
-        patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock),
-        patch("alerts.main.resolve_channel_username", new_callable=AsyncMock),
-    ):
-        await handler(event_fb)
-        await _drain_background_tasks()
-
-    assert mock_telegram_client.send_message.await_count == 1
-
-    mock_redis.set.return_value = "air_raid_alert"
-    event_prim = MagicMock()
-    event_prim.chat_id = primary_id
-    event_prim.message.message = "м. Київ Повітряна тривога"
-    event_prim.message.id = 200
-
-    with (
-        patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock),
-        patch("alerts.main.resolve_channel_username", new_callable=AsyncMock),
-    ):
-        await handler(event_prim)
-        await _drain_background_tasks()
-
-    assert mock_telegram_client.send_message.await_count == 1
+    assert alerts_main.last_primary_message_at == event.message.date.timestamp()
+    assert alerts_main.active_source_name == "primary"
+    mock_send.assert_awaited_once_with(9001, "kyiv", "air_raid_alert", source_type="primary")
 
 
 class FakeRedisState:
@@ -2258,12 +2210,6 @@ class FakeRedisState:
 
 @pytest.mark.asyncio
 async def test_send_alert_broadcasts_once_when_both_sources_land_together(mock_pg_pool):
-    """The duplicate seen in production on 2026-09-01 at 04:08:52.
-
-    The same Nikopol alert reached the worker from both source channels inside
-    the same second. Reading the state and only writing it once the message was
-    away let both copies through, so subscribers got the alert twice.
-    """
     state_key = f"channel_state:{CHANNEL_ID}"
     fake_redis = FakeRedisState({state_key: "air_raid_alert_cancelled"})
     telegram = AsyncMock()
@@ -2281,8 +2227,8 @@ async def test_send_alert_broadcasts_once_when_both_sources_land_together(mock_p
         patch("alerts.main.resolve_channel_username", new_callable=AsyncMock),
     ):
         await asyncio.gather(
-            send_alert(CHANNEL_ID, "nikopol", "air_raid_alert", source_type="primary"),
-            send_alert(CHANNEL_ID, "nikopol", "air_raid_alert", source_type="fallback"),
+            send_alert(CHANNEL_ID, "nikopol", "air_raid_alert"),
+            send_alert(CHANNEL_ID, "nikopol", "air_raid_alert"),
         )
         await _drain_background_tasks()
 
@@ -2297,8 +2243,8 @@ async def test_record_map_only_alert_records_once_when_both_sources_land_togethe
 
     with patch("alerts.main.redis_client", fake_redis):
         await asyncio.gather(
-            record_map_only_alert("vyshhorod", "air_raid_alert", source_type="primary"),
-            record_map_only_alert("vyshhorod", "air_raid_alert", source_type="fallback"),
+            record_map_only_alert("vyshhorod", "air_raid_alert"),
+            record_map_only_alert("vyshhorod", "air_raid_alert"),
         )
         await _drain_background_tasks()
 
@@ -2374,39 +2320,33 @@ async def test_send_alert_leaves_a_newer_state_alone_when_the_send_fails(mock_pg
 
 
 @pytest.mark.asyncio
-async def test_prime_monitoring_state_with_fallback(mock_redis, mock_telegram_client):
+async def test_prime_monitoring_state_with_redis(mock_redis, mock_telegram_client):
     mock_redis.get.side_effect = lambda k: {
         alerts_main.LAST_SOURCE_MESSAGE_KEY: "1700000000",
         alerts_main.LAST_PRIMARY_MESSAGE_KEY: "1700000000",
-        alerts_main.LAST_FALLBACK_MESSAGE_KEY: "1700000050",
         alerts_main.LAST_BROADCAST_AT_KEY: "1700000010",
-        alerts_main.ACTIVE_SOURCE_KEY: "fallback",
+        alerts_main.ACTIVE_SOURCE_KEY: "primary",
     }.get(k)
 
     with patch("alerts.main.push_telemetry_to_kv", new_callable=AsyncMock):
-        await alerts_main._prime_monitoring_state(111111, fallback_source=222222)
+        await alerts_main._prime_monitoring_state(111111)
 
     assert alerts_main.last_source_message_at == 1700000000.0
     assert alerts_main.last_primary_message_at == 1700000000.0
-    assert alerts_main.last_fallback_message_at == 1700000050.0
-    assert alerts_main.active_source_name == "fallback"
+    assert alerts_main.active_source_name == "primary"
 
 
 @pytest.mark.asyncio
 async def test_prime_monitoring_state_fetches_from_telegram_when_no_redis(mock_telegram_client):
     alerts_main.redis_client = None
     mock_msg1 = MagicMock(date=datetime.datetime(2026, 8, 29, 10, 0, tzinfo=datetime.timezone.utc))
-    mock_msg2 = MagicMock(date=datetime.datetime(2026, 8, 29, 10, 5, tzinfo=datetime.timezone.utc))
 
-    mock_telegram_client.get_messages.side_effect = lambda cid, limit: (
-        [mock_msg1] if cid == 111111 else [mock_msg2]
-    )
+    mock_telegram_client.get_messages.return_value = [mock_msg1]
 
     with patch("alerts.main.push_telemetry_to_kv", new_callable=AsyncMock):
-        await alerts_main._prime_monitoring_state(111111, fallback_source=222222)
+        await alerts_main._prime_monitoring_state(111111)
 
     assert alerts_main.last_primary_message_at == mock_msg1.date.timestamp()
-    assert alerts_main.last_fallback_message_at == mock_msg2.date.timestamp()
 
 
 @pytest.mark.asyncio
@@ -2740,56 +2680,9 @@ async def test_record_alert_state_cancellation_deletes_level(mock_redis):
 
 
 @pytest.mark.asyncio
-async def test_primary_source_ignored_when_broadcasting_limited_to_fallback(
-    mock_redis, mock_telegram_client
-):
+async def test_primary_broadcasts():
     primary_id = 111111
-    fallback_id = 222222
-    handler = build_message_handler(
-        {"kyiv": 9001}, primary_source=primary_id, fallback_source=fallback_id
-    )
-
-    event_primary = MagicMock()
-    event_primary.chat_id = primary_id
-    event_primary.message.message = "м. Київ Повітряна тривога"
-    event_primary.message.id = 100
-    event_primary.message.date = datetime.datetime(2026, 9, 6, 12, 0, tzinfo=datetime.timezone.utc)
-
-    with (
-        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send,
-        patch("alerts.main.record_map_only_alert", new_callable=AsyncMock) as mock_record,
-    ):
-        await handler(event_primary)
-        await _drain_background_tasks()
-
-    assert alerts_main.last_primary_message_at == event_primary.message.date.timestamp()
-
-    mock_send.assert_not_awaited()
-    mock_record.assert_not_awaited()
-
-    event_fallback = MagicMock()
-    event_fallback.chat_id = fallback_id
-    event_fallback.message.message = "🔴 Червоний рівень тривоги\nм. Київ"
-    event_fallback.message.id = 101
-    event_fallback.message.date = datetime.datetime(2026, 9, 6, 12, 1, tzinfo=datetime.timezone.utc)
-
-    with (
-        patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send,
-        patch("alerts.main.record_map_only_alert", new_callable=AsyncMock) as mock_record,
-    ):
-        await handler(event_fallback)
-        await _drain_background_tasks()
-
-    mock_send.assert_awaited_once_with(
-        9001, "kyiv", "air_raid_alert", source_type="fallback", level="red"
-    )
-    mock_record.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_primary_broadcasts_when_fallback_source_is_none():
-    primary_id = 111111
-    handler = build_message_handler({"kyiv": 9001}, primary_source=primary_id, fallback_source=None)
+    handler = build_message_handler({"kyiv": 9001}, primary_source=primary_id)
 
     event = MagicMock()
     event.chat_id = primary_id
@@ -2805,48 +2698,10 @@ async def test_primary_broadcasts_when_fallback_source_is_none():
 
 
 @pytest.mark.asyncio
-async def test_both_sources_broadcast_when_configured(monkeypatch):
-    monkeypatch.setattr(alerts_main, "ALERT_BROADCAST_SOURCES", frozenset({"primary", "fallback"}))
-
+async def test_nikopol_shelling_and_air_raid_from_primary_channel():
     primary_id = 111111
-    fallback_id = 222222
-    handler = build_message_handler(
-        {"kyiv": 9001}, primary_source=primary_id, fallback_source=fallback_id
-    )
-
-    event_primary = MagicMock()
-    event_primary.chat_id = primary_id
-    event_primary.message.message = "м. Київ Повітряна тривога"
-    event_primary.message.id = 301
-    event_primary.message.date = datetime.datetime(2026, 9, 6, 12, 0, tzinfo=datetime.timezone.utc)
-
-    event_fallback = MagicMock()
-    event_fallback.chat_id = fallback_id
-    event_fallback.message.message = "🔴 Червоний рівень тривоги\nм. Київ"
-    event_fallback.message.id = 302
-    event_fallback.message.date = datetime.datetime(2026, 9, 6, 12, 5, tzinfo=datetime.timezone.utc)
-
-    with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
-        await handler(event_primary)
-        await _drain_background_tasks()
-        mock_send.assert_awaited_once_with(9001, "kyiv", "air_raid_alert", source_type="primary")
-
-        mock_send.reset_mock()
-        await handler(event_fallback)
-        await _drain_background_tasks()
-        mock_send.assert_awaited_once_with(
-            9001, "kyiv", "air_raid_alert", source_type="fallback", level="red"
-        )
-
-
-@pytest.mark.asyncio
-async def test_nikopol_shelling_from_primary_channel_and_air_raid_from_fallback():
-    primary_id = 111111
-    fallback_id = 222222
     channels = {"nikopol": 8001, "kyiv": 9001}
-    handler = build_message_handler(
-        channels, primary_source=primary_id, fallback_source=fallback_id
-    )
+    handler = build_message_handler(channels, primary_source=primary_id)
 
     ev_primary_shelling = MagicMock()
     ev_primary_shelling.chat_id = primary_id
@@ -2889,22 +2744,7 @@ async def test_nikopol_shelling_from_primary_channel_and_air_raid_from_fallback(
     with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
         await handler(ev_primary_air)
         await _drain_background_tasks()
-        mock_send.assert_not_awaited()
-
-    ev_fallback_air = MagicMock()
-    ev_fallback_air.chat_id = fallback_id
-    ev_fallback_air.message.message = "🔴 Нікопольський район (Дніпропетровська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!"
-    ev_fallback_air.message.id = 404
-    ev_fallback_air.message.date = datetime.datetime(
-        2026, 9, 6, 12, 20, tzinfo=datetime.timezone.utc
-    )
-
-    with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
-        await handler(ev_fallback_air)
-        await _drain_background_tasks()
-        mock_send.assert_awaited_once_with(
-            8001, "nikopol", "air_raid_alert", source_type="fallback", level="red"
-        )
+        mock_send.assert_awaited_once_with(9001, "kyiv", "air_raid_alert", source_type="primary")
 
 
 def test_shelling_only_applies_to_nikopol():
@@ -2975,40 +2815,18 @@ def test_nikopol_two_level_alerts():
 
 
 @pytest.mark.asyncio
-async def test_fallback_nikopol_shelling_alert_broadcast():
-    fallback_id = 11112222
-    channels = {"nikopol": 8001}
-    handler = build_message_handler(channels, fallback_source=fallback_id)
-
-    ev = MagicMock()
-    ev.chat_id = fallback_id
-    ev.message.message = (
-        "💥 Нікополь (Дніпропетровська обл.)\nЗагроза обстрілу! Перейдіть в укриття!"
-    )
-    ev.message.id = 501
-    ev.message.date = datetime.datetime(2026, 9, 6, 13, 0, tzinfo=datetime.timezone.utc)
-
-    with patch("alerts.main.send_alert", new_callable=AsyncMock) as mock_send:
-        await handler(ev)
-        await _drain_background_tasks()
-        mock_send.assert_awaited_once_with(
-            8001, "nikopol", "threat_of_shelling", source_type="fallback"
-        )
-
-
-@pytest.mark.asyncio
 async def test_nikopol_shelling_auto_reset_on_general_all_clear(mock_redis, mock_pg_pool):
     mock_pool, mock_conn = mock_pg_pool
-    fallback_id = 11112222
+    primary_id = 11112222
     channels = {"nikopol": 8001}
-    handler = build_message_handler(channels, fallback_source=fallback_id)
+    handler = build_message_handler(channels, primary_source=primary_id)
 
     mock_redis.hget.side_effect = lambda key, field: (
         "true" if key == "threat:shellings:nikopol" and field == "status" else None
     )
 
     ev_cancel = MagicMock()
-    ev_cancel.chat_id = fallback_id
+    ev_cancel.chat_id = primary_id
     ev_cancel.message.message = (
         "🟢 Нікопольський район (Дніпропетровська обл.)\nВідбій тривоги. Будьте обережні!"
     )
@@ -3023,7 +2841,7 @@ async def test_nikopol_shelling_auto_reset_on_general_all_clear(mock_redis, mock
         await _drain_background_tasks()
 
         mock_send.assert_awaited_once_with(
-            8001, "nikopol", "air_raid_alert_cancelled", source_type="fallback"
+            8001, "nikopol", "air_raid_alert_cancelled", source_type="primary"
         )
         hset_calls = [
             c
@@ -3043,16 +2861,16 @@ async def test_nikopol_shelling_auto_reset_on_general_all_clear(mock_redis, mock
 @pytest.mark.asyncio
 async def test_nikopol_shelling_not_reset_on_city_all_clear(mock_redis, mock_pg_pool):
     mock_pool, mock_conn = mock_pg_pool
-    fallback_id = 11112222
+    primary_id = 11112222
     channels = {"nikopol": 8001}
-    handler = build_message_handler(channels, fallback_source=fallback_id)
+    handler = build_message_handler(channels, primary_source=primary_id)
 
     mock_redis.hget.side_effect = lambda key, field: (
         "true" if key == "threat:shellings:nikopol" and field == "status" else None
     )
 
     ev_city_cancel = MagicMock()
-    ev_city_cancel.chat_id = fallback_id
+    ev_city_cancel.chat_id = primary_id
     ev_city_cancel.message.message = (
         "🟢 Нікополь (Дніпропетровська обл.)\nВідбій тривоги. Будьте обережні!"
     )
@@ -3069,7 +2887,7 @@ async def test_nikopol_shelling_not_reset_on_city_all_clear(mock_redis, mock_pg_
         await _drain_background_tasks()
 
         mock_send.assert_awaited_once_with(
-            8001, "nikopol", "air_raid_alert_cancelled", source_type="fallback"
+            8001, "nikopol", "air_raid_alert_cancelled", source_type="primary"
         )
 
         hset_calls = [
@@ -3089,16 +2907,16 @@ async def test_nikopol_shelling_not_reset_on_city_all_clear(mock_redis, mock_pg_
 @pytest.mark.asyncio
 async def test_nikopol_shelling_reset_on_oblast_all_clear(mock_redis, mock_pg_pool):
     mock_pool, mock_conn = mock_pg_pool
-    fallback_id = 11112222
+    primary_id = 11112222
     channels = {"nikopol": 8001}
-    handler = build_message_handler(channels, fallback_source=fallback_id)
+    handler = build_message_handler(channels, primary_source=primary_id)
 
     mock_redis.hget.side_effect = lambda key, field: (
         "true" if key == "threat:shellings:nikopol" and field == "status" else None
     )
 
     ev_oblast_cancel = MagicMock()
-    ev_oblast_cancel.chat_id = fallback_id
+    ev_oblast_cancel.chat_id = primary_id
     ev_oblast_cancel.message.message = (
         "🟢 Дніпропетровська область\nВідбій тривоги. Будьте обережні!"
     )
@@ -3115,7 +2933,7 @@ async def test_nikopol_shelling_reset_on_oblast_all_clear(mock_redis, mock_pg_po
         await _drain_background_tasks()
 
         mock_send.assert_awaited_once_with(
-            8001, "nikopol", "air_raid_alert_cancelled", source_type="fallback"
+            8001, "nikopol", "air_raid_alert_cancelled", source_type="primary"
         )
         hset_calls = [
             c
@@ -3142,7 +2960,6 @@ async def test_record_alert_state_auto_resets_nikopol_shelling(mock_redis, mock_
             "nikopol",
             "air_raid_alert_cancelled",
             message_id=999,
-            source_type="fallback",
         )
         hset_calls = [
             c

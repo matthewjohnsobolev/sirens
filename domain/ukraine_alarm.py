@@ -46,7 +46,13 @@ class TargetAlert:
     level: str | None = None
 
 
-CITY_ONLY_DISTRICTS: frozenset[str] = frozenset({"kharkiv", "zaporizhzhia", "nikopol"})
+# Raions split into separate city and raion entities (map polygons).
+# To prevent small frontline communities with permanent (months-long) alerts
+# from coloring the entire district red 24/7, raion polygons activate
+# only on district-wide or state-wide alerts.
+SPLIT_RAION_KEYS: frozenset[str] = frozenset(
+    {"kharkiv_district", "zaporizhzhia_district", "nikopol_district"}
+)
 
 DEFAULT_STATE_ID_TO_OBLAST: dict[str, str] = {
     "3": "khmelnytskyi_oblast",
@@ -147,7 +153,6 @@ class UkraineAlarmGeoResolver:
         self._seed_key("124", "kharkiv_district")
         self._seed_key("149", "zaporizhzhia_district")
         self._seed_key("47", "nikopol_district")
-        self._seed_key("122", "chuhuiv")
 
     def _seed_key(self, region_id: str, district_key: str) -> None:
         self._region_id_to_districts[region_id] = [district_key]
@@ -178,11 +183,7 @@ class UkraineAlarmGeoResolver:
                 or self.district_id_to_district.get(child_id)
                 or self._name_to_district.get(child_norm)
             )
-            if not child_key and matched_key not in (
-                "nikopol_district",
-                "kharkiv_district",
-                "zaporizhzhia_district",
-            ):
+            if not child_key and matched_key not in SPLIT_RAION_KEYS:
                 child_key = matched_key
             self._map_branch(child, parent_key=child_key)
 

@@ -5,7 +5,6 @@ Unit tests for alerts.main integration with Ukraine Alert API 3.0.
 import asyncio
 import datetime
 import json
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -263,29 +262,6 @@ async def test_healthcheck_loop_with_api_auth_error():
         call_count += 1
         if call_count >= 2:
             raise asyncio.CancelledError()
-
-    with patch("asyncio.sleep", side_effect=fake_sleep):
-        with patch.object(alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "http://hc/ping"):
-            with patch.object(alerts_main, "_ping_healthcheck") as mock_ping_hc:
-                with pytest.raises(asyncio.CancelledError):
-                    await alerts_main._healthcheck_loop(api_cli=mock_api)
-                mock_ping_hc.assert_called_with("/fail")
-
-
-@pytest.mark.asyncio
-async def test_healthcheck_loop_with_api_silence_fail():
-    mock_api = MagicMock(spec=UkraineAlarmClient)
-    mock_api.get_status = AsyncMock(side_effect=Exception("api timeout"))
-
-    call_count = 0
-
-    async def fake_sleep(duration):
-        nonlocal call_count
-        call_count += 1
-        if call_count >= 2:
-            raise asyncio.CancelledError()
-
-    alerts_main.last_source_message_at = time.time() - 20000
 
     with patch("asyncio.sleep", side_effect=fake_sleep):
         with patch.object(alerts_main, "HEALTHCHECKS_ALERTS_SOURCE_PING_URL", "http://hc/ping"):

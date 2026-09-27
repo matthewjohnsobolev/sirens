@@ -6,12 +6,10 @@ from domain.geo import DISTRICT_CONFIG, OBLAST_TRIGGERS
 
 real_source_channels = {
     "primary": -1001766138888,
-    "fallback": -1001502899255,
 }
 
 test_source_channels = {
     "primary": -1001843473515,
-    "fallback": None,
 }
 
 test_channels = {

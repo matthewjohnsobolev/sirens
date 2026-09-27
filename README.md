@@ -2,9 +2,9 @@
 
 A comprehensive, real-time web-based monitoring tool designed to track and report emergency events across Ukraine, including air raid alerts, threats of shelling, and explosions.
 
-> **Disclaimer:** This project aggregates data about life-threatening situations (air raid alerts, shellings, etc.) via official APIs (Ukraine Alert API 3.0) and fallback Telegram channels. As with any automated parsing pipeline, technical errors, delays, or service disruptions may occur. **This tool is NOT a replacement for official state emergency notification systems.** Rely on it at your own risk.
+> **Disclaimer:** This project aggregates data about life-threatening situations (air raid alerts, shellings, etc.) via official APIs (Ukraine Alert API 3.0) and official channels. As with any automated parsing pipeline, technical errors, delays, or service disruptions may occur. **This tool is NOT a replacement for official state emergency notification systems.** Rely on it at your own risk.
 
-The system ingests real-time data from the official Ukraine Alert API 3.0 (with fallback to official Telegram channels), stores it in a robust relational database, and exposes it through both a RESTful API and a Live Threat Map.
+The system ingests real-time data from the official Ukraine Alert API 3.0, stores it in a robust relational database, and exposes it through both a RESTful API and a Live Threat Map.
 
 ## Key Features
 
@@ -17,7 +17,7 @@ The system ingests real-time data from the official Ukraine Alert API 3.0 (with 
 
 The project operates as a robust multi-container application comprising the following components:
 * **Web Service (`web/`)**: A Flask web application served by Gunicorn, providing the user interface, GIS map rendering, and API endpoints.
-* **Alerts Worker (`alerts/`)**: An asynchronous Python worker monitoring the Ukraine Alert API 3.0 (or fallback Telegram channels) and broadcasting incoming alerts to Telegram channels.
+* **Alerts Worker (`alerts/`)**: An asynchronous Python worker monitoring the Ukraine Alert API 3.0 and broadcasting incoming alerts to Telegram channels.
 * **Subscriber Snapshot (`bi/`)**: A one-shot job that records how many subscribers each network channel has. Started by cron, not a long-running service.
 * **Dashboard (`dashboard/`)**: An [Evidence](https://evidence.dev) project that turns those snapshots into a published site. Built in CI, served from Cloudflare R2 by a small Worker — it never runs on the server.
 * **PostgreSQL**: The primary relational database used for reliable data storage.
@@ -47,11 +47,6 @@ TELEGRAM_API_HASH=your_api_hash
 # Application environment: dev (test channels) or prod (real channels).
 # docker-compose also passes it to the workers as their -m run mode.
 APP_ENV=prod
-
-# Broadcast sources: defaults to "fallback" for the two-level alert system.
-# Primary channel messages still update telemetry and healthcheck.
-# Set to "primary,fallback" to broadcast from both.
-ALERT_BROADCAST_SOURCES=fallback
 
 
 # PostgreSQL Credentials (Required for Docker)

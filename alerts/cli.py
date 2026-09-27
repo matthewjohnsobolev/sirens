@@ -3,7 +3,6 @@ import argparse
 from config import (
     APP_ENV_ALIASES,
     TELEGRAM_SOURCE_CHANNEL_ID,
-    TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID,
     VERSION,
 )
 from domain import (
@@ -92,5 +91,4 @@ def get_mode_config(args):
         sources = test_source_channels
 
     primary_source = TELEGRAM_SOURCE_CHANNEL_ID or sources.get("primary")
-    fallback_source = TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID or sources.get("fallback")
-    return channels, primary_source, fallback_source
+    return channels, primary_source

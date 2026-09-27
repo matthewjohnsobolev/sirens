@@ -33,16 +33,6 @@ TELEGRAM_SOURCE_CHANNEL_ID = (
     if os.getenv("TELEGRAM_SOURCE_CHANNEL_ID")
     else None
 )
-TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID = (
-    int(os.getenv("TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID"))
-    if os.getenv("TELEGRAM_SOURCE_FALLBACK_CHANNEL_ID")
-    else None
-)
-ALERT_BROADCAST_SOURCES = frozenset(
-    part.strip()
-    for part in os.getenv("ALERT_BROADCAST_SOURCES", "fallback").split(",")
-    if part.strip()
-)
 
 UKRAINE_ALARM_API_KEY = os.getenv("UKRAINE_ALARM_API_KEY", "")
 UKRAINE_ALARM_API_URL = os.getenv("UKRAINE_ALARM_API_URL", "https://api.ukrainealarm.com").rstrip(

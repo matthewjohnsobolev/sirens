@@ -15,7 +15,7 @@ sirens-ops = "ops.cli:cli"
 dependencies = { file = ["requirements.txt"] }
 
 [tool.setuptools]
-packages = ["alerts", "bi", "data", "domain", "ops", "web"]
+packages = ["alerts", "bi", "data", "domain", "ops", "strikes", "web"]
 py-modules = ["config"]
 
 [tool.setuptools.package-data]

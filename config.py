@@ -127,6 +127,9 @@ MAP_TILES_ATTRIBUTION = os.getenv(
 
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 
+STRIKES_MODEL = os.getenv("STRIKES_MODEL", "claude-opus-5-5").strip()
+STRIKES_EFFORT = os.getenv("STRIKES_EFFORT", "low").strip()
+
 
 GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "G-JC48ZJGBHM").strip()
 

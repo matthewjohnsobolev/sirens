@@ -165,6 +165,32 @@ rebuilding them, and only where the state actually changed, so zoom, position
 and an open popup all survive the update. Responses carry `max-age=2`, which is
 what makes a poll that frequent cheap.
 
+## Strike Report Parser
+
+`strikes/` turns a free-text channel post about the aftermath of an attack into typed events with a location resolved onto Sirens district keys. It runs in three steps:
+
+1. **Clean and gate** (`strikes/text.py`): drops invisible fillers (`ㅤ`), "send news @…_bot" / "subscribe" lines and links, unifies apostrophes, and skips posts with no strike vocabulary so they never reach the model.
+2. **Classify** (`strikes/parser.py`): one Claude API call whose output is bound by a strict JSON schema (`strikes/models.py`), with the prompt in `strikes/prompt.py`. Model and effort come from `STRIKES_MODEL` / `STRIKES_EFFORT`; the key comes from `ANTHROPIC_API_KEY`. The request opts into server-side refusal fallbacks.
+3. **Resolve places** (`strikes/geo.py`): settlement, then oblast raion, then hromada are matched against `DISTRICT_CONFIG`. Kyiv city districts go into `city_district` and never collide with oblast raions of the same name (e.g. Dnipro's "Дніпровський район"). The channel's region hint only applies when the text names nothing resolvable.
+
+Each event carries:
+
+| Field | Values |
+|---|---|
+| `event_type` | `hit`, `debris`, `explosion`, `fire`, `interception`, `other` |
+| `certainty` | `confirmed`, `preliminary` ("попередньо"), `unconfirmed` |
+| `repeated` | `true` for "повторне влучання" |
+| `object_type` | `residential`, `non_residential`, `energy`, `industrial`, … `unknown` |
+| `location` | `oblast`, `raion`, `hromada`, `settlement`, `city_district`, `address`, `inferred_from_context`, `district_key`, `oblast_key` |
+| `killed` / `injured` | numbers only when stated |
+
+```bash
+python -m strikes --region kyiv "Повторне влучання в нежитлову будівлю в Оболонському районі.
+Також, попередньо, влучання в Соломʼянському районі. Нежитлова будівля."
+```
+
+This returns two `hit` events on `non_residential` objects, both resolving to `district_key: "kyiv"`. The first is `confirmed` and `repeated` in the Оболонський район. The second is `preliminary` in the Солом'янський район.
+
 ## Monitoring and the Status Page
 
 `/status` shows four components. Each one asserts something the others cannot,

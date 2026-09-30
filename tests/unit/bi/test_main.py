@@ -183,6 +183,7 @@ async def test_run_snapshot_stores_and_reports(bi_pool, caplog):
         patch("bi.main.store", new_callable=AsyncMock) as mock_store,
         patch("bi.main.export_stats_csv", AsyncMock(return_value="csv_data")),
         patch("bi.main.export_alerts_csv", AsyncMock(return_value="alerts_csv_data")),
+        patch("bi.main.export_views_csv", AsyncMock(return_value="views_csv_data")),
         patch("bi.main.upload_to_r2") as mock_upload,
         patch("bi.main.trigger_dashboard_build"),
     ):
@@ -191,6 +192,7 @@ async def test_run_snapshot_stores_and_reports(bi_pool, caplog):
     mock_store.assert_awaited_once_with(pool, counts)
     mock_upload.assert_any_call("csv_data", "subscriber_snapshots.csv")
     mock_upload.assert_any_call("alerts_csv_data", "alerts_history.csv")
+    mock_upload.assert_any_call("views_csv_data", "message_views.csv")
     assert "3/3 channels" in caplog.text
     assert "60 subscribers" in caplog.text
 
@@ -299,6 +301,39 @@ async def test_export_alerts_csv_empty(bi_pool):
     csv_str = await export_alerts_csv(pool)
     assert "date,location,red_alerts,yellow_alerts" in csv_str
     assert "1970-01-01 00:00:00,unknown,0,0" in csv_str
+
+
+@pytest.mark.asyncio
+async def test_export_views_csv(bi_pool):
+    pool, conn = bi_pool
+    posted = datetime.datetime(2026, 9, 30, 15, 0, 5)
+    conn.fetch.return_value = [
+        {
+            "posted_at": posted,
+            "location": "kyiv",
+            "event_type": "air_raid_alert",
+            "level": "red",
+            "checkpoint_s": 15,
+            "views": 120,
+        },
+        {
+            "posted_at": posted,
+            "location": "unknown",
+            "event_type": "air_raid_alert_cancelled",
+            "level": None,
+            "checkpoint_s": 1800,
+            "views": 900,
+        },
+    ]
+    from bi.main import export_views_csv
+
+    csv_str = await export_views_csv(pool)
+
+    assert csv_str.splitlines() == [
+        "posted_at,location,display_name,event_type,level,checkpoint_s,views",
+        "2026-09-30 15:00:05,kyiv,Kyiv,air_raid_alert,red,15,120",
+        "2026-09-30 15:00:05,unknown,unknown,air_raid_alert_cancelled,,1800,900",
+    ]
 
 
 def test_upload_to_r2_skips_when_no_credentials(monkeypatch, caplog):

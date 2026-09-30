@@ -46,7 +46,7 @@ from telethon.tl.types import (
     UpdateNewChannelMessage,
 )
 
-from alerts import cli
+from alerts import cli, views
 from alerts.api_client import (
     UkraineAlarmAuthError,
     UkraineAlarmClient,
@@ -709,6 +709,14 @@ async def send_alert(
 
     if send_succeeded:
         message_id, message_link = await broadcast_reference(channel_id, sent_message)
+        if message_id is not None:
+            await views.schedule(
+                redis_client,
+                channel_id,
+                message_id,
+                alert_type,
+                views.posted_epoch(sent_message),
+            )
         await _record_alert_state(
             channel_id,
             region,
@@ -1885,6 +1893,7 @@ async def main():
                         )
                     ),
                     asyncio.create_task(_broadcast_watchdog_loop(client)),
+                    asyncio.create_task(views.views_loop(client, redis_client, pg_pool)),
                 ]
             else:
                 log.warning(
@@ -1906,6 +1915,7 @@ async def main():
                         )
                     ),
                     asyncio.create_task(_broadcast_watchdog_loop(client)),
+                    asyncio.create_task(views.views_loop(client, redis_client, pg_pool)),
                 ]
 
             try:

@@ -233,6 +233,57 @@ async def export_alerts_csv(pool) -> str:
     return buffer.getvalue()
 
 
+SELECT_VIEWS_SQL = """
+    SELECT
+        v.posted_at AT TIME ZONE 'Europe/Kyiv' AS posted_at,
+        COALESCE(h.location, 'unknown') AS location,
+        v.event_type,
+        h.level,
+        v.checkpoint_s,
+        v.views
+    FROM message_views v
+    LEFT JOIN alert_history h
+        ON h.channel_id = v.channel_id AND h.message_id = v.message_id
+    ORDER BY v.posted_at, v.channel_id, v.message_id, v.checkpoint_s
+"""
+
+VIEWS_CSV_COLUMNS = (
+    "posted_at",
+    "location",
+    "display_name",
+    "event_type",
+    "level",
+    "checkpoint_s",
+    "views",
+)
+
+
+async def export_views_csv(pool) -> str:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(SELECT_VIEWS_SQL)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(VIEWS_CSV_COLUMNS)
+
+    for record in rows:
+        posted_at = record["posted_at"]
+        location = record["location"]
+        writer.writerow(
+            [
+                posted_at.strftime("%Y-%m-%d %H:%M:%S"),
+                location,
+                REGION_CONFIG.get(location, {}).get("display_name", location),
+                record["event_type"],
+                record["level"] or "",
+                record["checkpoint_s"],
+                record["views"],
+            ]
+        )
+
+    return buffer.getvalue()
+
+
 def upload_to_r2(csv_content: str, key: str = "subscriber_snapshots.csv") -> None:
     if not (
         CLOUDFLARE_R2_ACCESS_KEY_ID
@@ -322,6 +373,9 @@ async def run_snapshot(client: TelegramClient, pool, channels: dict) -> int:
 
     alerts_csv_data = await export_alerts_csv(pool)
     await asyncio.to_thread(upload_to_r2, alerts_csv_data, "alerts_history.csv")
+
+    views_csv_data = await export_views_csv(pool)
+    await asyncio.to_thread(upload_to_r2, views_csv_data, "message_views.csv")
 
     await asyncio.to_thread(trigger_dashboard_build)
 

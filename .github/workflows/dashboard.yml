@@ -73,6 +73,14 @@ jobs:
             echo "alerts_history.csv not found in s3://${DATA_BUCKET}/; will seed placeholder alerts history source"
           fi
 
+          if aws s3 ls "s3://${DATA_BUCKET}/message_views.csv" --endpoint-url "$R2_ENDPOINT" --region auto >/dev/null 2>&1; then
+            aws s3 cp "s3://${DATA_BUCKET}/message_views.csv" sources/sirens/message_views.csv \
+              --endpoint-url "$R2_ENDPOINT" --region auto
+            echo "Downloaded message_views.csv"
+          else
+            echo "message_views.csv not found in s3://${DATA_BUCKET}/; prepare-sources.js will seed a placeholder"
+          fi
+
           if [ ! -f sources/sirens/alerts_history.csv ] || [ $(( $(wc -l < sources/sirens/alerts_history.csv) - 1 )) -le 0 ]; then
             echo "alerts_history.csv is missing or contains no data rows; seeding placeholder row"
             printf 'date,district,red_alerts,yellow_alerts\n1970-01-01 00:00:00,unknown,0,0\n' > sources/sirens/alerts_history.csv

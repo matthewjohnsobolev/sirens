@@ -247,7 +247,15 @@ SELECT_VIEWS_SQL = """
     ORDER BY v.posted_at, v.channel_id, v.message_id, v.checkpoint_s
 """
 
-VIEWS_CSV_COLUMNS = ("posted_at", "location", "event_type", "level", "checkpoint_s", "views")
+VIEWS_CSV_COLUMNS = (
+    "posted_at",
+    "location",
+    "display_name",
+    "event_type",
+    "level",
+    "checkpoint_s",
+    "views",
+)
 
 
 async def export_views_csv(pool) -> str:
@@ -260,10 +268,12 @@ async def export_views_csv(pool) -> str:
 
     for record in rows:
         posted_at = record["posted_at"]
+        location = record["location"]
         writer.writerow(
             [
                 posted_at.strftime("%Y-%m-%d %H:%M:%S"),
-                record["location"],
+                location,
+                REGION_CONFIG.get(location, {}).get("display_name", location),
                 record["event_type"],
                 record["level"] or "",
                 record["checkpoint_s"],

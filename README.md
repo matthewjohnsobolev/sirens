@@ -301,6 +301,9 @@ publication (`alerts/views.py`, table `message_views`).
   on it.
 
 The BI job exports the samples as `message_views.csv` next to the other CSVs.
+The dashboard's *Alert Views* page (`dashboard/pages/views.md`) shows, per
+city, how many alerts were still on at each checkpoint and a table of median
+alert and all-clear views.
 
 ### Publishing
 

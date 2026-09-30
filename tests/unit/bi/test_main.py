@@ -318,7 +318,7 @@ async def test_export_views_csv(bi_pool):
         },
         {
             "posted_at": posted,
-            "location": "kyiv",
+            "location": "unknown",
             "event_type": "air_raid_alert_cancelled",
             "level": None,
             "checkpoint_s": 1800,
@@ -330,9 +330,9 @@ async def test_export_views_csv(bi_pool):
     csv_str = await export_views_csv(pool)
 
     assert csv_str.splitlines() == [
-        "posted_at,location,event_type,level,checkpoint_s,views",
-        "2026-09-30 15:00:05,kyiv,air_raid_alert,red,15,120",
-        "2026-09-30 15:00:05,kyiv,air_raid_alert_cancelled,,1800,900",
+        "posted_at,location,display_name,event_type,level,checkpoint_s,views",
+        "2026-09-30 15:00:05,kyiv,Kyiv,air_raid_alert,red,15,120",
+        "2026-09-30 15:00:05,unknown,unknown,air_raid_alert_cancelled,,1800,900",
     ]
 
 

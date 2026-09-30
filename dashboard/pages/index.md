@@ -803,16 +803,17 @@ week_ago_run as (
     limit 1
 ),
 later_counts as (
-    select display_name, subscribers
+    select channel_key, display_name, subscribers
     from sirens.subscriber_snapshots, current_run
     where date = current_run.run_time
 ),
 earlier_counts as (
-    select display_name, subscribers
+    select channel_key, subscribers
     from sirens.subscriber_snapshots, week_ago_run
     where date = week_ago_run.run_time
 )
 select
+    later.channel_key,
     later.display_name,
     later.subscribers,
     later.subscribers - earlier.subscribers as change_7d,
@@ -820,7 +821,7 @@ select
     (select strftime(day_date, '%b %-d') from week_ago_run) as week_ago_label
 from later_counts later
 left join earlier_counts earlier
-       on earlier.display_name = later.display_name
+       on earlier.channel_key = later.channel_key
 order by later.subscribers desc
 ```
 
@@ -901,6 +902,60 @@ echartsOptions={{
         }
     }}
 />
+
+## Cities
+
+Every monitored city in one table. Select a row to drill down into that city's
+audience history and alert activity.
+
+```sql cities
+-- The alert window is the seven calendar days ending on the latest snapshot
+-- day, the same span the 7-day growth columns measure. Alerts are keyed by the
+-- city's own location only; district-level locations are not folded in.
+with latest_day as (
+    select max(date::date) as day_date
+    from sirens.subscriber_snapshots
+),
+alerts_7d as (
+    select
+        a.location,
+        sum(a.red_alerts) as red_alerts,
+        sum(a.yellow_alerts) as yellow_alerts
+    from sirens.alerts_history a, latest_day
+    where a.date::date > latest_day.day_date - 7
+      and a.date::date <= latest_day.day_date
+    group by 1
+)
+select
+    c.channel_key,
+    c.display_name,
+    '/cities/' || c.channel_key as city_link,
+    c.subscribers,
+    c.change_7d,
+    c.change_7d_pct,
+    coalesce(a.red_alerts, 0) as red_alerts,
+    coalesce(a.yellow_alerts, 0) as yellow_alerts
+from ${by_channel} c
+left join alerts_7d a on a.location = c.channel_key
+order by c.subscribers desc
+```
+
+<DataTable
+    data={cities}
+    link=city_link
+    search=true
+    rows=all
+    rowShading=true
+    emptySet=pass
+    emptyMessage="No city data yet"
+>
+    <Column id=display_name title="City" />
+    <Column id=subscribers title="Subscribers" fmt="#,##0" />
+    <Column id=change_7d title="7-Day Change" contentType=delta fmt="+#,##0;-#,##0;0" />
+    <Column id=change_7d_pct title="7-Day %" contentType=delta fmt=pct1 />
+    <Column id=red_alerts title="Red Alerts" fmt="#,##0" />
+    <Column id=yellow_alerts title="Yellow Alerts" fmt="#,##0" />
+</DataTable>
 
 ```sql latest_snapshot
 select strftime(max(date), '%B %-d, %Y %H:%M') as latest_time

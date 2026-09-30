@@ -258,6 +258,21 @@ def ensure_pg_tables() -> None:
                     "CREATE INDEX IF NOT EXISTS idx_subscriber_snapshots_collected_at ON subscriber_snapshots (collected_at DESC)"
                 )
                 cur.execute("""
+                    CREATE TABLE IF NOT EXISTS message_views (
+                        channel_id BIGINT NOT NULL,
+                        message_id BIGINT NOT NULL,
+                        event_type VARCHAR(32) NOT NULL,
+                        checkpoint_s SMALLINT NOT NULL,
+                        posted_at TIMESTAMPTZ NOT NULL,
+                        sampled_at TIMESTAMPTZ NOT NULL,
+                        views INTEGER NOT NULL CHECK (views >= 0),
+                        PRIMARY KEY (channel_id, message_id, checkpoint_s)
+                    )
+                """)
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_message_views_posted_at ON message_views (posted_at DESC)"
+                )
+                cur.execute("""
                     DO $$
                     BEGIN
                         -- Rename channel_code to channel if it exists in subscriber_snapshots

@@ -387,6 +387,40 @@ async def test_send_alert_stores_the_broadcast_message_link(
 
 
 @pytest.mark.asyncio
+async def test_send_alert_schedules_view_sampling(mock_redis, mock_pg_pool, mock_telegram_client):
+    posted = datetime.datetime(2026, 9, 30, 12, 0, tzinfo=datetime.timezone.utc)
+    mock_telegram_client.send_message.return_value = MagicMock(id=321, date=posted)
+    mock_telegram_client.get_entity.return_value = MagicMock(username="kyiv_alert")
+
+    with (
+        patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock),
+        patch("alerts.main.views.schedule", new_callable=AsyncMock) as schedule,
+    ):
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert")
+        await _drain_background_tasks()
+
+    schedule.assert_awaited_once_with(
+        mock_redis, CHANNEL_ID, 321, "air_raid_alert", posted.timestamp()
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_alert_skips_view_sampling_without_message_id(
+    mock_redis, mock_pg_pool, mock_telegram_client
+):
+    mock_telegram_client.send_message.return_value = MagicMock(id=None)
+
+    with (
+        patch("alerts.main.process_channel_photo_update", new_callable=AsyncMock),
+        patch("alerts.main.views.schedule", new_callable=AsyncMock) as schedule,
+    ):
+        await send_alert(CHANNEL_ID, "kyiv", "air_raid_alert")
+        await _drain_background_tasks()
+
+    schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_send_alert_stores_the_shelling_message_link(
     mock_redis, mock_pg_pool, mock_telegram_client
 ):

@@ -281,6 +281,27 @@ network, a short run looks exactly like subscribers walking away, while a gap
 in the chart is visibly a gap — and re-running fills the data in once the cause
 is fixed.
 
+### Views per alert
+
+The alerts worker also records how many views each air raid alert and all-clear
+it posts has gathered 15 s, 30 s, 60 s, 5 min, 15 min and 30 min after
+publication (`alerts/views.py`, table `message_views`).
+
+* An alert is sampled only while it is still open: once its all-clear (or a
+  newer alert replacing it) goes out, its remaining checkpoints are dropped, so
+  a 30-minute sample means the alert really lasted 30 minutes. All-clears are
+  sampled at every checkpoint.
+* Views are read with `messages.getMessagesViews` (`increment=false`, so the
+  worker never counts itself), one request per channel for all messages due at
+  once.
+* The schedule is a Redis sorted set (`views:schedule`), so a restart resumes
+  it. A sample that can no longer be taken within 20% of its checkpoint (at
+  least 5 s) is dropped rather than stored with a misleading offset. A
+  FloodWait pauses sampling instead of sleeping, so broadcasting never waits
+  on it.
+
+The BI job exports the samples as `message_views.csv` next to the other CSVs.
+
 ### Publishing
 
 After recording the subscriber snapshot, the BI worker exports the consolidated history as CSV directly to the Cloudflare R2 data bucket (`s3://sirens-bi-data/subscribers.csv`) and optionally triggers GitHub Actions via `workflow_dispatch`.

@@ -287,6 +287,12 @@ After recording the subscriber snapshot, the BI worker exports the consolidated 
 
 The [dashboard](dashboard/) is built from that CSV by `.github/workflows/dashboard.yml` and synced into the public Cloudflare R2 web bucket (`sirens-bi-web`). Nothing in this build path touches the production web server.
 
+The home page ends with a **Cities** table. Each row links to a generated drill-down page,
+`/cities/<channel_key>` (`dashboard/pages/cities/[city].md`), with that city's subscriber
+history and alert activity. Evidence builds one page per city it finds linked from the table,
+so a newly added channel gets its page on the next build. Alerts are matched on the city's own
+`location` key only.
+
 It is **not** on Cloudflare Pages: Pages rejects any file over 25 MiB and Evidence bundles a 32.7 MiB `duckdb-eh.wasm`. R2 has no such limit, but it also serves objects by exact key — so [`dashboard/worker`](dashboard/worker) maps request paths to keys, resolves `index.html`, sets content types and passes range requests through.
 
 One-time setup, in order:

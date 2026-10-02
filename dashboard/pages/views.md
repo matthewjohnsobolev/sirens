@@ -86,7 +86,6 @@ time.
     x=checkpoint_label
     y=open_alerts
     sort=false
-    yAxisTitle="alerts"
     emptySet=pass
     emptyMessage="No alerts sampled for this city yet"
     echartsOptions={{yAxis: {minInterval: 1}}}
@@ -97,7 +96,7 @@ time.
 Median views of the alert (while still on) and of the all-clear at each
 checkpoint.
 
-<DataTable data={checkpoint_stats} rows=all emptySet=pass emptyMessage="No views sampled for this city yet">
+<DataTable data={checkpoint_stats} rows=all sort="checkpoint_s asc" sortable=false emptySet=pass emptyMessage="No views sampled for this city yet">
     <Column id=checkpoint_label title="After posting" />
     <Column id=open_alerts title="Alerts still on" />
     <Column id=open_share title="Share of alerts" fmt=pct0 />

@@ -398,3 +398,65 @@ echartsOptions={{
     }}
 />
 
+
+## Alert Views
+
+Alerts sampled at each checkpoint after posting. An alert is only sampled until
+its all-clear goes out, so the drop between bars is the alerts that ended in
+between.
+
+```sql city_checkpoint_stats
+with checkpoints(checkpoint_s, checkpoint_label) as (
+    values
+        (15, '15 s'),
+        (30, '30 s'),
+        (60, '1 min'),
+        (300, '5 min'),
+        (900, '15 min'),
+        (1800, '30 min')
+),
+stats as (
+    select
+        checkpoint_s,
+        count(*) filter (where event_type = 'air_raid_alert') as open_alerts,
+        median(views) filter (where event_type = 'air_raid_alert') as alert_views,
+        count(*) filter (where event_type = 'air_raid_alert_cancelled') as all_clears,
+        median(views) filter (where event_type = 'air_raid_alert_cancelled') as all_clear_views
+    from sirens.message_views
+    where location = '${params.city}'
+      and year(posted_at::timestamp) > 1970
+    group by 1
+)
+select
+    c.checkpoint_s,
+    c.checkpoint_label,
+    coalesce(s.open_alerts, 0) as open_alerts,
+    coalesce(s.open_alerts, 0) / nullif(max(coalesce(s.open_alerts, 0)) over (), 0)::double as open_share,
+    s.alert_views,
+    coalesce(s.all_clears, 0) as all_clears,
+    s.all_clear_views
+from checkpoints c
+left join stats s using (checkpoint_s)
+order by c.checkpoint_s
+```
+
+<BarChart
+    data={city_checkpoint_stats}
+    x=checkpoint_label
+    y=open_alerts
+    sort=false
+    yAxisTitle="alerts still on"
+    chartAreaHeight=200
+    emptySet=pass
+    emptyMessage="No alerts sampled for this city yet"
+    echartsOptions={{yAxis: {minInterval: 1}}}
+/>
+
+<DataTable data={city_checkpoint_stats} rows=all emptySet=pass emptyMessage="No views sampled for this city yet">
+    <Column id=checkpoint_label title="After posting" />
+    <Column id=open_alerts title="Alerts still on" />
+    <Column id=open_share title="Share of alerts" fmt=pct0 />
+    <Column id=alert_views title="Alert views (median)" fmt=num0 />
+    <Column id=all_clears title="All-clears" />
+    <Column id=all_clear_views title="All-clear views (median)" fmt=num0 />
+</DataTable>

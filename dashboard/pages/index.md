@@ -906,7 +906,8 @@ echartsOptions={{
 ## Cities
 
 Every monitored city in one table. Select a row to drill down into that city's
-audience history and alert activity.
+audience history, alert activity and alert views. Views across all cities are
+on the [Alert Views](/views) page.
 
 ```sql cities
 -- The alert window is the seven calendar days ending on the latest snapshot

@@ -55,6 +55,35 @@ title: Sirens Network Analytics
         value +
         '</span>';
 
+    // Channel tooltips open with the channel name as a link to its city page.
+    // The tooltip is pinned to the right edge of the chart with that link
+    // level with the pointer (tipPosition), so moving straight along the
+    // hovered bar reaches it without crossing into the next row and swapping
+    // the tooltip. The link sits on the first line so the tooltip never has
+    // to rise above the chart, where it would be clamped off the pointer.
+    const tipCityHead = (name, key) =>
+        key
+            ? '<a href="/' +
+              key +
+              '" style="color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;">' +
+              name +
+              ' →</a>'
+            : tipHead(name);
+
+    const tipPosition = (point, params, dom, rect, size) => {
+        const link = dom && dom.querySelector('a');
+        const linkMiddle = link
+            ? link.offsetTop + link.offsetHeight / 2
+            : size.contentSize[1] / 2;
+        return [Math.max(0, size.viewSize[0] - size.contentSize[0] - 8), point[1] - linkMiddle];
+    };
+
+    const drillTooltip = {
+        enterable: true,
+        hideDelay: 200,
+        position: tipPosition
+    };
+
     // Computes synchronized dual-axis limits so alerts=0 and net_change=0 share the
     // exact same horizontal baseline (X axis), preventing alert bars from sinking below zero.
     const calcDualAxes = (data) => {
@@ -737,7 +766,7 @@ previous_day_run as (
     from target_day
 ),
 later_counts as (
-    select display_name, subscribers
+    select channel_key, display_name, subscribers
     from sirens.subscriber_snapshots, target_run
     where date = target_run.current_time
 ),
@@ -747,6 +776,7 @@ earlier_counts as (
     where date = previous_day_run.prev_time
 )
 select
+    later.channel_key,
     later.display_name,
     later.subscribers - coalesce(earlier.subscribers, later.subscribers) as change,
     case
@@ -769,7 +799,21 @@ seriesColors={{Gained: '#2f9e44', Lost: '#e03131', Unchanged: '#adb5bd'}}
 swapXY=true
 sort=false
 yAxisTitle="change in subscribers"
-echartsOptions={{xAxis: {minInterval: 1}}}
+echartsOptions={{
+        xAxis: { minInterval: 1 },
+        tooltip: {
+            ...drillTooltip,
+            formatter: (params) => {
+                const point = Array.isArray(params) ? params[0] : params;
+                const name = point.value[1] ?? point.name;
+                const row = Array.from(movement).find((d) => d.display_name === name) ?? {};
+                return (
+                    tipCityHead(name, row.channel_key) +
+                    tipRow('change', delta(row.change, null))
+                );
+            }
+        }
+    }}
 />
 
 ## Subscribers by Channel
@@ -833,13 +877,14 @@ swapXY=true
 yAxisTitle="subscribers"
 echartsOptions={{
         tooltip: {
+            ...drillTooltip,
             formatter: (params) => {
                 const point = Array.isArray(params) ? params[0] : params;
                 // swapXY puts the category in value[1]; name is the fallback.
                 const name = point.value[1] ?? point.name;
                 const row = Array.from(by_channel).find((d) => d.display_name === name) ?? {};
                 return (
-                    tipHead(name) +
+                    tipCityHead(name, row.channel_key) +
                     tipRow('subscribers', num(point.value[0])) +
                     tipRow(
                         row.week_ago_label ? 'vs ' + row.week_ago_label : 'vs 7 days ago',
@@ -857,6 +902,7 @@ Seven-day subscriber growth per channel, relative to each channel's own size.
 
 ```sql channel_growth
 select
+    channel_key,
     display_name,
     subscribers,
     change_7d,
@@ -886,12 +932,13 @@ emptySet=pass
 emptyMessage="No channel has a full week of history yet"
 echartsOptions={{
         tooltip: {
+            ...drillTooltip,
             formatter: (params) => {
                 const point = Array.isArray(params) ? params[0] : params;
                 const name = point.value[1] ?? point.name;
                 const row = Array.from(channel_growth).find((d) => d.display_name === name) ?? {};
                 return (
-                    tipHead(name) +
+                    tipCityHead(name, row.channel_key) +
                     tipRow(
                         row.week_ago_label ? 'vs ' + row.week_ago_label : 'vs 7 days ago',
                         delta(row.change_7d, row.change_7d_pct)
@@ -903,60 +950,13 @@ echartsOptions={{
     }}
 />
 
-## Cities
-
-Every monitored city in one table. Select a row to drill down into that city's
-audience history, alert activity and alert views. Views across all cities are
-on the [Alert Views](/views) page.
-
-```sql cities
--- The alert window is the seven calendar days ending on the latest snapshot
--- day, the same span the 7-day growth columns measure. Alerts are keyed by the
--- city's own location only; district-level locations are not folded in.
-with latest_day as (
-    select max(date::date) as day_date
-    from sirens.subscriber_snapshots
-),
-alerts_7d as (
-    select
-        a.location,
-        sum(a.red_alerts) as red_alerts,
-        sum(a.yellow_alerts) as yellow_alerts
-    from sirens.alerts_history a, latest_day
-    where a.date::date > latest_day.day_date - 7
-      and a.date::date <= latest_day.day_date
-    group by 1
-)
-select
-    c.channel_key,
-    c.display_name,
-    '/cities/' || c.channel_key as city_link,
-    c.subscribers,
-    c.change_7d,
-    c.change_7d_pct,
-    coalesce(a.red_alerts, 0) as red_alerts,
-    coalesce(a.yellow_alerts, 0) as yellow_alerts
-from ${by_channel} c
-left join alerts_7d a on a.location = c.channel_key
-order by c.subscribers desc
-```
-
-<DataTable
-    data={cities}
-    link=city_link
-    search=true
-    rows=all
-    rowShading=true
-    emptySet=pass
-    emptyMessage="No city data yet"
->
-    <Column id=display_name title="City" />
-    <Column id=subscribers title="Subscribers" fmt="#,##0" />
-    <Column id=change_7d title="7-Day Change" contentType=delta fmt="+#,##0;-#,##0;0" />
-    <Column id=change_7d_pct title="7-Day %" contentType=delta fmt=pct1 />
-    <Column id=red_alerts title="Red Alerts" fmt="#,##0" />
-    <Column id=yellow_alerts title="Yellow Alerts" fmt="#,##0" />
-</DataTable>
+<!-- City pages are only linked from chart tooltips, which exist only in the
+browser. This hidden list is what the prerender crawler follows to build them. -->
+<nav hidden>
+    {#each by_channel as channel}
+        <a href={'/' + channel.channel_key}>{channel.display_name}</a>
+    {/each}
+</nav>
 
 ```sql latest_snapshot
 select strftime(max(date), '%B %-d, %Y %H:%M') as latest_time

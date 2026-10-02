@@ -1,6 +1,10 @@
 ---
-title: City Drill-down
+# No title: Evidence would use it for the breadcrumb, which should read
+# Home > <city>. og.title still gives the tab a name.
 hide_title: true
+og:
+    title: City Drill-down
+breadcrumb: "select display_name as breadcrumb from sirens.subscriber_snapshots where channel_key = '${params.city}' limit 1"
 ---
 
 <style>
@@ -139,7 +143,11 @@ left join alerts_7d on true
 where r.channel_key = '${params.city}'
 ```
 
-<a class="back-link" href="/">← All cities</a>
+{#if city.length === 0}
+
+No data for this city. Pick one from a chart on the [dashboard](/).
+
+{:else}
 
 # {city[0].display_name}
 
@@ -460,3 +468,5 @@ order by c.checkpoint_s
     <Column id=all_clears title="All-clears" />
     <Column id=all_clear_views title="All-clear views (median)" fmt=num0 />
 </DataTable>
+
+{/if}

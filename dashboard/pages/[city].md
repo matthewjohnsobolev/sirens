@@ -409,9 +409,9 @@ echartsOptions={{
 
 ## Alert Views
 
-Alerts sampled at each checkpoint after posting. An alert is only sampled until
-its all-clear goes out, so the drop between bars is the alerts that ended in
-between.
+Median views of the alert and of its all-clear at each checkpoint after
+posting. An alert is only sampled until its all-clear goes out, so later
+checkpoints cover only the alerts still on (see "Alerts still on").
 
 ```sql city_checkpoint_stats
 with checkpoints(checkpoint_s, checkpoint_label) as (
@@ -448,15 +448,17 @@ left join stats s using (checkpoint_s)
 order by c.checkpoint_s
 ```
 
-<BarChart
+<LineChart
     data={city_checkpoint_stats}
     x=checkpoint_label
-    y=open_alerts
+    y={['alert_views', 'all_clear_views']}
+    yFmt=num0
     sort=false
-    chartAreaHeight=200
+    markers=true
+    colorPalette={['#ef4444', '#22c55e']}
+    chartAreaHeight=220
     emptySet=pass
-    emptyMessage="No alerts sampled for this city yet"
-    echartsOptions={{yAxis: {minInterval: 1}}}
+    emptyMessage="No views sampled yet"
 />
 
 <DataTable data={city_checkpoint_stats} rows=all sort="checkpoint_s asc" sortable=false emptySet=pass emptyMessage="No views sampled for this city yet">

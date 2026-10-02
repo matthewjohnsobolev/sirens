@@ -75,26 +75,23 @@ left join stats s using (checkpoint_s)
 order by c.checkpoint_s
 ```
 
-## Alerts Still Without an All-Clear
-
-Alerts sampled at each checkpoint. The drop from one bar to the next is the
-alerts that ended in between, plus the few samples the worker could not take on
-time.
-
-<BarChart
-    data={checkpoint_stats}
-    x=checkpoint_label
-    y=open_alerts
-    sort=false
-    emptySet=pass
-    emptyMessage="No alerts sampled for this city yet"
-    echartsOptions={{yAxis: {minInterval: 1}}}
-/>
-
 ## Views by Checkpoint
 
 Median views of the alert (while still on) and of the all-clear at each
 checkpoint.
+
+<LineChart
+    data={checkpoint_stats}
+    x=checkpoint_label
+    y={['alert_views', 'all_clear_views']}
+    yFmt=num0
+    sort=false
+    markers=true
+    colorPalette={['#ef4444', '#22c55e']}
+    chartAreaHeight=220
+    emptySet=pass
+    emptyMessage="No views sampled yet"
+/>
 
 <DataTable data={checkpoint_stats} rows=all sort="checkpoint_s asc" sortable=false emptySet=pass emptyMessage="No views sampled for this city yet">
     <Column id=checkpoint_label title="After posting" />

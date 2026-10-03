@@ -2,47 +2,51 @@
 title: Alert Views
 ---
 
-How many people see an air raid alert while it is still on, city by city.
-Every alert is sampled 15 s, 30 s, 1 min, 5 min, 15 min and 30 min after it is
-posted, but only until its all-clear goes out, so later checkpoints cover only
-the longer alerts.
+How quickly each region reacts to an air raid alert. Every alert is sampled
+15 s, 30 s, 1 min, 5 min, 15 min and 30 min after it is posted, until its
+all-clear goes out. To compare regions of different size, views are shown as
+reach: the share of the channel's subscribers (at the time of the alert) who
+have seen the alert.
 
-```sql view_cities
-select 'all' as location, 'All cities' as display_name, 0 as sort_order
-union all
-select distinct location, display_name, 1 as sort_order
-from sirens.message_views
-where year(posted_at::timestamp) > 1970
-order by sort_order, display_name
-```
-
-<Dropdown
-    data={view_cities}
-    name=view_city
-    value=location
-    label=display_name
-    defaultValue="all"
-    order="sort_order, display_name"
-    title="City"
-/>
-
-```sql city_views
-with selected as (
-    select case
-        when '${inputs.view_city.value}' not in ('', 'undefined', 'null')
-            then '${inputs.view_city.value}'
-        when '${inputs.view_city}' not in ('', 'undefined', 'null', '[object Object]')
-            then '${inputs.view_city}'
-        else 'all'
-    end as location
+```sql alert_reach
+with alert_views as (
+    select
+        posted_at::timestamp as posted_at,
+        location,
+        display_name,
+        checkpoint_s,
+        views
+    from sirens.message_views
+    where event_type = 'air_raid_alert'
+      and year(posted_at::timestamp) > 1970
+),
+snapshots as (
+    select channel_key, date::timestamp as snapshot_at, subscribers
+    from sirens.subscriber_snapshots
+),
+first_snapshot as (
+    select channel_key, arg_min(subscribers, snapshot_at) as subscribers
+    from snapshots
+    group by 1
 )
-select v.*
-from sirens.message_views v, selected
-where year(v.posted_at::timestamp) > 1970
-  and (selected.location = 'all' or v.location = selected.location)
+select
+    v.*,
+    coalesce(s.subscribers, f.subscribers) as subscribers,
+    v.views / nullif(coalesce(s.subscribers, f.subscribers), 0)::double as reach
+from alert_views v
+asof left join snapshots s
+    on v.location = s.channel_key and v.posted_at >= s.snapshot_at
+left join first_snapshot f on f.channel_key = v.location
 ```
 
-```sql checkpoint_stats
+```sql region_ranks
+select location, median(reach) as reach_1m
+from ${alert_reach}
+where checkpoint_s = 60
+group by 1
+```
+
+```sql reach_by_checkpoint
 with checkpoints(checkpoint_s, checkpoint_label) as (
     values
         (15, '15 s'),
@@ -51,53 +55,92 @@ with checkpoints(checkpoint_s, checkpoint_label) as (
         (300, '5 min'),
         (900, '15 min'),
         (1800, '30 min')
-),
-stats as (
-    select
-        checkpoint_s,
-        count(*) filter (where event_type = 'air_raid_alert') as open_alerts,
-        median(views) filter (where event_type = 'air_raid_alert') as alert_views,
-        count(*) filter (where event_type = 'air_raid_alert_cancelled') as all_clears,
-        median(views) filter (where event_type = 'air_raid_alert_cancelled') as all_clear_views
-    from ${city_views}
-    group by 1
 )
 select
-    c.checkpoint_s,
+    a.display_name,
+    coalesce(r.reach_1m, 0) as reach_1m,
+    a.checkpoint_s,
     c.checkpoint_label,
-    coalesce(s.open_alerts, 0) as open_alerts,
-    coalesce(s.open_alerts, 0) / nullif(max(coalesce(s.open_alerts, 0)) over (), 0)::double as open_share,
-    s.alert_views,
-    coalesce(s.all_clears, 0) as all_clears,
-    s.all_clear_views
-from checkpoints c
-left join stats s using (checkpoint_s)
-order by c.checkpoint_s
+    median(a.reach) as reach
+from ${alert_reach} a
+join checkpoints c using (checkpoint_s)
+left join ${region_ranks} r using (location)
+group by all
 ```
 
-## Views by Checkpoint
+```sql reach_by_day
+select
+    a.display_name,
+    coalesce(r.reach_1m, 0) as reach_1m,
+    date_trunc('day', a.posted_at) as day,
+    strftime(date_trunc('day', a.posted_at), '%d %b') as day_label,
+    median(a.reach) as reach
+from ${alert_reach} a
+left join ${region_ranks} r using (location)
+where a.checkpoint_s = 60
+group by all
+```
 
-Median views of the alert (while still on) and of the all-clear at each
-checkpoint.
+```sql region_summary
+select
+    location,
+    display_name,
+    count(distinct posted_at) filter (where checkpoint_s = 15) as alerts,
+    max(subscribers) as subscribers,
+    median(views) filter (where checkpoint_s = 60) as views_1m,
+    median(reach) filter (where checkpoint_s = 15) as reach_15s,
+    median(reach) filter (where checkpoint_s = 60) as reach_1m,
+    median(reach) filter (where checkpoint_s = 300) as reach_5m,
+    median(reach) filter (where checkpoint_s = 1800) as reach_30m,
+    '/' || location as link
+from ${alert_reach}
+group by 1, 2
+```
 
-<LineChart
-    data={checkpoint_stats}
+## Reaction by Region
+
+Median reach of an alert at each checkpoint, fastest regions (by reach at
+1 min) on top. Later checkpoints only include alerts that were still on.
+
+<Heatmap
+    data={reach_by_checkpoint}
     x=checkpoint_label
-    y={['alert_views', 'all_clear_views']}
-    yFmt=num0
-    sort=false
-    markers=true
-    colorPalette={['#ef4444', '#22c55e']}
-    chartAreaHeight=220
+    xSort=checkpoint_s
+    y=display_name
+    ySort=reach_1m
+    ySortOrder=desc
+    value=reach
+    valueFmt=pct0
     emptySet=pass
     emptyMessage="No views sampled yet"
 />
 
-<DataTable data={checkpoint_stats} rows=all sort="checkpoint_s asc" sortable=false emptySet=pass emptyMessage="No views sampled for this city yet">
-    <Column id=checkpoint_label title="After posting" />
-    <Column id=open_alerts title="Alerts still on" />
-    <Column id=open_share title="Share of alerts" fmt=pct0 />
-    <Column id=alert_views title="Alert views (median)" fmt=num0 />
-    <Column id=all_clears title="All-clears" />
-    <Column id=all_clear_views title="All-clear views (median)" fmt=num0 />
+## Reaction over Time
+
+Median reach 1 minute after an alert, day by day. A region turning lighter
+means fewer people react to its alerts right away.
+
+<Heatmap
+    data={reach_by_day}
+    x=day_label
+    xSort=day
+    y=display_name
+    ySort=reach_1m
+    ySortOrder=desc
+    value=reach
+    valueFmt=pct0
+    nullsZero=false
+    emptySet=pass
+    emptyMessage="No views sampled yet"
+/>
+
+<DataTable data={region_summary} rows=all sort="reach_1m desc" link=link emptySet=pass emptyMessage="No views sampled yet">
+    <Column id=display_name title="City" />
+    <Column id=alerts title="Alerts" />
+    <Column id=subscribers title="Subscribers" fmt=num0 />
+    <Column id=views_1m title="Views at 1 min (median)" fmt=num0 />
+    <Column id=reach_15s title="Reach 15 s" fmt=pct0 />
+    <Column id=reach_1m title="Reach 1 min" fmt=pct0 />
+    <Column id=reach_5m title="Reach 5 min" fmt=pct0 />
+    <Column id=reach_30m title="Reach 30 min" fmt=pct0 />
 </DataTable>

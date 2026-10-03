@@ -470,4 +470,36 @@ order by c.checkpoint_s
     <Column id=all_clear_views title="All-clear views (median)" fmt=num0 />
 </DataTable>
 
+### Reaction over Time
+
+How the city's reaction to alerts changes day by day: median alert views
+1 and 5 minutes after posting. Compare regions on the [Alert Views](/views)
+page.
+
+```sql city_views_by_day
+select
+    date_trunc('day', posted_at::timestamp) as day,
+    count(*) filter (where checkpoint_s = 15) as alerts,
+    median(views) filter (where checkpoint_s = 60) as views_1m,
+    median(views) filter (where checkpoint_s = 300) as views_5m
+from sirens.message_views
+where location = '${params.city}'
+  and event_type = 'air_raid_alert'
+  and year(posted_at::timestamp) > 1970
+group by 1
+order by 1
+```
+
+<LineChart
+    data={city_views_by_day}
+    x=day
+    y={['views_1m', 'views_5m']}
+    yFmt=num0
+    markers=true
+    colorPalette={['#f97316', '#ef4444']}
+    chartAreaHeight=220
+    emptySet=pass
+    emptyMessage="No views sampled yet"
+/>
+
 {/if}

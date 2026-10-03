@@ -25,7 +25,7 @@ jobs:
           DEFAULT_BUMP: none
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         if: steps.tag_version.outputs.new_tag != steps.tag_version.outputs.old_tag && steps.tag_version.outputs.new_tag != ''
         with:
           tag_name: ${{ steps.tag_version.outputs.new_tag }}
